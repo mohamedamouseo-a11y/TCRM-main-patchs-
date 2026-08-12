@@ -1,13 +1,15 @@
 diff --git a/client/src/App.tsx b/client/src/App.tsx
 --- a/client/src/App.tsx
 +++ b/client/src/App.tsx
-@@
+@@ -67,6 +67,7 @@ import SupportAdminInbox from "./pages/SupportAdminInbox";
  import InboxPage from "./pages/Inbox";
  import TaraAgentPage from "./pages/TaraAgentPage";
  import ZaghloulAgentPage from "./pages/ZaghloulAgentPage";
 +import ZaghloulV5Page from "./pages/ZaghloulV5Page";
  import WAGatewayInbox from "./pages/wa/WAGatewayInbox";
-@@
+ import WAGatewayAccounts from "./pages/wa/WAGatewayAccounts";
+ import WAGatewaySettings from "./pages/wa/WAGatewaySettings";
+@@ -156,7 +157,8 @@ function Router() {
        <Route path="/wa-gateway" component={WAGatewayInbox} />
        <Route path="/tara" component={TaraAgentPage} />
 -      <Route path="/zaghloul" component={ZaghloulAgentPage} />
@@ -16,3 +18,5 @@ diff --git a/client/src/App.tsx b/client/src/App.tsx
 +      <Route path="/zaghloul-v5" component={ZaghloulV5Page} />
 +      <Route path="/zaghloul-legacy" component={ZaghloulAgentPage} />
        <Route path="/thrs" component={THRSPage} />
+       <Route path="/meta-campaigns" component={MetaCampaigns} />
+       <Route path="/tiktok-campaigns" component={TikTokCampaignsPage} />
