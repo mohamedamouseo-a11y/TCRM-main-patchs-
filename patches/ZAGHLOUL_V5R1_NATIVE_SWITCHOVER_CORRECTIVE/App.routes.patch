@@ -1,0 +1,18 @@
+diff --git a/client/src/App.tsx b/client/src/App.tsx
+--- a/client/src/App.tsx
++++ b/client/src/App.tsx
+@@
+ import InboxPage from "./pages/Inbox";
+ import TaraAgentPage from "./pages/TaraAgentPage";
+ import ZaghloulAgentPage from "./pages/ZaghloulAgentPage";
++import ZaghloulV5Page from "./pages/ZaghloulV5Page";
+ import WAGatewayInbox from "./pages/wa/WAGatewayInbox";
+@@
+       <Route path="/wa-gateway" component={WAGatewayInbox} />
+       <Route path="/tara" component={TaraAgentPage} />
+-      <Route path="/zaghloul" component={ZaghloulAgentPage} />
+-      <Route path="/zaghloul-v5" component={ZaghloulAgentPage} />
++      <Route path="/zaghloul" component={ZaghloulV5Page} />
++      <Route path="/zaghloul-v5" component={ZaghloulV5Page} />
++      <Route path="/zaghloul-legacy" component={ZaghloulAgentPage} />
+       <Route path="/thrs" component={THRSPage} />
