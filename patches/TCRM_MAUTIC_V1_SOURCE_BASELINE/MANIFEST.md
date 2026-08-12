@@ -14,15 +14,15 @@ Import a pinned, reviewable Mautic source baseline into TCRM Main at `external/m
 
 ## What APPLY.sh changes
 - Requires a clean TCRM Main git worktree.
-- Requires PHP 8.2+, Composer, Node/npm, pnpm, Git, and at least 1 GiB free disk space.
-- Runs `pnpm check` and `pnpm build` before any mutation.
+- Requires PHP 8.2–8.5, the official required PHP extensions (`xml`, MySQL via `mysqli` or `pdo_mysql`, `imap`, `zip`, `intl`, `curl`, `gd`, `mbstring`, `bcmath`), Composer, Node/npm, pnpm, Git, and at least 1 GiB free disk space.
+- Runs `pnpm check` and `pnpm build` before any mutation and requires those checks to leave the TCRM worktree clean.
 - Shallow-clones the exact Mautic `7.1.2` tag from the official upstream repository.
 - Verifies the clone resolves to the exact locked commit.
 - Validates Mautic Composer metadata and GPL-3.0 license metadata.
 - Removes only the nested `.git` directory so the parent TCRM repository can track the imported source.
 - Adds a bounded `.gitignore` exception for `external/mautic` and verifies every upstream-tracked source file remains trackable, while Mautic runtime `vendor/` and `node_modules/` remain ignored.
-- Adds `external/mautic/TCRM_UPSTREAM.lock` with immutable provenance metadata.
-- Runs TCRM typecheck/build again after import.
+- Adds `external/mautic/TCRM_UPSTREAM.lock` with immutable provenance metadata and `TCRM_SOURCE_BASELINE.sha256` covering every upstream-tracked source file.
+- Runs TCRM typecheck/build again after import and fails if either check creates any unexpected tracked or untracked source changes.
 - Leaves Mautic unconfigured and unexposed.
 
 ## Explicit non-changes
@@ -36,8 +36,8 @@ Import a pinned, reviewable Mautic source baseline into TCRM Main at `external/m
 - No TCRM application route or UI is changed.
 - No automatic push to GitHub.
 
-## Rollback
-`ROLLBACK.sh` removes only the V1 source baseline and refuses to run if a later patch has marked the source as customized.
+## Verification and rollback
+`VERIFY.sh` checks the full SHA-256 source manifest, Mautic/TCRM prerequisites, TCRM typecheck/build, Git visibility, and that runtime dependency folders remain ignored. `ROLLBACK.sh` removes only an intact V1 source baseline and refuses to run if files drifted or a later patch has marked the source as customized.
 
 ## Production gate
 This patch is intentionally a source-foundation patch. `RUNTIME_ACTIVATED=NO` is required for success. Production exposure will be a separate patch after database, web-server, TLS, queue/cron, backup, and integration design are reviewed independently.
