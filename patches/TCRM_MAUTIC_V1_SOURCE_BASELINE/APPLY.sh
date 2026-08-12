@@ -7,8 +7,8 @@ TARGET="${TCRM_PATH:-/var/www/TCRM-MAIN}"
 DEST_REL="external/mautic"
 DEST="$TARGET/$DEST_REL"
 UPSTREAM_REPO="https://github.com/mautic/mautic.git"
-UPSTREAM_TAG="7.1.2"
-EXPECTED_COMMIT="789364ee4aaf8aef5e6d91642336c1f446d5521b"
+UPSTREAM_TAG="7.1.3"
+EXPECTED_COMMIT="27a76aff64aed8e50f6dd784ea86ec95d45d4616"
 LOCK_FILE="TCRM_UPSTREAM.lock"
 BASELINE_MANIFEST="TCRM_SOURCE_BASELINE.sha256"
 EXPECTED_TCRM_GITIGNORE_BLOB="a01582cdcb61e9e117d10aa0f53d4b18e472d8c9"
@@ -146,7 +146,7 @@ POST_BASELINE_STATUS="$(cd "$TARGET" && git status --porcelain=v1 --untracked-fi
 }
 echo "TCRM_BASELINE_POST_BUILD_WORKTREE=PASS_CLEAN"
 
-# Import only the exact upstream security release and verify its immutable commit.
+# Import only the exact latest stable upstream release and verify its immutable commit.
 git clone --quiet --depth 1 --branch "$UPSTREAM_TAG" "$UPSTREAM_REPO" "$TMP/mautic"
 ACTUAL_COMMIT="$(git -C "$TMP/mautic" rev-parse HEAD)"
 [[ "$ACTUAL_COMMIT" == "$EXPECTED_COMMIT" ]] || fail "UPSTREAM_COMMIT_MISMATCH:$ACTUAL_COMMIT"
