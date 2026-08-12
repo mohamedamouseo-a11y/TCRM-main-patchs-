@@ -7,16 +7,16 @@ Import a pinned, reviewable Mautic source baseline into TCRM Main at `external/m
 
 ## Upstream lock
 - Project: `mautic/mautic`
-- Version/tag: `7.1.2`
-- Commit: `789364ee4aaf8aef5e6d91642336c1f446d5521b`
+- Version/tag: `7.1.3`
+- Commit: `27a76aff64aed8e50f6dd784ea86ec95d45d4616`
 - License: GPL-3.0
-- Reason for 7.1.2: security release containing fixes for multiple published vulnerabilities, including SQL injection, SSRF, SSTI, path traversal, authorization bypass, and stored XSS issues addressed after 7.1.1.
+- Reason for 7.1.3: current latest stable Mautic release as of 2026-08-12. It includes the 7.1.2 security fixes plus subsequent campaign, API, email, segment, builder, and reliability bug fixes from the 7.1.3 release.
 
 ## What APPLY.sh changes
 - Requires a clean TCRM Main git worktree.
 - Requires PHP 8.2–8.5, the official required PHP extensions (`xml`, MySQL via `mysqli` or `pdo_mysql`, `imap`, `zip`, `intl`, `curl`, `gd`, `mbstring`, `bcmath`), Composer, Node/npm, pnpm, Git, and at least 1 GiB free disk space.
 - Runs `pnpm check` and `pnpm build` before any mutation and requires those checks to leave the TCRM worktree clean.
-- Shallow-clones the exact Mautic `7.1.2` tag from the official upstream repository.
+- Shallow-clones the exact Mautic `7.1.3` tag from the official upstream repository.
 - Verifies the clone resolves to the exact locked commit.
 - Validates Mautic Composer metadata and GPL-3.0 license metadata.
 - Removes only the nested `.git` directory so the parent TCRM repository can track the imported source.
