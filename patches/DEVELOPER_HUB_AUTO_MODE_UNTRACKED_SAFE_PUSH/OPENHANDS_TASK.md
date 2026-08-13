@@ -5,25 +5,17 @@ Patch repo: `https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-`
 
 Goal: fix Developer Hub Auto Push so safe untracked source files can pass review/push without weakening existing safeguards.
 
-## Do
-1. Run this patch `APPLY.sh`; stop if preflight fails.
-2. Locate the exact Developer Hub code that emits `unexpected untracked file is not allowed in Auto mode` / handles Review+Push.
-3. Change only that sync/push path plus focused tests/helpers.
-4. Auto mode behavior:
-   - parse Git status safely (NUL-delimited preferred)
-   - keep tracked-file behavior unchanged
-   - classify untracked files; honor `.gitignore`
-   - allow only regular safe source/config/docs files after secret/runtime checks
-   - reject symlink/special files, `.env`, key/cert/credential/token files, secret-scanner matches, generated/runtime/cache/log/temp/upload/build artifacts
-   - any unsafe candidate blocks the whole push
-   - stage exact reviewed paths only; no `git add -A`, `git add .`, `git add --all`, or broad equivalent
-   - after staging, prove staged set exactly equals approved set before commit/push
-5. Add focused fixture tests proving all 12 cases from MANIFEST.md, including >=441 safe untracked files and spaces/Unicode.
-6. Do not push production Git during implementation/testing.
-7. Do not modify Zaghloul, DB, dependencies, package manifests or lockfiles.
-8. Run `VERIFY.sh`; success only on its final marker.
+1. Run `APPLY.sh`; stop on failure.
+2. Patch only the exact Developer Hub Review/Push code that blocks `unexpected untracked file is not allowed in Auto mode`, plus focused helpers/tests.
+3. Auto mode must: safely parse Git status; honor `.gitignore`; allow regular safe untracked source/config/docs; reject symlinks/special files, `.env`/keys/certs/credentials/tokens/secret matches, generated/runtime/cache/log/temp/upload/build artifacts; block the entire set if any candidate is unsafe; stage exact approved paths only; prove staged set equality. No broad `git add`, force, or bypass.
+4. Preserve tracked flow and existing Verify/Tests/Build gates. Do not touch Zaghloul, DB, dependencies, package manifests or lockfiles.
+5. Add focused Vitest fixtures for all 12 MANIFEST cases, including spaces/Unicode and >=441 safe files. Fixtures must use temp repos and never real push.
+6. Before editing each existing file copy it to `/tmp/DEVELOPER_HUB_AUTO_MODE_UNTRACKED_SAFE_PUSH/backups/<relative-path>`; list every changed/new file in `patched-files.txt`, new files in `new-files.txt`, and test files in `test-files.txt` in that workspace.
+7. Fixture tests must write this exact result file when `DEVHUB_FIXTURE_RESULTS` is set:
+`FIXTURE_TESTS=PASS`, `UNTRACKED_SAFE_ALLOW=PASS`, `SECRET_BLOCK=PASS`, `SYMLINK_BLOCK=PASS`, `RUNTIME_BLOCK=PASS`, `MIXED_SET_ATOMIC_BLOCK=PASS`, `LARGE_SET_441=PASS`, `EXACT_STAGE_SET=PASS`, `GIT_PUSH_DURING_FIXTURES=NONE`.
+8. Do not commit/push production Git during patching. Run `VERIFY.sh`; success only on final marker.
 
-Required final output only:
+Final output only:
 PRECHECK
 PATCHED_FILES
 FIXTURE_TESTS
