@@ -1,1 +1,46 @@
-PLACEHOLDER
+diff --git a/client/src/components/ClientTaskWizard.tsx b/client/src/components/ClientTaskWizard.tsx
+index f890566..cf96e44 100644
+--- a/client/src/components/ClientTaskWizard.tsx
++++ b/client/src/components/ClientTaskWizard.tsx
+@@ -888,14 +888,14 @@
+                     )}
+                   </div>
+ 
+-                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+-                    <div>
++                  <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
++                    <div className="min-w-0">
+                       <Label>{isEdit ? (isRTL ? "الحالة الحالية" : "Current Status") : labels.initialStatus}</Label>
+                       {isEdit ? (
+                         <div className="mt-1.5 flex h-11 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-700">{formatStatus(form.initialStatus, isRTL)}</div>
+                       ) : (
+                         <Select value={form.initialStatus} onValueChange={(value) => setForm((current) => ({ ...current, initialStatus: value as TaskInitialStatus }))}>
+-                          <SelectTrigger className="mt-1.5 h-11 rounded-xl bg-slate-50"><SelectValue /></SelectTrigger>
++                          <SelectTrigger className="mt-1.5 h-11 w-full min-w-0 rounded-xl bg-slate-50"><SelectValue /></SelectTrigger>
+                           <SelectContent>
+                             <SelectItem value="ToDo">{isRTL ? "مفتوحة" : "Open"}</SelectItem>
+                             <SelectItem value="NotStarted">{isRTL ? "لم تبدأ" : "Not Started"}</SelectItem>
+@@ -904,19 +904,19 @@
+                       )}
+                       {isEdit && <p className="mt-1.5 text-[10px] leading-4 text-slate-500">{isRTL ? "حركة المهمة وحالتها التشغيلية تظل مُدارة من داخل TOS." : "Operational workflow status remains controlled in TOS."}</p>}
+                     </div>
+-                    <div>
++                    <div className="min-w-0">
+                       <Label>{labels.visibility}</Label>
+                       <Select value={form.visibility} onValueChange={(value) => setForm((current) => ({ ...current, visibility: value as TaskVisibility }))}>
+-                        <SelectTrigger className="mt-1.5 h-11 rounded-xl bg-slate-50"><SelectValue /></SelectTrigger>
++                        <SelectTrigger className="mt-1.5 h-11 w-full min-w-0 rounded-xl bg-slate-50"><SelectValue /></SelectTrigger>
+                         <SelectContent>
+                           <SelectItem value="Team">{isRTL ? "داخلية — فريق المشروع" : "Internal — Project team"}</SelectItem>
+                           <SelectItem value="Private">{isRTL ? "خاصة — المسؤول والمالك والمتابعون" : "Private — Assignee, owner & followers"}</SelectItem>
+                         </SelectContent>
+                       </Select>
+                     </div>
+-                    <div>
++                    <div className="min-w-0">
+                       <Label>{labels.followers}</Label>
+-                      <div className="mt-1.5 flex h-11 items-center gap-1.5 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-3">
++                      <div className="mt-1.5 flex h-11 w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-3">
+                         {selectedFollowers.length ? selectedFollowers.slice(0, 4).map((member) => <span key={member.tosUserId} title={member.name} className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-black text-indigo-700 ring-2 ring-white">{initials(member.name)}</span>) : <span className="text-xs text-slate-400">{isRTL ? "لا يوجد متابعون" : "No followers"}</span>}
+                         {selectedFollowers.length > 4 && <span className="text-[10px] font-bold text-slate-500">+{selectedFollowers.length - 4}</span>}
+                       </div>
