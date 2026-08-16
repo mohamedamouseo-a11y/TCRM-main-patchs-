@@ -1,0 +1,75 @@
+diff --git a/client/src/pages/AgentDashboard.tsx b/client/src/pages/AgentDashboard.tsx
+--- a/client/src/pages/AgentDashboard.tsx
++++ b/client/src/pages/AgentDashboard.tsx
+@@ -10,3 +10,3 @@
+ import { trpc } from "@/lib/trpc";
+-import { normalizeUserRole } from "@/lib/roles";
++import { isAdminRole, normalizeUserRole } from "@/lib/roles";
+ import { useAuth } from "@/_core/hooks/useAuth";
+@@ -50,3 +50,3 @@
+   }, [userRole, navigate]);
+-  const isAdmin = ["Admin", "SalesManager"].includes(userRole);
++  const isAdmin = isAdminRole(userRole) || userRole === "SalesManager";
+ 
+@@ -61,3 +61,3 @@
+   const [dateRange, setDateRange] = useCurrentMonthDateRange();
+ 
+-  const canLoadAgentStats = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent"].includes(userRole);
++  const canLoadAgentStats = isAdminRole(userRole) || ["SalesManager", "SalesAgent", "ColdSalesAgent"].includes(userRole);
+diff --git a/client/src/components/CRMLayout.tsx b/client/src/components/CRMLayout.tsx
+--- a/client/src/components/CRMLayout.tsx
++++ b/client/src/components/CRMLayout.tsx
+@@ -48,3 +48,3 @@
+ import { Link, useLocation } from "wouter";
+ import { cn } from "@/lib/utils";
+-import { isTaraModeratorRole, normalizeUserRole } from "@/lib/roles";
++import { isAdminRole, isTaraModeratorRole, normalizeUserRole } from "@/lib/roles";
+@@ -129,2 +129,2 @@
+   const slaRole = normalizeUserRole(user?.role ?? "");
+-  const canAccessSla = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager"].includes(slaRole);
++  const canAccessSla = isAdminRole(slaRole) || ["SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager"].includes(slaRole);
+@@ -171,2 +171,3 @@
+   const actualRole = isModerator ? "Moderator" : normalizeUserRole(user?.role ?? "SalesAgent");
+   const role = actualRole;
++  const accessRole = isAdminRole(role) ? "Admin" : role;
+@@ -227,2 +228,2 @@
+       icon: <BarChart3 size={18} />,
+-      visible: hasBdAccess || ["Admin", "SalesManager"].includes(role),
++      visible: hasBdAccess || ["Admin", "SalesManager"].includes(accessRole),
+@@ -233,2 +234,2 @@
+       icon: <BarChart3 size={18} />,
+-      visible: hasBdAccess || ["Admin", "SalesManager"].includes(role),
++      visible: hasBdAccess || ["Admin", "SalesManager"].includes(accessRole),
+@@ -239,2 +240,2 @@
+       icon: <Users size={18} />,
+-      visible: ["Admin", "SalesManager"].includes(role),
++      visible: ["Admin", "SalesManager"].includes(accessRole),
+@@ -274,2 +275,2 @@
+ 
+-  const isBdOnly = role === "BusinessDeveloper";
++  const isBdOnly = accessRole === "BusinessDeveloper";
+@@ -280,2 +281,2 @@
+     if (isBdOnly) return BD_ALLOWED_HREFS.includes(item.href);
+-    return !item.roles || item.roles.includes(role);
++    return !item.roles || item.roles.includes(accessRole);
+@@ -328,4 +329,4 @@
+           const isWaGatewayActive = waGatewayHrefs.some(h => location === h || location.startsWith(h + "/"));
+-          const showWaGateway = role !== "Viewer";
+-          const showAiStaff = ["Admin", "Moderator"].includes(role);
+-          const showMarketing = ["Admin", "SalesManager", "MediaBuyer"].includes(role);
++          const showWaGateway = accessRole !== "Viewer";
++          const showAiStaff = ["Admin", "Moderator"].includes(accessRole);
++          const showMarketing = ["Admin", "SalesManager", "MediaBuyer"].includes(accessRole);
+@@ -332,2 +333,2 @@
+-          const showSales = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "TechnicalAccountManager", "ServiceAdvisor", "PartsAgent", "CrmFollowUp", "Viewer", "MediaBuyer"].includes(role);
++          const showSales = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "TechnicalAccountManager", "ServiceAdvisor", "PartsAgent", "CrmFollowUp", "Viewer", "MediaBuyer"].includes(accessRole);
+ 
+@@ -338,3 +339,3 @@
+           const isAmActive = amHrefs.some(h => location === h || location.startsWith(h + "/"));
+-          const showAm = ["Admin", "SalesManager", "TechnicalAccountManager", "AccountManager", "AccountManagerLead", "ServiceAdvisor", "PartsAgent", "CrmFollowUp"].includes(role);
++          const showAm = ["Admin", "SalesManager", "TechnicalAccountManager", "AccountManager", "AccountManagerLead", "ServiceAdvisor", "PartsAgent", "CrmFollowUp"].includes(accessRole);
+           const isBdGroupActive = bdHrefs.some(h => location === h || location.startsWith(h + "/"));
+@@ -341,2 +342,2 @@
+-          const showBdGroup = hasBdAccess || ["Admin", "SalesManager"].includes(role);
++          const showBdGroup = hasBdAccess || ["Admin", "SalesManager"].includes(accessRole);
+ 
