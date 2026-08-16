@@ -1,0 +1,488 @@
+diff --git a/client/src/lib/roles.ts b/client/src/lib/roles.ts
+--- a/client/src/lib/roles.ts
++++ b/client/src/lib/roles.ts
+@@ -1,5 +1,6 @@
+ export const APP_USER_ROLES = [
+   "Admin",
++  "Developer",
+   "SalesManager",
+   "SalesAgent",
+   "ColdSalesAgent",
+@@ -19,6 +20,7 @@
+ 
+ const LEGACY_ROLE_MAP: Record<string, AppUserRole> = {
+   admin: "Admin",
++  developer: "Developer",
+   superadmin: "Admin",
+   super_admin: "Admin",
+   superadministrator: "Admin",
+@@ -63,12 +65,12 @@
+ }
+ 
+ export function isAdminRole(role?: string | null): boolean {
+-  return normalizeUserRole(role) === "Admin";
++  return ["Admin", "Developer"].includes(normalizeUserRole(role));
+ }
+ 
+ export function isManagerRole(role?: string | null): boolean {
+   const normalized = normalizeUserRole(role);
+-  return normalized === "Admin" || normalized === "SalesManager";
++  return normalized === "Admin" || normalized === "Developer" || normalized === "SalesManager";
+ }
+ 
+ export const SALES_AGENT_ROLES = ["SalesAgent", "ColdSalesAgent"] as const;
+diff --git a/server/roleUtils.ts b/server/roleUtils.ts
+--- a/server/roleUtils.ts
++++ b/server/roleUtils.ts
+@@ -1,5 +1,6 @@
+ export const APP_USER_ROLES = [
+   "Admin",
++  "Developer",
+   "SalesManager",
+   "SalesAgent",
+   "ColdSalesAgent",
+@@ -19,6 +20,7 @@
+ 
+ const LEGACY_ROLE_MAP: Record<string, AppUserRole> = {
+   admin: "Admin",
++  developer: "Developer",
+   superadmin: "Admin",
+   super_admin: "Admin",
+   superadministrator: "Admin",
+@@ -64,12 +66,16 @@
+ 
+ export function isAdminRole(role?: string | null): boolean {
+   const normalized = normalizeUserRole(role);
+-  return normalized === "Admin" || normalized === "Moderator";
++  return normalized === "Admin" || normalized === "Developer" || normalized === "Moderator";
+ }
+ 
+ export function isManagerRole(role?: string | null): boolean {
+   const normalized = normalizeUserRole(role);
+-  return normalized === "Admin" || normalized === "SalesManager" || normalized === "Moderator";
++  return normalized === "Admin" || normalized === "Developer" || normalized === "SalesManager" || normalized === "Moderator";
++}
++
++export function isDeveloperRole(role?: string | null): boolean {
++  return normalizeUserRole(role) === "Developer";
+ }
+ 
+ export const SALES_AGENT_ROLES = ["SalesAgent", "ColdSalesAgent"] as const;
+diff --git a/drizzle/schema.ts b/drizzle/schema.ts
+--- a/drizzle/schema.ts
++++ b/drizzle/schema.ts
+@@ -748,5 +748,5 @@
+ 	googleId: varchar({ length: 255 }),
+ 	emailVerified: tinyint().default(0).notNull(),
+-	role: mysqlEnum(["Admin","SalesManager","SalesAgent","ColdSalesAgent","TechnicalAccountManager","ServiceAdvisor","PartsAgent","CrmFollowUp","Viewer","MediaBuyer","AccountManager","AccountManagerLead","BusinessDeveloper","Moderator"]).default('SalesAgent').notNull(),
++	role: mysqlEnum(["Admin","Developer","SalesManager","SalesAgent","ColdSalesAgent","TechnicalAccountManager","ServiceAdvisor","PartsAgent","CrmFollowUp","Viewer","MediaBuyer","AccountManager","AccountManagerLead","BusinessDeveloper","Moderator"]).default('SalesAgent').notNull(),
+ 	createdAt: timestamp({ mode: 'string' }).default(sql`(now())`).notNull(),
+ 	updatedAt: timestamp({ mode: 'string' }).default(sql`(now())`).onUpdateNow().notNull(),
+diff --git a/server/_core/trpc.ts b/server/_core/trpc.ts
+--- a/server/_core/trpc.ts
++++ b/server/_core/trpc.ts
+@@ -4,4 +4,6 @@
+ import type { TrpcContext } from "./context";
+ import { getModeratorOperationalRole, isModeratorBlockedApiPath, isModeratorNativeScopedApiPath } from "@shared/moderatorOperationalAccess";
++import { isDeveloperRole } from "../roleUtils";
++import { sanitizeDeveloperData } from "../utils/developerDataSanitizer";
+ 
+ const t = initTRPC.context<TrpcContext>().create({
+@@ -233,5 +235,17 @@
+ });
+ 
+-export const publicProcedure = t.procedure.use(centralMutationAudit);
++const developerDataProtection = t.middleware(async opts => {
++  const result = await opts.next();
++  if (!result.ok || !isDeveloperRole(opts.ctx.user?.role)) {
++    return result;
++  }
++
++  return {
++    ...result,
++    data: sanitizeDeveloperData(result.data),
++  } as typeof result;
++});
++
++export const publicProcedure = t.procedure.use(centralMutationAudit).use(developerDataProtection as any);
+ 
+ const requireUser = t.middleware(async opts => {
+@@ -270,6 +284,6 @@
+-export const protectedProcedure = moderatorDenyByDefault.use(centralMutationAudit as any);
++export const protectedProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(developerDataProtection as any);
+ 
+ const isAdminLikeRole = (role?: string | null): boolean => {
+   const normalized = String(role ?? "").replace(/\s+/g, "").trim().toLowerCase();
+-  return normalized === "admin" || normalized === "superadmin" || normalized === "super_admin";
++  return normalized === "admin" || normalized === "developer" || normalized === "superadmin" || normalized === "super_admin";
+ };
+@@ -291,4 +305,4 @@
+   }),
+-);
++).use(developerDataProtection as any);
+ 
+ // TARA_PRODUCTION_HARDENING_V1_ITEM3_MODERATOR
+diff --git a/server/utils/developerDataSanitizer.ts b/server/utils/developerDataSanitizer.ts
+new file mode 100644
+--- /dev/null
++++ b/server/utils/developerDataSanitizer.ts
+@@ -0,0 +1,209 @@
++type SensitiveKind = "email" | "phone" | "identifier" | "money" | "text" | "secret";
++
++const IDENTITY_CONTAINER_FRAGMENTS = [
++  "client",
++  "customer",
++  "contact",
++  "lead",
++  "employee",
++  "person",
++  "member",
++  "owner",
++  "recipient",
++  "sender",
++  "user",
++  "vendor",
++  "supplier",
++];
++
++const IDENTITY_SIGNAL_KEYS = [
++  "email",
++  "phone",
++  "mobile",
++  "whatsappnumber",
++  "nationalid",
++  "passportnumber",
++  "taxid",
++  "clientid",
++  "customerid",
++  "contactid",
++  "leadid",
++  "employeeid",
++  "userid",
++];
++
++const EMAIL_KEYS = new Set([
++  "email",
++  "emailaddress",
++  "centralemail",
++  "contactemail",
++  "clientemail",
++  "customeremail",
++  "workemail",
++  "personalemail",
++  "recipientemail",
++  "senderemail",
++]);
++
++const IDENTIFIER_KEYS = new Set([
++  "nationalid",
++  "nationalidnumber",
++  "identitynumber",
++  "passportnumber",
++  "taxid",
++  "taxnumber",
++  "vatnumber",
++  "registrationnumber",
++  "commercialregistration",
++]);
++
++const ALWAYS_PRIVATE_NAME_KEYS = new Set([
++  "firstname",
++  "lastname",
++  "fullname",
++  "clientname",
++  "customername",
++  "contactname",
++  "employeename",
++  "leadname",
++  "ownername",
++  "recipientname",
++  "sendername",
++  "username",
++  "companyname",
++]);
++
++const PRIVATE_TEXT_KEYS = new Set([
++  "address",
++  "streetaddress",
++  "billingaddress",
++  "shippingaddress",
++  "notes",
++  "note",
++  "comment",
++  "comments",
++  "message",
++  "messagebody",
++  "body",
++  "content",
++  "description",
++]);
++
++const MONEY_KEYS = new Set([
++  "amount",
++  "salary",
++  "wage",
++  "price",
++  "cost",
++  "budget",
++  "balance",
++  "revenue",
++  "income",
++  "commission",
++  "fee",
++  "dealvalue",
++  "contractvalue",
++  "totalamount",
++  "paidamount",
++  "dueamount",
++]);
++
++const SECRET_FRAGMENTS = [
++  "password",
++  "secret",
++  "token",
++  "apikey",
++  "authorization",
++  "cookie",
++  "credential",
++  "smtppass",
++];
++
++function normalizeKey(key: string): string {
++  return String(key).replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
++}
++
++function isIdentityContainerKey(key: string): boolean {
++  const normalized = normalizeKey(key);
++  return IDENTITY_CONTAINER_FRAGMENTS.some(fragment => normalized === fragment || normalized.endsWith(fragment));
++}
++
++function objectLooksLikeIdentityRecord(value: Record<string, unknown>): boolean {
++  const keys = Object.keys(value).map(normalizeKey);
++  return keys.some(key => IDENTITY_SIGNAL_KEYS.some(signal => key === signal || key.endsWith(signal)));
++}
++
++function classifyKey(key: string, identityRecord: boolean): SensitiveKind | null {
++  const normalized = normalizeKey(key);
++
++  if (EMAIL_KEYS.has(normalized) || normalized.endsWith("email")) return "email";
++  if (
++    normalized === "phone" ||
++    normalized.endsWith("phone") ||
++    normalized === "mobile" ||
++    normalized.endsWith("mobile") ||
++    normalized === "whatsappnumber" ||
++    normalized === "whatsappphone" ||
++    normalized === "waid"
++  ) return "phone";
++  if (IDENTIFIER_KEYS.has(normalized)) return "identifier";
++  if (SECRET_FRAGMENTS.some(fragment => normalized.includes(fragment))) return "secret";
++  if (MONEY_KEYS.has(normalized)) return "money";
++  if (PRIVATE_TEXT_KEYS.has(normalized) || normalized.endsWith("address")) return "text";
++  if (ALWAYS_PRIVATE_NAME_KEYS.has(normalized)) return "text";
++  if (normalized === "name" && identityRecord) return "text";
++
++  return null;
++}
++
++function zeroDigits(value: string): string {
++  const digitCount = (value.match(/\d/g) ?? []).length;
++  return "0".repeat(Math.max(1, digitCount));
++}
++
++function zeroValue(value: unknown, kind: SensitiveKind): unknown {
++  if (value === null || value === undefined) return value;
++  if (typeof value === "number") return 0;
++  if (typeof value === "bigint") return BigInt(0);
++  if (typeof value === "boolean") return value;
++
++  if (typeof value === "string") {
++    if (kind === "email") return "0@0.local";
++    if (kind === "phone" || kind === "identifier") return zeroDigits(value);
++    return "0";
++  }
++
++  if (Array.isArray(value)) {
++    return value.map(item => zeroValue(item, kind));
++  }
++
++  if (value instanceof Date) return value;
++  if (typeof value === "object") return {};
++  return "0";
++}
++
++function sanitizeNode(value: unknown, containerKey = "", depth = 0): unknown {
++  if (depth > 20 || value === null || value === undefined) return value;
++  if (value instanceof Date) return value;
++  if (Array.isArray(value)) return value.map(item => sanitizeNode(item, containerKey, depth + 1));
++  if (typeof value !== "object") return value;
++
++  const source = value as Record<string, unknown>;
++  const identityRecord = isIdentityContainerKey(containerKey) || objectLooksLikeIdentityRecord(source);
++  const output: Record<string, unknown> = {};
++
++  for (const [key, item] of Object.entries(source)) {
++    const kind = classifyKey(key, identityRecord);
++    output[key] = kind ? zeroValue(item, kind) : sanitizeNode(item, key, depth + 1);
++  }
++
++  return output;
++}
++
++/**
++ * Returns a sanitized clone for Developer users.
++ * The source object is never mutated, so production/database values stay untouched.
++ */
++export function sanitizeDeveloperData<T>(value: T): T {
++  return sanitizeNode(value) as T;
++}
+diff --git a/scripts/apply-developer-role-migration.ts b/scripts/apply-developer-role-migration.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/apply-developer-role-migration.ts
+@@ -0,0 +1,62 @@
++import { config as dotenvConfig } from "dotenv";
++import mysql from "mysql2/promise";
++
++dotenvConfig({ path: process.cwd() + "/.env", override: true });
++
++const DATABASE_URL = process.env.DATABASE_URL;
++const ROLE = "Developer";
++
++function quoteSql(value: string) {
++  return `'${value.replaceAll("'", "''")}'`;
++}
++
++function parseEnumValues(columnType: string): string[] {
++  const values: string[] = [];
++  const pattern = /'((?:''|[^'])*)'/g;
++  let match: RegExpExecArray | null;
++  while ((match = pattern.exec(columnType))) values.push(match[1].replaceAll("''", "'"));
++  return values;
++}
++
++async function main() {
++  if (!DATABASE_URL) throw new Error("DATABASE_URL is required");
++  const conn = await mysql.createConnection(DATABASE_URL);
++
++  try {
++    const [rows] = await conn.query(
++      `SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
++       FROM information_schema.COLUMNS
++       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'
++       LIMIT 1`,
++    );
++    const column = (rows as any[])[0];
++    if (!column) throw new Error("users.role column was not found");
++
++    const currentValues = parseEnumValues(String(column.COLUMN_TYPE ?? ""));
++    if (!currentValues.length) throw new Error("users.role is not a readable ENUM column");
++    if (currentValues.includes(ROLE)) {
++      console.log(`users.role already supports ${ROLE}`);
++      return;
++    }
++
++    const adminIndex = currentValues.indexOf("Admin");
++    const nextValues = [...currentValues];
++    nextValues.splice(adminIndex >= 0 ? adminIndex + 1 : nextValues.length, 0, ROLE);
++
++    const nullability = String(column.IS_NULLABLE) === "YES" ? "NULL" : "NOT NULL";
++    const defaultClause = column.COLUMN_DEFAULT == null ? "" : ` DEFAULT ${quoteSql(String(column.COLUMN_DEFAULT))}`;
++
++    await conn.query(
++      `ALTER TABLE \`users\`
++       MODIFY COLUMN \`role\` ENUM(${nextValues.map(quoteSql).join(",")}) ${nullability}${defaultClause}`,
++    );
++    console.log(`Added ${ROLE} to users.role enum without changing existing user rows`);
++  } finally {
++    await conn.end();
++  }
++}
++
++main().catch((error) => {
++  console.error("Developer role migration failed", error);
++  process.exit(1);
++});
+diff --git a/client/src/pages/AgentDashboard.tsx b/client/src/pages/AgentDashboard.tsx
+--- a/client/src/pages/AgentDashboard.tsx
++++ b/client/src/pages/AgentDashboard.tsx
+@@ -11,3 +11,3 @@
+ import { trpc } from "@/lib/trpc";
+-import { normalizeUserRole } from "@/lib/roles";
++import { isAdminRole, normalizeUserRole } from "@/lib/roles";
+ import { useAuth } from "@/_core/hooks/useAuth";
+@@ -54,3 +54,3 @@
+   }, [userRole, navigate]);
+-  const isAdmin = ["Admin", "SalesManager"].includes(userRole);
++  const isAdmin = isAdminRole(userRole) || userRole === "SalesManager";
+ 
+@@ -65,3 +65,3 @@
+ 
+-  const canLoadAgentStats = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent"].includes(userRole);
++  const canLoadAgentStats = isAdminRole(userRole) || ["SalesManager", "SalesAgent", "ColdSalesAgent"].includes(userRole);
+ 
+diff --git a/client/src/components/CRMLayout.tsx b/client/src/components/CRMLayout.tsx
+--- a/client/src/components/CRMLayout.tsx
++++ b/client/src/components/CRMLayout.tsx
+@@ -54,3 +54,3 @@
+ import { cn } from "@/lib/utils";
+-import { isTaraModeratorRole, normalizeUserRole } from "@/lib/roles";
++import { isAdminRole, isTaraModeratorRole, normalizeUserRole } from "@/lib/roles";
+ import { isModeratorBlockedRoute } from "@shared/moderatorOperationalAccess";
+@@ -173,3 +173,3 @@
+   const slaRole = normalizeUserRole(user?.role ?? "");
+-  const canAccessSla = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager"].includes(slaRole);
++  const canAccessSla = isAdminRole(slaRole) || ["SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager"].includes(slaRole);
+   const { data: slaUnseenData } = trpc.leads.slaUnseenCount.useQuery(undefined, {
+@@ -213,2 +213,3 @@
+   const role = actualRole;
++  const accessRole = isAdminRole(role) ? "Admin" : role;
+ 
+@@ -269,3 +270,3 @@
+       icon: <BarChart3 size={18} />,
+-      visible: hasBdAccess || ["Admin", "SalesManager"].includes(role),
++      visible: hasBdAccess || ["Admin", "SalesManager"].includes(accessRole),
+     },
+@@ -275,3 +276,3 @@
+       icon: <BarChart3 size={18} />,
+-      visible: hasBdAccess || ["Admin", "SalesManager"].includes(role),
++      visible: hasBdAccess || ["Admin", "SalesManager"].includes(accessRole),
+     },
+@@ -281,3 +282,3 @@
+       icon: <Users size={18} />,
+-      visible: ["Admin", "SalesManager"].includes(role),
++      visible: ["Admin", "SalesManager"].includes(accessRole),
+     },
+@@ -315,2 +316,2 @@
+-  const isBdOnly = role === "BusinessDeveloper";
++  const isBdOnly = accessRole === "BusinessDeveloper";
+   const BD_ALLOWED_HREFS = ["/thrs", "/bd", "/bd/deals", "/bd/companies", "/bd/contacts", "/bd/analytics", "/bd/templates", "/bd/coaching", "/bd/settings", "/support-center", "/notification-settings"];
+@@ -320,3 +321,3 @@
+     if (isBdOnly) return BD_ALLOWED_HREFS.includes(item.href);
+-    return !item.roles || item.roles.includes(role);
++    return !item.roles || item.roles.includes(accessRole);
+   });
+@@ -356,17 +357,17 @@
+           const isAiStaffActive = aiStaffHrefs.some(h => location === h || location.startsWith(h + "/"));
+           const waGatewayHrefs = ["/wa-gateway", "/wa-gateway/accounts"];
+           const isWaGatewayActive = waGatewayHrefs.some(h => location === h || location.startsWith(h + "/"));
+-          const showWaGateway = role !== "Viewer";
+-          const showAiStaff = ["Admin", "Moderator"].includes(role);
+-          const showMarketing = ["Admin", "SalesManager", "MediaBuyer"].includes(role);
+-          const showSales = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "TechnicalAccountManager", "ServiceAdvisor", "PartsAgent", "CrmFollowUp", "Viewer", "MediaBuyer"].includes(role);
++          const showWaGateway = accessRole !== "Viewer";
++          const showAiStaff = ["Admin", "Moderator"].includes(accessRole);
++          const showMarketing = ["Admin", "SalesManager", "MediaBuyer"].includes(accessRole);
++          const showSales = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "TechnicalAccountManager", "ServiceAdvisor", "PartsAgent", "CrmFollowUp", "Viewer", "MediaBuyer"].includes(accessRole);
+ 
+           const amHrefs = ["/am-dashboard", "/am-calendar", "/clients", "/renewals", "/workflow-dashboard", "/operations-dashboard", "/tam-dashboard", "/am-lead-dashboard"];
+           const bdHrefs = ["/bd", "/bd/analytics", "/bd/coaching", "/bd/deals", "/bd/companies", "/bd/contacts", "/bd/settings", "/email-marketing"];
+           const isAmActive = amHrefs.some(h => location === h || location.startsWith(h + "/"));
+-          const showAm = ["Admin", "SalesManager", "TechnicalAccountManager", "AccountManager", "AccountManagerLead", "ServiceAdvisor", "PartsAgent", "CrmFollowUp"].includes(role);
++          const showAm = ["Admin", "SalesManager", "TechnicalAccountManager", "AccountManager", "AccountManagerLead", "ServiceAdvisor", "PartsAgent", "CrmFollowUp"].includes(accessRole);
+           const isBdGroupActive = bdHrefs.some(h => location === h || location.startsWith(h + "/"));
+-          const showBdGroup = hasBdAccess || ["Admin", "SalesManager"].includes(role);
++          const showBdGroup = hasBdAccess || ["Admin", "SalesManager"].includes(accessRole);
+ 
+           // Pre-sales: dashboard, inbox
+           const preSalesHrefs = ["/dashboard", "/inbox", "/chat"];
