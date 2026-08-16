@@ -1,0 +1,432 @@
+diff --git a/server/utils/developerAccessPolicy.ts b/server/utils/developerAccessPolicy.ts
+new file mode 100644
+--- /dev/null
++++ b/server/utils/developerAccessPolicy.ts
+@@ -0,0 +1,67 @@
++export type DeveloperAccessPolicyInput = {
++  path: string;
++  type?: string | null;
++  input?: unknown;
++};
++
++const EXACT_MUTATION_DENIALS: Record<string, string> = {
++  "users.delete": "Developer mode cannot delete users.",
++  "users.promoteOwner": "Developer mode cannot promote itself to Admin.",
++  "auth.adminSetPassword": "Developer mode cannot reset another user's password.",
++  "crmFiles.createPublicViewOnlyShareLink": "Developer mode cannot create public CRM file links.",
++};
++
++const BLOCKED_USER_UPDATE_FIELDS = new Set([
++  "role",
++  "isActive",
++  "password",
++  "passwordHash",
++  "sessionVersion",
++]);
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
++}
++
++function hasBlockedUserUpdateField(input: unknown): boolean {
++  if (!isRecord(input)) return false;
++  return Object.keys(input).some((key) => BLOCKED_USER_UPDATE_FIELDS.has(key));
++}
++
++function isExportMutationPath(path: string): boolean {
++  const operation = String(path.split(".").pop() || "").toLowerCase();
++  return operation.includes("export");
++}
++
++/**
++ * Returns a user-facing denial reason for Developer-only mutation restrictions.
++ * Queries remain available and are sanitized separately by developerDataProtection.
++ */
++export function getDeveloperAccessDenialReason({
++  path,
++  type,
++  input,
++}: DeveloperAccessPolicyInput): string | null {
++  if (type && type !== "mutation") return null;
++
++  const exactReason = EXACT_MUTATION_DENIALS[path];
++  if (exactReason) return exactReason;
++
++  if (path === "users.create") {
++    const requestedRole = isRecord(input) ? String(input.role ?? "SalesAgent") : "SalesAgent";
++    if (requestedRole !== "Developer") {
++      return "Developer mode may create only Developer test accounts.";
++    }
++  }
++
++  if (path === "users.update" && hasBlockedUserUpdateField(input)) {
++    return "Developer mode cannot change user roles, activation state, passwords, or session security.";
++  }
++
++  if (isExportMutationPath(path)) {
++    return "Developer mode cannot export production data.";
++  }
++
++  return null;
++}
++
+diff --git a/server/utils/developerAccessPolicy.test.ts b/server/utils/developerAccessPolicy.test.ts
+new file mode 100644
+--- /dev/null
++++ b/server/utils/developerAccessPolicy.test.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, it } from "vitest";
++import { getDeveloperAccessDenialReason } from "./developerAccessPolicy";
++
++describe("developerAccessPolicy", () => {
++  it("blocks user deletion and privilege escalation", () => {
++    expect(getDeveloperAccessDenialReason({ path: "users.delete", type: "mutation", input: { id: 9 } })).toContain("delete users");
++    expect(getDeveloperAccessDenialReason({ path: "users.promoteOwner", type: "mutation" })).toContain("Admin");
++  });
++
++  it("allows creating Developer test accounts but not bypass accounts", () => {
++    expect(getDeveloperAccessDenialReason({ path: "users.create", type: "mutation", input: { role: "Developer" } })).toBeNull();
++    expect(getDeveloperAccessDenialReason({ path: "users.create", type: "mutation", input: { role: "SalesAgent" } })).toContain("Developer test accounts");
++    expect(getDeveloperAccessDenialReason({ path: "users.create", type: "mutation", input: {} })).toContain("Developer test accounts");
++  });
++
++  it("blocks role, activation, and session-security changes on users", () => {
++    expect(getDeveloperAccessDenialReason({ path: "users.update", type: "mutation", input: { id: 4, role: "Admin" } })).not.toBeNull();
++    expect(getDeveloperAccessDenialReason({ path: "users.update", type: "mutation", input: { id: 4, isActive: false } })).not.toBeNull();
++    expect(getDeveloperAccessDenialReason({ path: "users.update", type: "mutation", input: { id: 4, name: "Test" } })).toBeNull();
++  });
++
++  it("blocks password-reset, public-share, and export bypasses", () => {
++    expect(getDeveloperAccessDenialReason({ path: "auth.adminSetPassword", type: "mutation", input: { userId: 2 } })).not.toBeNull();
++    expect(getDeveloperAccessDenialReason({ path: "crmFiles.createPublicViewOnlyShareLink", type: "mutation", input: { crmFileId: 2 } })).not.toBeNull();
++    expect(getDeveloperAccessDenialReason({ path: "leads.export", type: "mutation" })).not.toBeNull();
++  });
++
++  it("leaves normal feature mutations available", () => {
++    expect(getDeveloperAccessDenialReason({ path: "leads.update", type: "mutation", input: { id: 3, stage: "New" } })).toBeNull();
++    expect(getDeveloperAccessDenialReason({ path: "users.delete", type: "query", input: { id: 3 } })).toBeNull();
++  });
++});
++
+diff --git a/server/_core/trpc.ts b/server/_core/trpc.ts
+--- a/server/_core/trpc.ts
++++ b/server/_core/trpc.ts
+@@ -4,6 +4,7 @@ import superjson from "superjson";
+ import type { TrpcContext } from "./context";
+ import { getModeratorOperationalRole, isModeratorBlockedApiPath, isModeratorNativeScopedApiPath } from "@shared/moderatorOperationalAccess";
+ import { isDeveloperRole } from "../roleUtils";
++import { getDeveloperAccessDenialReason } from "../utils/developerAccessPolicy";
+ import { sanitizeDeveloperData } from "../utils/developerDataSanitizer";
+ 
+ const t = initTRPC.context<TrpcContext>().create({
+@@ -242,6 +243,27 @@ const developerDataProtection = t.middleware(async opts => {
+   } as typeof result;
+ });
+ 
++const developerAccessProtection = t.middleware(async opts => {
++  if (!isDeveloperRole(opts.ctx.user?.role) || opts.type !== "mutation") {
++    return opts.next();
++  }
++
++  const rawInput = typeof (opts as any).getRawInput === "function"
++    ? await (opts as any).getRawInput().catch(() => undefined)
++    : undefined;
++  const denialReason = getDeveloperAccessDenialReason({
++    path: opts.path,
++    type: opts.type,
++    input: rawInput,
++  });
++
++  if (denialReason) {
++    throw new TRPCError({ code: "FORBIDDEN", message: denialReason });
++  }
++
++  return opts.next();
++});
++
+ export const publicProcedure = t.procedure.use(centralMutationAudit).use(developerDataProtection as any);
+ 
+ const requireUser = t.middleware(async opts => {
+@@ -277,7 +298,10 @@ const moderatorDenyByDefault = authenticatedProcedure.use(async opts => {
+   return next({ ctx: { ...ctx, user: { ...ctx.user, id: Number((freshUser as any).id), name: (freshUser as any).name, email: (freshUser as any).email, role: effectiveRole, teamId: (freshUser as any).teamId ?? null, isActive: true } } });
+ });
+ 
+-export const protectedProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(developerDataProtection as any);
++export const protectedProcedure = moderatorDenyByDefault
++  .use(centralMutationAudit as any)
++  .use(developerAccessProtection as any)
++  .use(developerDataProtection as any);
+ 
+ const isAdminLikeRole = (role?: string | null): boolean => {
+   const normalized = String(role ?? "").replace(/\s+/g, "").trim().toLowerCase();
+@@ -285,7 +309,10 @@ const isAdminLikeRole = (role?: string | null): boolean => {
+   return normalized === "admin" || normalized === "developer" || normalized === "superadmin" || normalized === "super_admin";
+ };
+ 
+-export const adminProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(
++export const adminProcedure = moderatorDenyByDefault
++  .use(centralMutationAudit as any)
++  .use(developerAccessProtection as any)
++  .use(
+   t.middleware(async opts => {
+     const { ctx, next } = opts;
+ 
+@@ -301,7 +328,7 @@ export const adminProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(
+       },
+     });
+   }),
+-).use(developerDataProtection as any);
++  ).use(developerDataProtection as any);
+ 
+ // TARA_PRODUCTION_HARDENING_V1_ITEM3_MODERATOR
+ // TARA_MODERATOR_V1R4_OPERATIONAL_ACCESS
+diff --git a/server/utils/developerDataSanitizer.ts b/server/utils/developerDataSanitizer.ts
+--- a/server/utils/developerDataSanitizer.ts
++++ b/server/utils/developerDataSanitizer.ts
+@@ -1,4 +1,4 @@
+-type SensitiveKind = "email" | "phone" | "identifier" | "money" | "text" | "secret";
++type SensitiveKind = "email" | "phone" | "identifier" | "money" | "text" | "secret" | "resource";
+ 
+ const IDENTITY_CONTAINER_FRAGMENTS = [
+   "client",
+@@ -87,6 +87,28 @@
+   "body",
+   "content",
+   "description",
++  "filename",
++  "originalfilename",
++  "attachmentname",
++]);
++
++const PRIVATE_RESOURCE_KEYS = new Set([
++  "fileurl",
++  "mediaurl",
++  "attachmenturl",
++  "downloadurl",
++  "previewurl",
++  "protectedurl",
++  "publicurl",
++  "shareurl",
++  "signedurl",
++  "storageurl",
++  "driveurl",
++  "thumbnailurl",
++  "avatarurl",
++  "profilepictureurl",
++  "storagekey",
++  "drivefileid",
+ ]);
+ 
+ const MONEY_KEYS = new Set([
+@@ -106,8 +128,37 @@
+   "totalamount",
+   "paidamount",
+   "dueamount",
++  "monthlyfee",
++  "annualfee",
++  "servicefee",
++  "paymentamount",
++  "invoiceamount",
++  "grossprofit",
++  "netprofit",
++  "profit",
++  "loss",
++  "subtotal",
++  "grandtotal",
+ ]);
+ 
++const MONEY_SUFFIXES = [
++  "amount",
++  "salary",
++  "wage",
++  "price",
++  "cost",
++  "budget",
++  "balance",
++  "revenue",
++  "income",
++  "commission",
++  "fee",
++  "profit",
++  "loss",
++  "subtotal",
++  "grandtotal",
++];
++
+ const SECRET_FRAGMENTS = [
+   "password",
+   "secret",
+@@ -148,9 +199,11 @@
+   ) return "phone";
+   if (IDENTIFIER_KEYS.has(normalized)) return "identifier";
+   if (SECRET_FRAGMENTS.some(fragment => normalized.includes(fragment))) return "secret";
+-  if (MONEY_KEYS.has(normalized)) return "money";
++  if (PRIVATE_RESOURCE_KEYS.has(normalized)) return "resource";
++  if (MONEY_KEYS.has(normalized) || MONEY_SUFFIXES.some(suffix => normalized.endsWith(suffix))) return "money";
+   if (PRIVATE_TEXT_KEYS.has(normalized) || normalized.endsWith("address")) return "text";
+   if (ALWAYS_PRIVATE_NAME_KEYS.has(normalized)) return "text";
++  if (normalized === "website" && identityRecord) return "text";
+   if (normalized === "name" && identityRecord) return "text";
+ 
+   return null;
+diff --git a/server/utils/developerDataSanitizer.test.ts b/server/utils/developerDataSanitizer.test.ts
+new file mode 100644
+--- /dev/null
++++ b/server/utils/developerDataSanitizer.test.ts
+@@ -0,0 +1,43 @@
++import { describe, expect, it } from "vitest";
++import { sanitizeDeveloperData } from "./developerDataSanitizer";
++
++describe("developerDataSanitizer", () => {
++  it("zeros customer identity, financial values, file metadata, and resource URLs without mutating source", () => {
++    const source = {
++      client: {
++        id: 17,
++        name: "Real Customer",
++        email: "real@example.com",
++        phone: "+201234567890",
++        dealValue: 125000,
++        monthlyFee: 5000,
++        fileName: "real-customer-contract.pdf",
++        downloadUrl: "/api/crm-files/91/download",
++        driveFileId: "drive-secret-id",
++        status: "active",
++      },
++      analytics: {
++        totalRevenue: 900000,
++        grossProfit: 200000,
++      },
++    };
++
++    const sanitized = sanitizeDeveloperData(source);
++
++    expect(sanitized.client.id).toBe(17);
++    expect(sanitized.client.name).toBe("0");
++    expect(sanitized.client.email).toBe("0@0.local");
++    expect(sanitized.client.phone).toMatch(/^0+$/);
++    expect(sanitized.client.dealValue).toBe(0);
++    expect(sanitized.client.monthlyFee).toBe(0);
++    expect(sanitized.client.fileName).toBe("0");
++    expect(sanitized.client.downloadUrl).toBe("0");
++    expect(sanitized.client.driveFileId).toBe("0");
++    expect(sanitized.client.status).toBe("active");
++    expect(sanitized.analytics.totalRevenue).toBe(0);
++    expect(sanitized.analytics.grossProfit).toBe(0);
++
++    expect(source.client.name).toBe("Real Customer");
++    expect(source.client.dealValue).toBe(125000);
++  });
++});
+diff --git a/server/routes/crmFilePreview.ts b/server/routes/crmFilePreview.ts
+--- a/server/routes/crmFilePreview.ts
++++ b/server/routes/crmFilePreview.ts
+@@ -4,7 +4,7 @@ import type { Readable } from "node:stream";
+ import { pipeline } from "node:stream/promises";
+ 
+ import { createAuditLog } from "../db";
+-import { isTechnicalAccountManagerRole, normalizeUserRole } from "../roleUtils";
++import { isDeveloperRole, isTechnicalAccountManagerRole, normalizeUserRole } from "../roleUtils";
+ import {
+   getCrmFileByIdAnyStatus,
+   softDeleteCrmFileById,
+@@ -218,8 +218,9 @@ export function createCrmFilePreviewHandlers(
+       const user = await dependencies.authenticateRequest(req);
+       if (!user) {
+         setJsonNoStore(res);
+         return res.status(401).json({ success: false, message: "Authentication required" });
+       }
++      const developerRestricted = isDeveloperRole(user.role);
+ 
+       const id = getValidFileId(req.params?.id);
+       if (!id) {
+@@ -243,12 +244,12 @@ export function createCrmFilePreviewHandlers(
+       setJsonNoStore(res);
+       return res.json({
+         success: true,
+         id,
+-        fileName,
++        fileName: developerRestricted ? "0" : fileName,
+         fileType: descriptor.contentType || String(file.fileType || "application/octet-stream"),
+         fileSize: Number(file.fileSize || 0),
+-        previewable: descriptor.previewable,
++        previewable: developerRestricted ? false : descriptor.previewable,
+         previewKind: descriptor.kind,
+-        previewUrl: descriptor.previewable ? `/api/crm-files/${id}/preview` : null,
+-        downloadUrl: `/api/crm-files/${id}/download`,
++        previewUrl: !developerRestricted && descriptor.previewable ? `/api/crm-files/${id}/preview` : null,
++        downloadUrl: developerRestricted ? null : `/api/crm-files/${id}/download`,
+       });
+@@ -264,6 +265,9 @@ export function createCrmFilePreviewHandlers(
+     try {
+       const user = await dependencies.authenticateRequest(req);
+       if (!user) return sendPreviewError(res, 401, "Authentication required");
++      if (isDeveloperRole(user.role)) {
++        return sendPreviewError(res, 403, "CRM file content is hidden in Developer mode");
++      }
+ 
+       const id = getValidFileId(req.params?.id);
+       if (!id) return sendPreviewError(res, 400, "Invalid file id");
+diff --git a/server/_core/index.ts b/server/_core/index.ts
+--- a/server/_core/index.ts
++++ b/server/_core/index.ts
+@@ -49,6 +49,6 @@ import { downloadStoredFileFromGoogleDrive, finishGoogleDriveFileStorageOAuth, streamStoredFileFromGoogleDrive, streamStoredFileFromGoogleDriveRange } from "../services/googleDriveFileStorage";
+ import { startGoogleDriveHealthMonitor } from "../services/googleDriveHealthMonitor";
+ import { storageGetPath } from "../storage";
+-import { isAdminRole, isManagerRole, isSalesAgentRole, isTaraModeratorRole, isTechnicalAccountManagerRole, normalizeUserRole } from "../roleUtils";
++import { isAdminRole, isDeveloperRole, isManagerRole, isSalesAgentRole, isTaraModeratorRole, isTechnicalAccountManagerRole, normalizeUserRole } from "../roleUtils";
+ import { isModeratorBlockedHttpPath } from "@shared/moderatorOperationalAccess";
+ import { developerHubRouter } from "../routes/developerHub";
+ import { createPublicLeadIntakeRouter } from "../routes/publicLeadIntake";
+@@ -788,6 +788,9 @@
+     try {
+       const user = await authenticateRequest(req);
+       if (!user) return res.status(401).json({ success: false, error: "Authentication required" });
++      if (isDeveloperRole(user.role)) {
++        return res.status(403).json({ success: false, error: "WhatsApp customer media is hidden in Developer mode" });
++      }
+       const media = await getWAGatewayMessageMedia({ messageId: Number(req.params.messageId || 0), actor: user });
+       const prepared = await prepareWAGatewayDriveMedia({
+         driveFileId: media.driveFileId,
+@@ -1422,6 +1425,9 @@
+     try {
+       const user = await authenticateRequest(req);
+       if (!user) return res.status(401).send("Authentication required");
++      if (isDeveloperRole(user.role)) {
++        return res.status(403).send("CRM file downloads are disabled in Developer mode");
++      }
+ 
+       const id = Number(req.params.id);
+       if (!Number.isInteger(id) || id <= 0) return res.status(400).send("Invalid file id");
+@@ -1466,6 +1472,9 @@
+     try {
+       const user = await authenticateRequest(req);
+       if (!user) return res.status(401).send("Authentication required");
++      if (isDeveloperRole(user.role)) {
++        return res.status(403).send("Generated reports are hidden in Developer mode");
++      }
+       const actor = { id: user.id, role: user.role, teamId: (user as any).teamId, sessionVersion: (user as any).sessionVersion };
+       const baseScope = await authorizeRakanPermission(actor, "rakan.use");
+       const verified = verifyRakanReportDownloadToken(String(req.params.token || ""), user.id, buildRakanScopeHash(baseScope));
+@@ -2140,7 +2149,22 @@
+   await startBackupCenterScheduler().catch((error) => {
+     console.error("[BackupCenterScheduler] failed to start", error);
+   });
+ 
++  const developerProductionDataEgressGate = async (req: any, res: any, next: any) => {
++    try {
++      const user = await authenticateRequest(req).catch(() => null);
++      if (user && isDeveloperRole(user.role)) {
++        return res.status(403).json({ error: "Production data export/download is disabled in Developer mode" });
++      }
++      return next();
++    } catch {
++      return next();
++    }
++  };
++  app.use("/admin/backup-center/download", developerProductionDataEgressGate);
++  app.use("/admin/backup/download", developerProductionDataEgressGate);
++  app.use("/api/export", developerProductionDataEgressGate);
++
+   // ── Backup Download endpoint ──────────────────────────────────────────────
+   app.get("/admin/backup-center/download/:artifactId", async (req, res) => {
+     try {
