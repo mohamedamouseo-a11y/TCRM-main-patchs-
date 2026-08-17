@@ -1,0 +1,10 @@
+diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
+--- a/client/src/pages/AdminSettings.tsx
++++ b/client/src/pages/AdminSettings.tsx
+@@ -435,7 +435,7 @@ export default function AdminSettings() {
+-        { value: "databaseBackup", label: isRTL ? "نسخ قاعدة البيانات" : "Database Backup", description: isRTL ? "نسخ MySQL مشفرة على Google Drive" : "Encrypted MySQL backups to Google Drive", icon: <Archive size={14} />, visible: isSuperAdmin, badge: "Admin" },
++        { value: "databaseBackup", label: isRTL ? "نسخ قاعدة البيانات" : "Database Backup", description: isRTL ? "نسخ MySQL مشفرة على Google Drive" : "Encrypted MySQL backups to Google Drive", icon: <Archive size={14} />, visible: isAdmin, badge: "Admin" },
+@@ -1164,7 +1164,7 @@ export default function AdminSettings() {
+-          {isSuperAdmin && <TabsContent value="databaseBackup" className="mt-4">
++          {isAdmin && <TabsContent value="databaseBackup" className="mt-4">
+             <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
