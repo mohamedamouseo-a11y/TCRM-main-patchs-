@@ -1,0 +1,187 @@
+diff --git a/server/_core/trpc.ts b/server/_core/trpc.ts
+index a5da566..1111111 100644
+--- a/server/_core/trpc.ts
++++ b/server/_core/trpc.ts
+@@ -4,6 +4,7 @@ import superjson from "superjson";
+ import type { TrpcContext } from "./context";
+ import { getModeratorOperationalRole, isModeratorBlockedApiPath, isModeratorNativeScopedApiPath } from "@shared/moderatorOperationalAccess";
+ import { isDeveloperRole } from "../roleUtils";
++import { getDeveloperAccessDenialReason } from "../utils/developerAccessPolicy";
+ import { sanitizeDeveloperData } from "../utils/developerDataSanitizer";
+ 
+ const t = initTRPC.context<TrpcContext>().create({
+@@ -242,6 +243,27 @@ const developerDataProtection = t.middleware(async opts => {
+   } as typeof result;
+ });
+ 
++const developerAccessProtection = t.middleware(async opts => {
++  if (!isDeveloperRole(opts.ctx.user?.role) || opts.type !== "mutation") {
++    return opts.next();
++  }
++
++  const rawInput = typeof (opts as any).getRawInput === "function"
++    ? await (opts as any).getRawInput().catch(() => undefined)
++    : undefined;
++  const denialReason = getDeveloperAccessDenialReason({
++    path: opts.path,
++    type: opts.type,
++    input: rawInput,
++  });
++
++  if (denialReason) {
++    throw new TRPCError({ code: "FORBIDDEN", message: denialReason });
++  }
++
++  return opts.next();
++});
++
+ export const publicProcedure = t.procedure.use(centralMutationAudit).use(developerDataProtection as any);
+@@ -277,7 +299,10 @@ const moderatorDenyByDefault = authenticatedProcedure.use(async opts => {
+   return next({ ctx: { ...ctx, user: { ...ctx.user, id: Number((freshUser as any).id), name: (freshUser as any).name, email: (freshUser as any).email, role: effectiveRole, teamId: (freshUser as any).teamId ?? null, isActive: true } } });
+ });
+ 
+-export const protectedProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(developerDataProtection as any);
++export const protectedProcedure = moderatorDenyByDefault
++  .use(centralMutationAudit as any)
++  .use(developerAccessProtection as any)
++  .use(developerDataProtection as any);
+@@ -285,7 +310,10 @@ const isAdminLikeRole = (role?: string | null): boolean => {
+   return normalized === "admin" || normalized === "developer" || normalized === "superadmin" || normalized === "super_admin";
+ };
+ 
+-export const adminProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(
++export const adminProcedure = moderatorDenyByDefault
++  .use(centralMutationAudit as any)
++  .use(developerAccessProtection as any)
++  .use(
+@@ -301,7 +329,7 @@ export const adminProcedure = moderatorDenyByDefault.use(centralMutationAudit as any).use(
+       },
+     });
+   }),
+-).use(developerDataProtection as any);
++  ).use(developerDataProtection as any);
+ 
+ // TARA_PRODUCTION_HARDENING_V1_ITEM3_MODERATOR
+ // TARA_MODERATOR_V1R4_OPERATIONAL_ACCESS
+diff --git a/server/utils/developerDataSanitizer.ts b/server/utils/developerDataSanitizer.ts
+index 9ead173..2222222 100644
+--- a/server/utils/developerDataSanitizer.ts
++++ b/server/utils/developerDataSanitizer.ts
+@@ -1,4 +1,4 @@
+-type SensitiveKind = "email" | "phone" | "identifier" | "money" | "text" | "secret";
++type SensitiveKind = "email" | "phone" | "identifier" | "money" | "text" | "secret" | "resource";
+@@ -87,6 +87,28 @@ const PRIVATE_TEXT_KEYS = new Set([
+   "body",
+   "content",
+   "description",
++  "filename",
++  "originalfilename",
++  "attachmentname",
++]);
++
++const PRIVATE_RESOURCE_KEYS = new Set([
++  "fileurl",
++  "mediaurl",
++  "attachmenturl",
++  "downloadurl",
++  "previewurl",
++  "protectedurl",
++  "publicurl",
++  "shareurl",
++  "signedurl",
++  "storageurl",
++  "driveurl",
++  "thumbnailurl",
++  "avatarurl",
++  "profilepictureurl",
++  "storagekey",
++  "drivefileid",
+ ]);
+@@ -106,8 +128,37 @@ const MONEY_KEYS = new Set([
+   "totalamount",
+   "paidamount",
+   "dueamount",
++  "monthlyfee",
++  "annualfee",
++  "servicefee",
++  "paymentamount",
++  "invoiceamount",
++  "grossprofit",
++  "netprofit",
++  "profit",
++  "loss",
++  "subtotal",
++  "grandtotal",
+ ]);
+ 
++const MONEY_SUFFIXES = [
++  "amount",
++  "salary",
++  "wage",
++  "price",
++  "cost",
++  "budget",
++  "balance",
++  "revenue",
++  "income",
++  "commission",
++  "fee",
++  "profit",
++  "loss",
++  "subtotal",
++  "grandtotal",
++];
++
+@@ -148,9 +199,11 @@ function classifyKey(key: string, identityRecord: boolean): SensitiveKind | null {
+   ) return "phone";
+   if (IDENTIFIER_KEYS.has(normalized)) return "identifier";
+   if (SECRET_FRAGMENTS.some(fragment => normalized.includes(fragment))) return "secret";
+-  if (MONEY_KEYS.has(normalized)) return "money";
++  if (PRIVATE_RESOURCE_KEYS.has(normalized)) return "resource";
++  if (MONEY_KEYS.has(normalized) || MONEY_SUFFIXES.some(suffix => normalized.endsWith(suffix))) return "money";
+   if (PRIVATE_TEXT_KEYS.has(normalized) || normalized.endsWith("address")) return "text";
+   if (ALWAYS_PRIVATE_NAME_KEYS.has(normalized)) return "text";
++  if (normalized === "website" && identityRecord) return "text";
+   if (normalized === "name" && identityRecord) return "text";
+ 
+   return null;
+diff --git a/server/services/tosIntegrationService.ts b/server/services/tosIntegrationService.ts
+index 1318736..3333333 100644
+--- a/server/services/tosIntegrationService.ts
++++ b/server/services/tosIntegrationService.ts
+@@ -650,7 +650,7 @@ async function verifyTosProjectDelivery(input: {
+   const response = await fetch(verificationUrl.toString(), {
+     method: "GET",
+     headers: {
+-      "Authorization": `Bearer ${input.apiKey}`,
++      "X-API-Key": input.apiKey,
+       "Cache-Control": "no-cache, no-store, max-age=0",
+       Pragma: "no-cache",
+     },
+@@ -700,7 +700,7 @@ export async function sendOperationalPayloadToTos(path: "tasks" | "events", payload: any) {
+     method: "POST",
+     headers: {
+       "Content-Type": "application/json",
+-      "Authorization": `Bearer ${apiKey}`,
++      "X-API-Key": apiKey,
+     },
+     body: JSON.stringify(payload),
+   });
+@@ -735,7 +735,7 @@ export async function sendClientProjectToTos(clientId: number, options: { mode?: "manual" | "auto" | "bulk" } = {}) {
+       method: "POST",
+       headers: {
+         "Content-Type": "application/json",
+-        "Authorization": `Bearer ${apiKey}`,
++        "X-API-Key": apiKey,
+       },
+       body: JSON.stringify(payload),
+     });
+@@ -995,7 +995,7 @@ export async function getTosProjectTeamDirectory(clientId?: number) {
+   }
+   const response = await fetch(directoryUrl.toString(), {
+     method: "GET",
+-    headers: { "Authorization": `Bearer ${apiKey}` },
++    headers: { "X-API-Key": apiKey },
+   });
+   if (!response.ok) {
+     const text = await response.text();
