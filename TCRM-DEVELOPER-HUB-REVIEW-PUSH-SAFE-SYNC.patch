@@ -1,0 +1,40 @@
+diff --git a/client/src/components/DeveloperHubTab.tsx b/client/src/components/DeveloperHubTab.tsx
+index b751f8e..1111111 100644
+--- a/client/src/components/DeveloperHubTab.tsx
++++ b/client/src/components/DeveloperHubTab.tsx
+@@ -550,4 +550,4 @@
+-  const reviewSync = async (action: GitHubSyncAction) => {
++  const reviewSync = async (action: GitHubSyncAction, autoExecuteAfterReview = false) => {
+     if (status?.githubConnectionStatus !== "verified") {
+       toast.error(isRTL ? "ثبّت المستودع والفرع أولاً" : "Save the repository and branch first");
+       return;
+@@ -614,7 +614,19 @@
+             setPreview(result);
+             setVisibleFileCount(250);
+             setReviewProgress(100);
+-            if (result.blocked?.length) {
++            const shouldRetryAsSafeSync = action === "push"
++              && result.remoteAhead > 0
++              && result.expectedAction === "blocked"
++              && (result.syncState === "both_changes" || result.syncState === "remote_changes");
++            if (shouldRetryAsSafeSync) {
++              const message = isRTL
++                ? "GitHub يحتوي على تحديثات أحدث؛ التحويل تلقائيًا إلى مراجعة مزامنة آمنة."
++                : "GitHub has newer commits; switching automatically to a safe synchronization review.";
++              setReviewStatus("running");
++              setReviewStep(message);
++              addLog(message, "warning");
++              window.setTimeout(() => void reviewSync("sync", true), 0);
++            } else if (result.blocked?.length) {
+               const message = blockerMessage(result.blocked);
+               setReviewStatus("blocked");
+               setReviewStep(isRTL ? `المراجعة متوقفة: ${message}` : `Review blocked: ${message}`);
+@@ -628,7 +640,7 @@
+               setReviewStep(message);
+               addLog(message, "success");
+               toast.success(message);
+-              if (action === "push" && result.pushControl?.mode === "auto" && result.pushControl?.authorization && result.expectedAction !== "noop") {
++              if ((action === "push" || autoExecuteAfterReview) && result.pushControl?.mode === "auto" && result.pushControl?.authorization && result.expectedAction !== "noop") {
+                 const autoMessage = isRTL ? "نجحت الفحوصات؛ بدء الرفع التلقائي." : "Checks passed; starting automatic push.";
+                 setReviewStep(autoMessage);
+                 addLog(autoMessage, "success");
