@@ -1,0 +1,19 @@
+diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
+--- a/client/src/pages/AdminSettings.tsx
++++ b/client/src/pages/AdminSettings.tsx
+@@
+ import LandingPageIntegrationsTab from "@/components/LandingPageIntegrationsTab";
+ import BackupTab from "@/components/BackupTab";
++import DatabaseBackupSettingsTab from "@/components/DatabaseBackupSettingsTab";
+ import GoogleDriveStorageTab from "@/components/GoogleDriveStorageTab";
+@@
+           {isAdmin && <TabsContent value="databaseBackup" className="mt-4">
+-            <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
+-              <iframe
+-                src="/admin/database-backup"
+-                title={isRTL ? "نسخ قاعدة البيانات" : "Database Backup"}
+-                className="min-h-[900px] w-full border-0 bg-white"
+-              />
+-            </div>
++            <DatabaseBackupSettingsTab />
+           </TabsContent>}
