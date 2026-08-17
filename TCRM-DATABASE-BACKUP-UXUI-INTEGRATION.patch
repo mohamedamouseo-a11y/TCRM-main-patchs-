@@ -1,12 +1,12 @@
 diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
 --- a/client/src/pages/AdminSettings.tsx
 +++ b/client/src/pages/AdminSettings.tsx
-@@
+@@ -23,3 +23,4 @@
  import LandingPageIntegrationsTab from "@/components/LandingPageIntegrationsTab";
  import BackupTab from "@/components/BackupTab";
 +import DatabaseBackupSettingsTab from "@/components/DatabaseBackupSettingsTab";
  import GoogleDriveStorageTab from "@/components/GoogleDriveStorageTab";
-@@
+@@ -1164,10 +1165,3 @@
            {isAdmin && <TabsContent value="databaseBackup" className="mt-4">
 -            <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
 -              <iframe
