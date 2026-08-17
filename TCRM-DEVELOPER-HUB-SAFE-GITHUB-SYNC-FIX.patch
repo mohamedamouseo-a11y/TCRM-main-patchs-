@@ -1,0 +1,205 @@
+diff --git a/server/services/developerHubControlledPush.ts b/server/services/developerHubControlledPush.ts
+--- a/server/services/developerHubControlledPush.ts
++++ b/server/services/developerHubControlledPush.ts
+@@ -38,10 +38,19 @@
+   "test",
+   "drizzle",
+   "migrations",
++  "docs",
++  "public",
++  "assets",
++  "static",
+ ]);
+-const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|sh|sql|json|md|ya?ml|css|scss|sass|less|html|vue|svelte|graphql|gql)$/i;
++const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|sh|sql|json|md|mdx|txt|rst|toml|ini|ya?ml|css|scss|sass|less|html|xml|vue|svelte|graphql|gql|svg|png|jpe?g|gif|webp|avif|ico)$/i;
+ const ROOT_ALLOWLIST = new Set([
+   ".gitignore",
++  ".gitattributes",
++  ".editorconfig",
++  ".dockerignore",
++  ".prettierignore",
++  ".eslintignore",
+   "package.json",
+   "pnpm-lock.yaml",
+   "package-lock.json",
+@@ -49,7 +58,42 @@
+   "tsconfig.json",
+   "vite.config.ts",
+   "drizzle.config.ts",
++  "Dockerfile",
++  "Makefile",
++  "Procfile",
+ ]);
++const SAFE_ROOT_DOCUMENT_BASENAME = /^(?:README|CHANGELOG|CONTRIBUTING|SECURITY|CODE_OF_CONDUCT|LICENSE|NOTICE)(?:\.[A-Za-z0-9_-]+)?$/i;
++const ENV_EXAMPLE_BASENAME = /^\.env(?:\.[A-Za-z0-9_-]+)*\.(?:example|sample|template)$/i;
++const SAFE_GITHUB_METADATA_PATH = /^\.github\/(?:(?:ISSUE_TEMPLATE\/.+\.(?:md|ya?ml))|(?:PULL_REQUEST_TEMPLATE(?:\/.+)?\.md)|CODEOWNERS|dependabot\.ya?ml)$/i;
++
++const BLOCKED_UNTRACKED_PATTERNS: RegExp[] = [
++  /(?:^|\/)\.envrc$/i,
++  /(?:^|\/)\.npmrc$/i,
++  /(?:^|\/)\.netrc$/i,
++  /(?:^|\/)\.pypirc$/i,
++  /(?:^|\/)credentials\.json$/i,
++  /(?:^|\/)service[-_]account\.json$/i,
++  /(?:^|\/)google[-_]calendar[-_]key\.json$/i,
++  /(?:^|\/)tamiyouz[-_]crm[-_]key\.json$/i,
++  /(?:^|\/)ecosystem\.config\.cjs$/i,
++  /(?:^|\/)\.developer[-_]hub\.key$/i,
++  /(?:^|\/)\.gitmodules$/i,
++  /(?:^|\/)id_(?:rsa|dsa|ecdsa|ed25519)$/i,
++  /\.(?:pem|key|p12|pfx|ppk|jks|keystore)$/i,
++  /\.(?:sqlite|sqlite3|db|dump)$/i,
++  /\.(?:zip|7z|rar|tar|tgz|gz)$/i,
++  /\.(?:backup|bak|orig|rej)(?:[._-].*)?$/i,
++  /(?:^|\/)node_modules\//i,
++  /(?:^|\/)\.next\//i,
++  /(?:^|\/)\.nuxt\//i,
++  /(?:^|\/)dist\//i,
++  /(?:^|\/)build\//i,
++  /(?:^|\/)coverage\//i,
++  /(?:^|\/)\.cache\//i,
++  /(?:^|\/)tmp\//i,
++  /\.log$/i,
++  /^\.github\/workflows\//i,
++];
+ 
+ export function normalizeGitHubPushMode(value: unknown): GitHubPushMode {
+   return value === "off" || value === "auto" || value === "review" ? value : "review";
+@@ -164,76 +208,48 @@
+   }
+ }
+ 
+-function isExpectedAutoPushPath(filePath: string) {
++function normalizeRepositoryRelativePath(filePath: string): string | null {
+   const normalized = String(filePath || "").replace(/\\/g, "/").replace(/^\.\//, "");
+-  if (!normalized || normalized.startsWith("/") || normalized.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+-    return false;
++  if (
++    !normalized
++    || normalized.includes("\0")
++    || normalized.startsWith("/")
++    || /^[A-Za-z]:\//.test(normalized)
++    || normalized.split("/").some((segment) => !segment || segment === "." || segment === "..")
++  ) {
++    return null;
+   }
+-  const segments = normalized.split("/");
+-  if (segments.length === 1) return ROOT_ALLOWLIST.has(normalized);
+-  return SOURCE_ROOTS.has(segments[0]!) && SOURCE_EXTENSIONS.test(path.posix.basename(normalized));
++  return normalized;
+ }
+ 
+-
+-// Safe Untracked Source File Classification for Auto Mode
+-const SAFE_UNTRACKED_SOURCE_EXTENSIONS = new Set([
+-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+-  '.py', '.sh', '.sql',
+-  '.json', '.md', '.yml', '.yaml', '.toml',
+-  '.css', '.scss', '.sass', '.less', '.html',
+-  '.vue', '.svelte', '.graphql', '.gql',
+-  '.env.local.example', '.env.example',
+-]);
+-
+-const BLOCKED_UNTRACKED_PATTERNS: RegExp[] = [
+-  /\.env$/,
+-  /\.envrc$/,
+-  /\.npmrc$/,
+-  /\.netrc$/,
+-  /\.pypirc$/,
+-  /credentials\.json$/i,
+-  /service[-_]account\.json$/i,
+-  /google[-_]calendar[-_]key\.json$/i,
+-  /tamiyouz[-_]crm[-_]key\.json$/i,
+-  /ecosystem\.config\.cjs$/i,
+-  /\.developer[-_]hub\.key$/i,
+-  /\.gitmodules$/i,
+-  /^id_rsa$/i,
+-  /^id_dsa$/i,
+-  /^id_ecdsa$/i,
+-  /^id_ed25519$/i,
+-  /\.(pem|key|p12|pfx|ppk|jks|keystore)$/i,
+-  /\.(sqlite|sqlite3|db|dump)$/i,
+-  /\.(zip|7z|rar|tar|tgz|gz)$/i,
+-  /\.(backup|bak|orig|rej)(?:[._-].*)?$/i,
+-  /node_modules\//,
+-  /\.next\//,
+-  /\.nuxt\//,
+-  /^dist\//,
+-  /^build\//,
+-  /^coverage\//,
+-  /\.cache\//,
+-  /^tmp\//,
+-  /\.log$/,
+-];
+-
+ function isBlockedUntrackedPath(filePath: string): string | null {
+-  const normalized = String(filePath || '').replace(/\\/g, '/').replace(/^\./, '').toLowerCase();
+-  if (!normalized || normalized.startsWith('/') || normalized.split('/').some(seg => !seg || seg === '.' || seg === '..')) return 'invalid path';
++  const normalized = normalizeRepositoryRelativePath(filePath);
++  if (!normalized) return "invalid path";
++  const basename = path.posix.basename(normalized);
++  if (basename.toLowerCase().startsWith(".env") && !ENV_EXAMPLE_BASENAME.test(basename)) {
++    return "environment file";
++  }
+   for (const pattern of BLOCKED_UNTRACKED_PATTERNS) {
+-    if (pattern.test(normalized)) return 'blocked untracked path';
++    if (pattern.test(normalized)) return "blocked untracked path";
+   }
+   return null;
+ }
+ 
+ export function isSafeUntrackedSourcePath(filePath: string): boolean {
+-  const normalized = String(filePath || '').replace(/\\/g, '/').replace(/^\./, '');
+-  if (!normalized || normalized.startsWith('/') || normalized.split('/').some(seg => !seg || seg === '.' || seg === '..')) return false;
+-  if (isBlockedUntrackedPath(normalized)) return false;
+-  const segments = normalized.split('/');
+-  if (segments.length === 1) return ROOT_ALLOWLIST.has(normalized);
+-  return SOURCE_ROOTS.has(segments[0]!) && SOURCE_EXTENSIONS.test(path.posix.basename(normalized));
++  const normalized = normalizeRepositoryRelativePath(filePath);
++  if (!normalized || isBlockedUntrackedPath(normalized)) return false;
++
++  const basename = path.posix.basename(normalized);
++  if (ENV_EXAMPLE_BASENAME.test(basename)) return true;
++  if (!normalized.includes("/")) {
++    return ROOT_ALLOWLIST.has(normalized) || SAFE_ROOT_DOCUMENT_BASENAME.test(normalized);
++  }
++  if (SAFE_GITHUB_METADATA_PATH.test(normalized)) return true;
++
++  const [root] = normalized.split("/");
++  return SOURCE_ROOTS.has(root!) && SOURCE_EXTENSIONS.test(basename);
+ }
++
+ export function getUnexpectedAutoPushPaths(
+   files: ReadonlyArray<{ status?: string; path?: string }>,
+ ) {
+diff --git a/server/services/developerHubControlledPush.test.ts b/server/services/developerHubControlledPush.test.ts
+--- a/server/services/developerHubControlledPush.test.ts
++++ b/server/services/developerHubControlledPush.test.ts
+@@ -89,12 +89,25 @@
+     })).toThrow(/files changed/i);
+   });
+ 
+-  it("blocks unexpected untracked files in Auto mode allowlist checks", () => {
++  it("allows legitimate untracked project files while blocking unsafe Auto paths", () => {
+     expect(getUnexpectedAutoPushPaths([
+       { status: "??", path: "server/services/newService.ts" },
++      { status: "??", path: ".gitignore" },
++      { status: "??", path: ".env.example" },
++      { status: "??", path: "docs/architecture.md" },
++      { status: "??", path: "public/logo.png" },
++      { status: "??", path: ".github/PULL_REQUEST_TEMPLATE.md" },
+       { status: "??", path: "random-notes.txt" },
++      { status: "??", path: ".env" },
++      { status: "??", path: "credentials.json" },
++      { status: "??", path: ".github/workflows/deploy.yml" },
+       { status: " M", path: "client/src/App.tsx" },
+-    ])).toEqual(["random-notes.txt"]);
++    ])).toEqual([
++      "random-notes.txt",
++      ".env",
++      "credentials.json",
++      ".github/workflows/deploy.yml",
++    ]);
+   });
+ 
+   it("permanently excludes patch state, backups, credentials, and secrets", () => {
