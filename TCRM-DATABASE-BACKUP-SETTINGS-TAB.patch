@@ -1,0 +1,53 @@
+diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
+--- a/client/src/pages/AdminSettings.tsx
++++ b/client/src/pages/AdminSettings.tsx
+@@ -151,7 +151,7 @@ export default function AdminSettings() {
+   const SETTINGS_TAB_VALUES = [
+     "preferences", "users", "pipeline", "campaigns", "fields", "theme", "sla", "notifications", "meetingNotifs",
+-    "leadSources", "landingPageIntegrations", "authIntegrations", "backup", "googleDriveStorage", "fileShareSecurity", "waGateway", "metaWhatsapp", "tosIntegration",
++    "leadSources", "landingPageIntegrations", "authIntegrations", "backup", "databaseBackup", "googleDriveStorage", "fileShareSecurity", "waGateway", "metaWhatsapp", "tosIntegration",
+     "tfsIntegration", "thrsIntegration", "meta", "tiktok", "googleAds", "snapchat", "linkedin", "metaLeadgen",
+     "rakan", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
+     "dynamicServices", "packages",
+@@ -435,6 +435,7 @@ export default function AdminSettings() {
+       tabs: [
+         { value: "authIntegrations", label: isRTL ? "إعدادات الدخول" : "Login Integrations", description: isRTL ? "طرق الدخول وربط الحسابات" : "Login providers and accounts", icon: <Key size={14} />, visible: isSuperAdmin, badge: "Admin" },
+         { value: "backup", label: isRTL ? "النسخ الاحتياطية" : "Backup", description: isRTL ? "نسخ واسترجاع آمن" : "Safe backup and restore", icon: <Archive size={14} />, visible: isSuperAdmin, badge: "Admin" },
++        { value: "databaseBackup", label: isRTL ? "نسخ قاعدة البيانات" : "Database Backup", description: isRTL ? "نسخ MySQL مشفرة على Google Drive" : "Encrypted MySQL backups to Google Drive", icon: <Archive size={14} />, visible: isSuperAdmin, badge: "Admin" },
+         { value: "googleDriveStorage", label: "Google Drive", description: isRTL ? "تخزين الملفات" : "File storage", icon: <Cloud size={14} />, visible: isSuperAdmin, badge: "Admin" },
+         { value: "fileShareSecurity", label: isRTL ? "أمان مشاركة الملفات" : "File Share Security", description: isRTL ? "صلاحية وروابط Public Share" : "Public share limits and links", icon: <Shield size={14} />, visible: isSuperAdmin, badge: "Admin" },
+         { value: "waGateway", label: isRTL ? "إعدادات واتساب" : "WhatsApp Settings", description: isRTL ? "Evolution API والويب هوك" : "Evolution API and webhook", icon: <Webhook size={14} />, visible: isAdmin, badge: "API" },
+@@ -503,7 +504,7 @@ export default function AdminSettings() {
+       id: "dataTools",
+       label: isRTL ? "البيانات والأدوات" : "Data & Tools",
+       icon: <BarChart3 size={15} />,
+-      values: ["backup", "tamara", "paymob", "currency", "dynamicServices", "packages", "dashboardAudit"],
++      values: ["backup", "databaseBackup", "tamara", "paymob", "currency", "dynamicServices", "packages", "dashboardAudit"],
+     },
+     {
+       id: "development",
+@@ -517,7 +518,7 @@ export default function AdminSettings() {
+       id: "admin",
+       label: isRTL ? "الإدارة" : "Admin",
+       icon: <Shield size={15} />,
+-      values: ["users", "authIntegrations", "backup", "demoSync", "dashboardAudit"],
++      values: ["users", "authIntegrations", "backup", "databaseBackup", "demoSync", "dashboardAudit"],
+     },
+   ];
+   const selectedSettingsCategory = settingsCategoryConfigs.find((category) => category.id === activeSettingsCategory) ?? settingsCategoryConfigs[0];
+@@ -1163,6 +1164,15 @@ export default function AdminSettings() {
+           {isSuperAdmin && <TabsContent value="backup" className="mt-4">
+             <BackupTab />
+           </TabsContent>}
++          {isSuperAdmin && <TabsContent value="databaseBackup" className="mt-4">
++            <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-sm">
++              <iframe
++                src="/admin/database-backup"
++                title={isRTL ? "نسخ قاعدة البيانات" : "Database Backup"}
++                className="min-h-[900px] w-full border-0 bg-white"
++              />
++            </div>
++          </TabsContent>}
+           {isSuperAdmin && <TabsContent value="googleDriveStorage" className="mt-4">
+             <GoogleDriveStorageTab />
+           </TabsContent>}
