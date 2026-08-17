@@ -1,0 +1,122 @@
+diff --git a/server/services/developerHubControlledPush.ts b/server/services/developerHubControlledPush.ts
+--- a/server/services/developerHubControlledPush.ts
++++ b/server/services/developerHubControlledPush.ts
+@@ -33,7 +33,7 @@ const SOURCE_ROOTS = new Set([
+   "drizzle",
+   "migrations",
+ ]);
+-const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|sh|sql|json|md|ya?ml|css|scss|sass|less|html|vue|svelte|graphql|gql)$/i;
++const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|sh|sql|json|md|ya?ml|toml|css|scss|sass|less|html|vue|svelte|graphql|gql|svg)$/i;
+ const ROOT_ALLOWLIST = new Set([
+   ".gitignore",
+   "package.json",
+@@ -44,6 +44,57 @@ const ROOT_ALLOWLIST = new Set([
+   "drizzle.config.ts",
+ ]);
+ 
++const SAFE_UNTRACKED_BASENAMES = new Set([
++  ".dockerignore",
++  ".editorconfig",
++  ".gitignore",
++  ".gitattributes",
++  ".npmignore",
++  ".prettierignore",
++  ".eslintignore",
++  ".prettierrc",
++  ".eslintrc",
++  ".nvmrc",
++  "dockerfile",
++  "license",
++  "copying",
++  "notice",
++  "readme",
++  "changelog",
++  "makefile",
++  "procfile",
++]);
++
++const ENV_EXAMPLE_BASENAME = /^\.env(?:\.[a-z0-9_-]+)*\.example$/i;
++
++const BLOCKED_UNTRACKED_PATTERNS: RegExp[] = [
++  /(?:^|\/)\.envrc$/i,
++  /(?:^|\/)\.npmrc$/i,
++  /(?:^|\/)\.netrc$/i,
++  /(?:^|\/)\.pypirc$/i,
++  /(?:^|\/)credentials(?:[-_.][^\/]*)?\.json$/i,
++  /(?:^|\/)service[-_]account(?:[-_.][^\/]*)?\.json$/i,
++  /(?:^|\/)google[-_]calendar[-_]key(?:[-_.][^\/]*)?\.json$/i,
++  /(?:^|\/)tamiyouz[-_]crm[-_]key(?:[-_.][^\/]*)?\.json$/i,
++  /(?:^|\/)ecosystem\.config\.cjs$/i,
++  /(?:^|\/)\.developer[-_]hub\.key$/i,
++  /(?:^|\/)\.gitmodules$/i,
++  /(?:^|\/)id_(?:rsa|dsa|ecdsa|ed25519)$/i,
++  /\.(?:pem|key|p12|pfx|ppk|jks|keystore)$/i,
++  /\.(?:sqlite|sqlite3|db|dump)$/i,
++  /\.(?:zip|7z|rar|tar|tgz|gz)$/i,
++  /\.(?:backup|bak|orig|rej)(?:[._-].*)?$/i,
++  /(?:^|\/)node_modules\//i,
++  /(?:^|\/)\.next\//i,
++  /(?:^|\/)\.nuxt\//i,
++  /(?:^|\/)dist\//i,
++  /(?:^|\/)build\//i,
++  /(?:^|\/)coverage\//i,
++  /(?:^|\/)\.cache\//i,
++  /(?:^|\/)tmp\//i,
++  /\.log$/i,
++];
++
+ export function normalizeGitHubPushMode(value: unknown): GitHubPushMode {
+   return value === "off" || value === "auto" || value === "review" ? value : "review";
+ }
+@@ -163,17 +214,37 @@ export function assertControlledPushAuthorizationMatches(input: {
+   }
+ }
+ 
+-function isExpectedAutoPushPath(filePath: string) {
+-  const normalized = String(filePath || "").replace(/\\/g, "/").replace(/^\.\//, "");
+-  if (!normalized || normalized.startsWith("/") || normalized.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+-    return false;
+-  }
++function normalizeRepositoryRelativePath(filePath: string): string | null {
++  const normalized = String(filePath || "").replace(/\\/g, "/").replace(/^\.\/+/g, "");
++  if (!normalized || normalized.startsWith("/") || /^[a-z]:\//i.test(normalized)) return null;
+   const segments = normalized.split("/");
+-  if (segments.length === 1) return ROOT_ALLOWLIST.has(normalized);
+-  return SOURCE_ROOTS.has(segments[0]!) && SOURCE_EXTENSIONS.test(path.posix.basename(normalized));
++  if (segments.some((segment) => !segment || segment === "." || segment === "..")) return null;
++  return normalized;
++}
++
++function isBlockedUntrackedPath(filePath: string): boolean {
++  const normalized = normalizeRepositoryRelativePath(filePath);
++  if (!normalized) return true;
++  const basename = path.posix.basename(normalized);
++  if (/^\.env(?:\.|$)/i.test(basename) && !ENV_EXAMPLE_BASENAME.test(basename)) return true;
++  return BLOCKED_UNTRACKED_PATTERNS.some((pattern) => pattern.test(normalized));
++}
++
++export function isSafeUntrackedSourcePath(filePath: string): boolean {
++  const normalized = normalizeRepositoryRelativePath(filePath);
++  if (!normalized || isBlockedUntrackedPath(normalized)) return false;
++
++  const segments = normalized.split("/");
++  const basename = path.posix.basename(normalized);
++  const safeSpecialFile = SAFE_UNTRACKED_BASENAMES.has(basename.toLowerCase())
++    || ENV_EXAMPLE_BASENAME.test(basename);
++
++  if (segments.length === 1) return ROOT_ALLOWLIST.has(normalized) || safeSpecialFile;
++  if (!SOURCE_ROOTS.has(segments[0]!)) return false;
++  return safeSpecialFile || SOURCE_EXTENSIONS.test(basename);
+ }
+ 
+ export function getUnexpectedAutoPushPaths(
+   files: ReadonlyArray<{ status?: string; path?: string }>,
+ ) {
+   return files
+     .filter((file) => {
+       const status = String(file.status || "").trim();
+-      return (status.includes("?") || status === "A") && !isExpectedAutoPushPath(String(file.path || ""));
++      return (status.includes("?") || status === "A") && !isSafeUntrackedSourcePath(String(file.path || ""));
+     })
+     .map((file) => String(file.path || ""))
+     .filter(Boolean);
