@@ -1,0 +1,81 @@
+diff --git a/server/services/tcrmDatabaseBackup.ts b/server/services/tcrmDatabaseBackup.ts
+--- a/server/services/tcrmDatabaseBackup.ts
++++ b/server/services/tcrmDatabaseBackup.ts
+@@ -15,2 +15,3 @@
+ let timer: NodeJS.Timeout | null = null;
++let backupInProgress = false;
+ 
+@@ -32,4 +33,38 @@
+ async function run(bin:string,args:string[],env:any){return new Promise<void>((resolve,reject)=>{const p=spawn(bin,args,{env:{...process.env,...env},stdio:["ignore","ignore","pipe"]});let e="";p.stderr.on("data",d=>e+=d.toString());p.on("error",reject);p.on("close",c=>c===0?resolve():reject(new Error(e||`${bin} failed (${c})`)));});}
+-async function dump(file:string){const d=dbUrl();await ensureDir(path.dirname(file));await run(process.env.TCRM_MYSQLDUMP_BIN||"mysqldump",["--single-transaction","--quick","--routines","--triggers","--events","--hex-blob","--host",d.host,"--port",d.port,"--user",d.user,"--result-file",file,d.database],{MYSQL_PWD:d.password});const s=await fsp.stat(file);if(s.size<1024)throw new Error("Database dump is unexpectedly small");const head=await fsp.readFile(file,"utf8");if(!/CREATE TABLE|INSERT INTO/i.test(head.slice(0,2_000_000)))throw new Error("Database dump verification failed");}
+-async function encryptFile(src:string,dst:string){const iv=crypto.randomBytes(12),c=crypto.createCipheriv("aes-256-gcm",key(),iv),hash=crypto.createHash("sha256");await new Promise<void>((resolve,reject)=>{const i=fs.createReadStream(src),o=fs.createWriteStream(dst,{mode:0o600});i.on("data",d=>hash.update(d));i.on("error",reject);o.on("error",reject);o.on("finish",resolve);i.pipe(c).pipe(o)});const meta={v:1,iv:iv.toString("base64"),tag:c.getAuthTag().toString("base64"),sha256:hash.digest("hex")};const body=await fsp.readFile(dst);await fsp.writeFile(dst,Buffer.concat([Buffer.from("TCRMDB01\n"+JSON.stringify(meta)+"\n"),body]),{mode:0o600});return meta;}
++async function dump(file:string){
++  const d=dbUrl();
++  await ensureDir(path.dirname(file));
++  await run(process.env.TCRM_MYSQLDUMP_BIN||"mysqldump",["--single-transaction","--quick","--routines","--triggers","--events","--hex-blob","--host",d.host,"--port",d.port,"--user",d.user,"--result-file",file,d.database],{MYSQL_PWD:d.password});
++  const s=await fsp.stat(file);
++  if(s.size<1024)throw new Error("Database dump is unexpectedly small");
++  const fh=await fsp.open(file,"r");
++  try{
++    const b=Buffer.allocUnsafe(Math.min(2_000_000,s.size));
++    const {bytesRead}=await fh.read(b,0,b.length,0);
++    const head=b.subarray(0,bytesRead).toString("utf8");
++    if(!/CREATE TABLE|INSERT INTO/i.test(head))throw new Error("Database dump verification failed");
++  }finally{
++    await fh.close();
++  }
++}
++async function encryptFile(src:string,dst:string){
++  const iv=crypto.randomBytes(12),c=crypto.createCipheriv("aes-256-gcm",key(),iv),hash=crypto.createHash("sha256"),body=dst+".body";
++  try{
++    await new Promise<void>((resolve,reject)=>{
++      const i=fs.createReadStream(src),o=fs.createWriteStream(body,{mode:0o600});
++      i.on("data",d=>hash.update(d));
++      i.on("error",reject);c.on("error",reject);o.on("error",reject);o.on("finish",resolve);
++      i.pipe(c).pipe(o);
++    });
++    const meta={v:1,iv:iv.toString("base64"),tag:c.getAuthTag().toString("base64"),sha256:hash.digest("hex")};
++    await fsp.writeFile(dst,Buffer.from("TCRMDB01\n"+JSON.stringify(meta)+"\n"),{mode:0o600});
++    await new Promise<void>((resolve,reject)=>{
++      const i=fs.createReadStream(body),o=fs.createWriteStream(dst,{flags:"a"});
++      i.on("error",reject);o.on("error",reject);o.on("finish",resolve);i.pipe(o);
++    });
++    return meta;
++  }finally{
++    await fsp.rm(body,{force:true}).catch(()=>{});
++  }
++}
+ function oauth(c:any){const g=c.googleDrive;if(!g.clientId||!g.clientSecretEnc||!g.redirectUri)throw new TcrmDbBackupError("Google OAuth settings are incomplete",400);return new google.auth.OAuth2(g.clientId,dec(g.clientSecretEnc),g.redirectUri);}
+@@ -45,3 +80,31 @@
+ export async function disconnectTcrmDbBackup(){const c=await config();c.enabled=false;c.googleDrive.refreshTokenEnc="";c.googleDrive.accountEmail="";await writeJson(CFG(),c);return publicCfg(c);}
+-export async function createTcrmDbBackup(actor?:any){const c=await config();if(!c.googleDrive.refreshTokenEnc)throw new TcrmDbBackupError("Google Drive is not connected",400);const now=new Date(),name=`TCRM_DB_${now.toISOString().replace("T","_").replace(/:/g,"-").replace(/\.\d{3}Z$/,"")}.sql.enc`,dir=path.join(TMP(),String(Date.now()));await ensureDir(dir);const sql=path.join(dir,"db.sql"),encrypted=path.join(dir,name);await writeJson(STATE(),{...(await state()),lastAttemptAt:now.toISOString(),lastError:""});try{await dump(sql);const meta=await encryptFile(sql,encrypted);const {drive,c:dc}=await driveClient(),f=await folder(drive,dc);const up=await drive.files.create({requestBody:{name,parents:[f]},media:{mimeType:"application/octet-stream",body:fs.createReadStream(encrypted)},fields:"id,name,size,createdTime,webViewLink"});await retention(drive,f);await writeJson(STATE(),{...(await state()),lastSuccessAt:now.toISOString(),lastError:"",lastBackupName:name});return {backup:up.data,sha256:meta.sha256};}catch(e:any){await writeJson(STATE(),{...(await state()),lastError:e?.message||"Backup failed"}).catch(()=>{});throw e;}finally{await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{})}}
++export async function createTcrmDbBackup(actor?:any){
++  if(backupInProgress)throw new TcrmDbBackupError("Database backup already running",409);
++  backupInProgress=true;
++  let dir="";
++  try{
++    const c=await config();
++    if(!c.googleDrive.refreshTokenEnc)throw new TcrmDbBackupError("Google Drive is not connected",400);
++    const now=new Date(),name=`TCRM_DB_${now.toISOString().replace("T","_").replace(/:/g,"-").replace(/\.\d{3}Z$/,"")}.sql.enc`;
++    await writeJson(STATE(),{...(await state()),lastAttemptAt:now.toISOString(),lastError:""});
++    try{
++      const {drive,c:dc}=await driveClient(),f=await folder(drive,dc);
++      dir=path.join(TMP(),String(Date.now()));
++      await ensureDir(dir);
++      const sql=path.join(dir,"db.sql"),encrypted=path.join(dir,name);
++      await dump(sql);
++      const meta=await encryptFile(sql,encrypted);
++      const up=await drive.files.create({requestBody:{name,parents:[f]},media:{mimeType:"application/octet-stream",body:fs.createReadStream(encrypted)},fields:"id,name,size,createdTime,webViewLink"});
++      await retention(drive,f);
++      await writeJson(STATE(),{...(await state()),lastSuccessAt:now.toISOString(),lastError:"",lastBackupName:name});
++      return {backup:up.data,sha256:meta.sha256};
++    }catch(e:any){
++      await writeJson(STATE(),{...(await state()),lastError:e?.message||"Backup failed"}).catch(()=>{});
++      throw e;
++    }
++  }finally{
++    if(dir)await fsp.rm(dir,{recursive:true,force:true}).catch(()=>{});
++    backupInProgress=false;
++  }
++}
+ function localParts(date:Date,tz:string){const p=new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(date),o:any={};for(const x of p)o[x.type]=x.value;return{date:`${o.year}-${o.month}-${o.day}`,time:`${o.hour}:${o.minute}`};}
