@@ -1,0 +1,545 @@
+diff --git a/client/src/components/GlobalSearch.tsx b/client/src/components/GlobalSearch.tsx
+index b23affd..f8bcb80 100644
+--- a/client/src/components/GlobalSearch.tsx
++++ b/client/src/components/GlobalSearch.tsx
+@@ -7,8 +7,18 @@ import VoiceSearchButton from '@/components/search/VoiceSearchButton';
+ import { trpc } from '@/lib/trpc';
+ import { useAuth } from '@/_core/hooks/useAuth';
+ import { normalizeSearchText } from '@shared/searchNormalization';
+-import { rankSearchSuggestions } from '@shared/searchSuggestions';
++import { rankSearchCandidates, rankSearchSuggestions } from '@shared/searchSuggestions';
+ import { canIncludeClientsInGlobalSearch, GLOBAL_SEARCH_CLIENT_LIMIT } from '@shared/globalSearchScope';
++import {
++  EMPTY_SEARCH_LEARNING_PROFILE,
++  getSearchLearningBoost,
++  type SearchLearningEntityType,
++  type SearchLearningProfile,
++} from '@shared/searchLearning';
++import {
++  loadSearchLearningProfile,
++  recordSearchLearningSelection,
++} from '@/lib/searchLearningStore';
+ 
+ export default function GlobalSearch() {
+   const { t, isRTL, lang } = useLanguage();
+@@ -17,7 +27,11 @@ export default function GlobalSearch() {
+   const [q, setQ] = useState('');
+   const [results, setResults] = useState<any>({ deals: [], companies: [], contacts: [] });
+   const [loading, setLoading] = useState(false);
++  const [learningProfile, setLearningProfile] = useState<SearchLearningProfile>(
++    EMPTY_SEARCH_LEARNING_PROFILE,
++  );
+   const inputRef = useRef<HTMLInputElement>(null);
++  const userId = Number((user as any)?.id ?? 0);
+   const normalizedQ = normalizeSearchText(q);
+   const clientSearchEnabled =
+     open &&
+@@ -28,6 +42,10 @@ export default function GlobalSearch() {
+     { enabled: clientSearchEnabled, retry: false, staleTime: 10_000 },
+   );
+ 
++  useEffect(() => {
++    setLearningProfile(loadSearchLearningProfile(userId));
++  }, [userId]);
++
+   useEffect(() => {
+     const onKey = (e: KeyboardEvent) => {
+       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+@@ -61,8 +79,41 @@ export default function GlobalSearch() {
+   if (!open) return null;
+   const cur = t('bdCurrencyEgp');
+   const clientResults = clientSearchEnabled ? (clientsQ.data?.data ?? []) : [];
+-  const total = clientResults.length + (results.deals?.length || 0) + (results.companies?.length || 0) + (results.contacts?.length || 0);
++  const dealResults = results.deals ?? [];
++  const companyResults = results.companies ?? [];
++  const contactResults = results.contacts ?? [];
++  const total = clientResults.length + dealResults.length + companyResults.length + contactResults.length;
+   const isSearching = loading || (clientSearchEnabled && clientsQ.isFetching);
++  const learningNow = Date.now();
++  const learningBoost = (type: SearchLearningEntityType, id: unknown) =>
++    getSearchLearningBoost(learningProfile, `${type}:${Number(id)}`, learningNow);
++  const rankSection = (type: SearchLearningEntityType, items: any[], fields: (item: any) => unknown[]) =>
++    rankSearchCandidates(
++      q,
++      items.map((item: any) => ({
++        value: item,
++        fields: fields(item),
++        learningBoost: learningBoost(type, item.id),
++      })),
++      Math.max(1, items.length),
++    );
++  const rankedClientResults = rankSection('client', clientResults, (client: any) => [
++    client.leadName,
++    client.businessProfile,
++    client.competentPerson,
++    client.group,
++    client.servicesNeeded,
++    client.phone,
++    client.contactEmail,
++  ]);
++  const rankedDealResults = rankSection('deal', dealResults, (deal: any) => [deal.title, deal.stageName]);
++  const rankedCompanyResults = rankSection('company', companyResults, (company: any) => [company.name, company.industry, company.country]);
++  const rankedContactResults = rankSection('contact', contactResults, (contact: any) => [contact.fullName, contact.jobTitle, contact.email]);
++  const handleResultSelected = (type: SearchLearningEntityType, id: unknown) => {
++    const next = recordSearchLearningSelection(userId, learningProfile, type, Number(id), learningNow);
++    setLearningProfile(next);
++    setOpen(false);
++  };
+   const autocompleteSuggestions = rankSearchSuggestions(
+     q,
+     [
+@@ -72,18 +123,22 @@ export default function GlobalSearch() {
+           label: client.leadName || client.competentPerson || client.group || `Client #${client.id}`,
+         },
+         fields: [client.leadName, client.businessProfile, client.competentPerson, client.group, client.servicesNeeded, client.phone, client.contactEmail],
++        learningBoost: learningBoost('client', client.id),
+       })),
+-      ...(results.deals ?? []).map((deal: any) => ({
++      ...dealResults.map((deal: any) => ({
+         value: { key: `deal:${deal.id}`, label: deal.title || `Deal #${deal.id}` },
+         fields: [deal.title, deal.stageName],
++        learningBoost: learningBoost('deal', deal.id),
+       })),
+-      ...(results.companies ?? []).map((company: any) => ({
++      ...companyResults.map((company: any) => ({
+         value: { key: `company:${company.id}`, label: company.name || `Company #${company.id}` },
+         fields: [company.name, company.industry, company.country],
++        learningBoost: learningBoost('company', company.id),
+       })),
+-      ...(results.contacts ?? []).map((contact: any) => ({
++      ...contactResults.map((contact: any) => ({
+         value: { key: `contact:${contact.id}`, label: contact.fullName || `Contact #${contact.id}` },
+         fields: [contact.fullName, contact.jobTitle, contact.email],
++        learningBoost: learningBoost('contact', contact.id),
+       })),
+     ],
+     5,
+@@ -131,11 +186,11 @@ export default function GlobalSearch() {
+             <div className='p-8 text-center text-sm text-slate-400'>{isRTL ? 'لا نتائج' : 'No results'}</div>
+           ) : (
+             <div className='py-2'>
+-              {clientResults.length > 0 && (
++              {rankedClientResults.length > 0 && (
+                 <Section icon={<UsersRound size={14} />} title={isRTL ? 'العملاء' : 'Clients'}>
+-                  {clientResults.map((c: any) => (
++                  {rankedClientResults.map((c: any) => (
+                     <Link key={c.id} href={`/clients/${c.id}`}>
+-                      <a onClick={() => setOpen(false)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                      <a onClick={() => handleResultSelected('client', c.id)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+                         <span className='w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center'>C</span>
+                         <div className='min-w-0 flex-1'>
+                           <div className='font-medium text-slate-800 dark:text-slate-200 truncate'>{c.leadName || c.competentPerson || c.group || `Client #${c.id}`}</div>
+@@ -146,11 +201,11 @@ export default function GlobalSearch() {
+                   ))}
+                 </Section>
+               )}
+-              {results.deals?.length > 0 && (
++              {rankedDealResults.length > 0 && (
+                 <Section icon={<Briefcase size={14} />} title={isRTL ? 'الصفقات' : 'Deals'}>
+-                  {results.deals.map((d: any) => (
++                  {rankedDealResults.map((d: any) => (
+                     <Link key={d.id} href={`/bd/deals/${d.id}`}>
+-                      <a onClick={() => setOpen(false)} className='flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                      <a onClick={() => handleResultSelected('deal', d.id)} className='flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+                         <div className='flex items-center gap-2 min-w-0'>
+                           <span className='w-2 h-2 rounded-full flex-shrink-0' style={{ background: d.stageColor }} />
+                           <span className='font-medium text-slate-800 dark:text-slate-200 truncate'>{d.title}</span>
+@@ -162,11 +217,11 @@ export default function GlobalSearch() {
+                   ))}
+                 </Section>
+               )}
+-              {results.companies?.length > 0 && (
++              {rankedCompanyResults.length > 0 && (
+                 <Section icon={<Building2 size={14} />} title={isRTL ? 'الشركات' : 'Companies'}>
+-                  {results.companies.map((c: any) => (
++                  {rankedCompanyResults.map((c: any) => (
+                     <Link key={c.id} href={`/bd/companies/${c.id}`}>
+-                      <a onClick={() => setOpen(false)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                      <a onClick={() => handleResultSelected('company', c.id)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+                         <span className='w-7 h-7 rounded-md bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center'>{(c.name || '?').charAt(0).toUpperCase()}</span>
+                         <div className='min-w-0 flex-1'>
+                           <div className='font-medium text-slate-800 dark:text-slate-200 truncate'>{c.name}</div>
+@@ -177,11 +232,11 @@ export default function GlobalSearch() {
+                   ))}
+                 </Section>
+               )}
+-              {results.contacts?.length > 0 && (
++              {rankedContactResults.length > 0 && (
+                 <Section icon={<User size={14} />} title={isRTL ? 'جهات الاتصال' : 'Contacts'}>
+-                  {results.contacts.map((c: any) => (
++                  {rankedContactResults.map((c: any) => (
+                     <Link key={c.id} href={`/bd/contacts/${c.id}`}>
+-                      <a onClick={() => setOpen(false)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                      <a onClick={() => handleResultSelected('contact', c.id)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+                         <span className='w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center justify-center'>{(c.fullName || '?').charAt(0).toUpperCase()}</span>
+                         <div className='min-w-0 flex-1'>
+                           <div className='font-medium text-slate-800 dark:text-slate-200 truncate'>{c.fullName}</div>
+@@ -196,7 +251,7 @@ export default function GlobalSearch() {
+           )}
+         </div>
+         <div className='px-4 py-2 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 flex items-center justify-between'>
+-          <span>{isRTL ? 'بحث موحّد عبر CRM' : 'Unified CRM search'}</span>
++          <span>{learningProfile.entries.length > 0 ? (isRTL ? 'بحث موحّد · ترتيب ذكي حسب استخدامك' : 'Unified search · adaptive ranking') : (isRTL ? 'بحث موحّد عبر CRM' : 'Unified CRM search')}</span>
+           <span><kbd className='px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded'>Cmd</kbd> + <kbd className='px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded'>K</kbd></span>
+         </div>
+       </div>
+diff --git a/client/src/lib/searchLearningStore.ts b/client/src/lib/searchLearningStore.ts
+new file mode 100644
+index 0000000..e635b03
+--- /dev/null
++++ b/client/src/lib/searchLearningStore.ts
+@@ -0,0 +1,54 @@
++import {
++  EMPTY_SEARCH_LEARNING_PROFILE,
++  recordSearchLearningSelection as recordSelection,
++  sanitizeSearchLearningProfile,
++  type SearchLearningEntityType,
++  type SearchLearningProfile,
++} from "@shared/searchLearning";
++
++const STORAGE_PREFIX = "tcrm-smart-search-learning-v1";
++
++export function getSearchLearningStorageKey(userId: number) {
++  return `${STORAGE_PREFIX}:${userId}`;
++}
++
++export function loadSearchLearningProfile(
++  userId: number,
++  now = Date.now(),
++): SearchLearningProfile {
++  if (!Number.isInteger(userId) || userId <= 0 || typeof window === "undefined") {
++    return EMPTY_SEARCH_LEARNING_PROFILE;
++  }
++
++  try {
++    const raw = window.localStorage.getItem(getSearchLearningStorageKey(userId));
++    if (!raw) return EMPTY_SEARCH_LEARNING_PROFILE;
++    return sanitizeSearchLearningProfile(JSON.parse(raw), now);
++  } catch {
++    return EMPTY_SEARCH_LEARNING_PROFILE;
++  }
++}
++
++function persistSearchLearningProfile(
++  userId: number,
++  profile: SearchLearningProfile,
++) {
++  if (!Number.isInteger(userId) || userId <= 0 || typeof window === "undefined") return;
++  try {
++    window.localStorage.setItem(getSearchLearningStorageKey(userId), JSON.stringify(profile));
++  } catch {
++    // Storage may be disabled, blocked, or full. Search continues without persistence.
++  }
++}
++
++export function recordSearchLearningSelection(
++  userId: number,
++  profile: SearchLearningProfile,
++  type: SearchLearningEntityType,
++  id: number,
++  now = Date.now(),
++): SearchLearningProfile {
++  const next = recordSelection(profile, type, id, now);
++  persistSearchLearningProfile(userId, next);
++  return next;
++}
+diff --git a/shared/searchLearning.test.ts b/shared/searchLearning.test.ts
+new file mode 100644
+index 0000000..7421f0b
+--- /dev/null
++++ b/shared/searchLearning.test.ts
+@@ -0,0 +1,117 @@
++import { describe, expect, it } from "vitest";
++import {
++  EMPTY_SEARCH_LEARNING_PROFILE,
++  SEARCH_LEARNING_MAX_COUNT,
++  SEARCH_LEARNING_MAX_ENTRIES,
++  SEARCH_LEARNING_TTL_MS,
++  getSearchLearningBoost,
++  rankSearchResultsByLearning,
++  recordSearchLearningSelection,
++  sanitizeSearchLearningProfile,
++} from "./searchLearning";
++
++const NOW = 2_000_000_000_000;
++
++describe("search learning", () => {
++  it("learns repeated selections without storing query text or PII", () => {
++    let profile = recordSearchLearningSelection(
++      EMPTY_SEARCH_LEARNING_PROFILE,
++      "client",
++      42,
++      NOW,
++    );
++    profile = recordSearchLearningSelection(profile, "client", 42, NOW + 1_000);
++
++    expect(profile.entries).toEqual([
++      {
++        key: "client:42",
++        type: "client",
++        count: 2,
++        lastSelectedAt: NOW + 1_000,
++      },
++    ]);
++    const serialized = JSON.stringify(profile);
++    expect(serialized).not.toContain("query");
++    expect(serialized).not.toContain("email");
++    expect(serialized).not.toContain("phone");
++    expect(serialized).not.toContain("name");
++  });
++
++  it("gives stronger boost to recent and frequent selections", () => {
++    let profile = recordSearchLearningSelection(
++      EMPTY_SEARCH_LEARNING_PROFILE,
++      "deal",
++      7,
++      NOW - 60 * 24 * 60 * 60 * 1000,
++    );
++    profile = recordSearchLearningSelection(profile, "deal", 8, NOW);
++    profile = recordSearchLearningSelection(profile, "deal", 8, NOW + 1);
++
++    expect(getSearchLearningBoost(profile, "deal:8", NOW + 2))
++      .toBeGreaterThan(getSearchLearningBoost(profile, "deal:7", NOW + 2));
++  });
++
++  it("expires stale learning signals", () => {
++    const profile = sanitizeSearchLearningProfile({
++      version: 1,
++      entries: [{
++        key: "company:3",
++        type: "company",
++        count: 10,
++        lastSelectedAt: NOW - SEARCH_LEARNING_TTL_MS - 1,
++      }],
++    }, NOW);
++
++    expect(profile.entries).toEqual([]);
++    expect(getSearchLearningBoost(profile, "company:3", NOW)).toBe(0);
++  });
++
++  it("caps, sanitizes, and rejects malformed entity keys", () => {
++    const entries: any[] = Array.from({ length: SEARCH_LEARNING_MAX_ENTRIES + 10 }, (_, index) => ({
++      key: `contact:${index + 1}`,
++      type: "contact",
++      count: 100,
++      lastSelectedAt: NOW - index,
++    }));
++    entries.push({
++      key: "contact:evil",
++      type: "contact",
++      count: 1,
++      lastSelectedAt: NOW,
++    });
++
++    const profile = sanitizeSearchLearningProfile({ version: 99, entries }, NOW);
++    expect(profile.version).toBe(1);
++    expect(profile.entries).toHaveLength(SEARCH_LEARNING_MAX_ENTRIES);
++    expect(profile.entries.every(entry => entry.count <= SEARCH_LEARNING_MAX_COUNT)).toBe(true);
++    expect(profile.entries.some(entry => entry.key === "contact:evil")).toBe(false);
++  });
++
++  it("caps repeated selection counts", () => {
++    let profile = EMPTY_SEARCH_LEARNING_PROFILE;
++    for (let index = 0; index < SEARCH_LEARNING_MAX_COUNT + 10; index += 1) {
++      profile = recordSearchLearningSelection(profile, "client", 11, NOW + index);
++    }
++    expect(profile.entries[0]?.count).toBe(SEARCH_LEARNING_MAX_COUNT);
++  });
++
++  it("reorders only the authorized result set supplied by the caller", () => {
++    const profile = recordSearchLearningSelection(
++      EMPTY_SEARCH_LEARNING_PROFILE,
++      "client",
++      2,
++      NOW,
++    );
++    const authorized = [{ id: 1 }, { id: 2 }, { id: 3 }];
++    const ranked = rankSearchResultsByLearning(
++      authorized,
++      profile,
++      item => `client:${item.id}`,
++      NOW,
++    );
++
++    expect(ranked.map(item => item.id)).toEqual([2, 1, 3]);
++    expect(ranked).toHaveLength(authorized.length);
++    expect(ranked.every(item => authorized.includes(item))).toBe(true);
++  });
++});
+diff --git a/shared/searchLearningStore.test.ts b/shared/searchLearningStore.test.ts
+new file mode 100644
+index 0000000..5dac565
+--- /dev/null
++++ b/shared/searchLearningStore.test.ts
+@@ -0,0 +1,71 @@
++import { afterEach, describe, expect, it } from "vitest";
++import { EMPTY_SEARCH_LEARNING_PROFILE } from "./searchLearning";
++import {
++  getSearchLearningStorageKey,
++  loadSearchLearningProfile,
++  recordSearchLearningSelection,
++} from "../client/src/lib/searchLearningStore";
++
++const NOW = 2_000_000_000_000;
++const originalWindow = (globalThis as any).window;
++
++afterEach(() => {
++  if (originalWindow === undefined) delete (globalThis as any).window;
++  else (globalThis as any).window = originalWindow;
++});
++
++function installStorage(options?: { readValue?: string | null; throwRead?: boolean; throwWrite?: boolean }) {
++  const writes = new Map<string, string>();
++  (globalThis as any).window = {
++    localStorage: {
++      getItem(key: string) {
++        if (options?.throwRead) throw new Error("blocked");
++        return writes.get(key) ?? options?.readValue ?? null;
++      },
++      setItem(key: string, value: string) {
++        if (options?.throwWrite) throw new Error("quota");
++        writes.set(key, value);
++      },
++    },
++  };
++  return writes;
++}
++
++describe("search learning local store", () => {
++  it("isolates storage by authenticated user id", () => {
++    expect(getSearchLearningStorageKey(10)).not.toBe(getSearchLearningStorageKey(11));
++    expect(getSearchLearningStorageKey(10)).toContain(":10");
++  });
++
++  it("returns empty learning when stored JSON is corrupted", () => {
++    installStorage({ readValue: "{bad-json" });
++    expect(loadSearchLearningProfile(10, NOW)).toEqual(EMPTY_SEARCH_LEARNING_PROFILE);
++  });
++
++  it("fails open when localStorage reads are blocked", () => {
++    installStorage({ throwRead: true });
++    expect(loadSearchLearningProfile(10, NOW)).toEqual(EMPTY_SEARCH_LEARNING_PROFILE);
++  });
++
++  it("keeps search learning usable when persistence fails", () => {
++    installStorage({ throwWrite: true });
++    const next = recordSearchLearningSelection(
++      10,
++      EMPTY_SEARCH_LEARNING_PROFILE,
++      "deal",
++      7,
++      NOW,
++    );
++    expect(next.entries[0]).toMatchObject({ key: "deal:7", count: 1 });
++  });
++
++  it("persists only the sanitized profile shape", () => {
++    const writes = installStorage();
++    recordSearchLearningSelection(10, EMPTY_SEARCH_LEARNING_PROFILE, "client", 42, NOW);
++    const stored = writes.get(getSearchLearningStorageKey(10)) ?? "";
++    expect(stored).toContain("client:42");
++    expect(stored).not.toContain("query");
++    expect(stored).not.toContain("email");
++    expect(stored).not.toContain("phone");
++  });
++});
+diff --git a/shared/searchSuggestions.test.ts b/shared/searchSuggestions.test.ts
+index c09dc8b..b15e08e 100644
+--- a/shared/searchSuggestions.test.ts
++++ b/shared/searchSuggestions.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from "vitest";
+-import { rankSearchSuggestions } from "./searchSuggestions";
++import { rankSearchCandidates, rankSearchSuggestions } from "./searchSuggestions";
+ 
+ describe("search suggestions", () => {
+   it("ranks exact, prefix, contains, then fuzzy", () => {
+@@ -11,6 +11,27 @@ describe("search suggestions", () => {
+     ], 10)).toEqual(["exact", "prefix", "contains", "fuzzy"]);
+   });
+ 
++  it("uses learning only to reorder equally relevant suggestions", () => {
++    expect(rankSearchSuggestions("ahmed", [
++      { value: "first", fields: ["Ahmed One"], learningBoost: 0 },
++      { value: "learned", fields: ["Ahmed Two"], learningBoost: 60 },
++    ], 10)).toEqual(["learned", "first"]);
++
++    expect(rankSearchSuggestions("ahmed", [
++      { value: "prefix-learned", fields: ["Ahmed Group"], learningBoost: 60 },
++      { value: "exact", fields: ["Ahmed"], learningBoost: 0 },
++    ], 10)).toEqual(["exact", "prefix-learned"]);
++  });
++
++  it("keeps semantic relevance primary for full result ranking", () => {
++    expect(rankSearchCandidates("ahmed", [
++      { value: "fuzzy-learned", fields: ["ahmd"], learningBoost: 60 },
++      { value: "contains", fields: ["the ahmed company"], learningBoost: 0 },
++      { value: "prefix", fields: ["ahmed group"], learningBoost: 0 },
++      { value: "exact", fields: ["Ahmed"], learningBoost: 0 },
++    ], 12)).toEqual(["exact", "prefix", "contains", "fuzzy-learned"]);
++  });
++
+   it("reuses Arabic normalization", () => {
+     expect(rankSearchSuggestions("الامل", [
+       { value: "normalized", fields: ["الأمل"] },
+diff --git a/shared/searchSuggestions.ts b/shared/searchSuggestions.ts
+index a88d8c7..a87974b 100644
+--- a/shared/searchSuggestions.ts
++++ b/shared/searchSuggestions.ts
+@@ -2,10 +2,12 @@ import { normalizeSearchText } from "./searchNormalization";
+ 
+ export const SEARCH_SUGGESTION_MIN_QUERY_LENGTH = 2;
+ export const SEARCH_SUGGESTION_DEFAULT_LIMIT = 6;
++export const SEARCH_SUGGESTION_MAX_LEARNING_BOOST = 60;
+ 
+ export type SearchSuggestionInput<T> = {
+   value: T;
+   fields: unknown[];
++  learningBoost?: number;
+ };
+ 
+ function oneEditAway(left: string, right: string): boolean {
+@@ -55,23 +57,39 @@ function fieldScore(query: string, value: unknown) {
+   return 0;
+ }
+ 
+-export function rankSearchSuggestions<T>(
++export function rankSearchCandidates<T>(
+   query: unknown,
+   candidates: SearchSuggestionInput<T>[],
+-  limit = SEARCH_SUGGESTION_DEFAULT_LIMIT,
++  limit = 12,
+ ): T[] {
+   const normalized = normalizeSearchText(query);
+   if (normalized.length < SEARCH_SUGGESTION_MIN_QUERY_LENGTH) return [];
+-  const safeLimit = Math.max(1, Math.min(Number(limit) || SEARCH_SUGGESTION_DEFAULT_LIMIT, 12));
++  const safeLimit = Math.max(1, Math.min(Number(limit) || 12, 12));
+ 
+   return candidates
+     .map((candidate, index) => ({
+       value: candidate.value,
+       index,
+       score: Math.max(0, ...candidate.fields.map(field => fieldScore(normalized, field))),
++      learningBoost: Math.max(
++        0,
++        Math.min(Number(candidate.learningBoost) || 0, SEARCH_SUGGESTION_MAX_LEARNING_BOOST),
++      ),
+     }))
+     .filter(candidate => candidate.score > 0)
+-    .sort((a, b) => b.score - a.score || a.index - b.index)
++    .sort((a, b) =>
++      b.score - a.score ||
++      b.learningBoost - a.learningBoost ||
++      a.index - b.index
++    )
+     .slice(0, safeLimit)
+     .map(candidate => candidate.value);
+ }
++
++export function rankSearchSuggestions<T>(
++  query: unknown,
++  candidates: SearchSuggestionInput<T>[],
++  limit = SEARCH_SUGGESTION_DEFAULT_LIMIT,
++): T[] {
++  return rankSearchCandidates(query, candidates, limit);
++}
