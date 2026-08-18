@@ -1,0 +1,317 @@
+diff --git a/shared/searchFuzzy.ts b/shared/searchFuzzy.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchFuzzy.ts
+@@ -0,0 +1,114 @@
++import { normalizeSearchText } from "./searchNormalization";
++
++export const FUZZY_SEARCH_MIN_QUERY_LENGTH = 4;
++export const FUZZY_SEARCH_MAX_QUERY_LENGTH = 14;
++export const FUZZY_SEARCH_MAX_PATTERNS = 56;
++
++const FUZZY_LETTER_RE = /[A-Za-z\u0621-\u064A\u0671-\u06D3]/;
++const LIKE_ESCAPE = "!";
++
++function escapeLikeLiteral(value: string): string {
++  return value
++    .replaceAll(LIKE_ESCAPE, `${LIKE_ESCAPE}${LIKE_ESCAPE}`)
++    .replaceAll("%", `${LIKE_ESCAPE}%`)
++    .replaceAll("_", `${LIKE_ESCAPE}_`);
++}
++
++function literal(chars: string[]): string {
++  return escapeLikeLiteral(chars.join(""));
++}
++
++function containsPattern(body: string): string {
++  return `%${body}%`;
++}
++
++/**
++ * Fuzzy expansion is intentionally conservative. It is enabled only for
++ * human-language queries that are long enough to avoid noisy three-character
++ * matches and short enough to keep SQL expansion bounded.
++ */
++export function isFuzzySearchEligible(value: unknown): boolean {
++  const normalized = normalizeSearchText(value);
++  const chars = Array.from(normalized);
++
++  return (
++    chars.length >= FUZZY_SEARCH_MIN_QUERY_LENGTH &&
++    chars.length <= FUZZY_SEARCH_MAX_QUERY_LENGTH &&
++    FUZZY_LETTER_RE.test(normalized) &&
++    !normalized.includes("@")
++  );
++}
++
++/**
++ * Build MySQL LIKE patterns for bounded edit-distance-one matching.
++ *
++ * Pattern order is intentional:
++ *  1) exact normalized contains
++ *  2) one substituted character
++ *  3) one missing character in the query
++ *  4) one adjacent transposition
++ *  5) one extra character in the query
++ *
++ * Literal `%`, `_`, and `!` are escaped with `!`; the server SQL helper uses
++ * `ESCAPE '!'`. `_` inserted by this function is therefore the only wildcard
++ * that represents a fuzzy character.
++ */
++export function buildFuzzyContainsPatterns(value: unknown): string[] {
++  const normalized = normalizeSearchText(value);
++  if (!normalized) return [];
++
++  const chars = Array.from(normalized);
++  const patterns = new Set<string>([containsPattern(literal(chars))]);
++
++  if (!isFuzzySearchEligible(normalized)) return Array.from(patterns);
++
++  const add = (pattern: string) => {
++    if (patterns.size < FUZZY_SEARCH_MAX_PATTERNS) patterns.add(pattern);
++  };
++
++  // Substitution: query "احمد" can match stored "اخمد" via "ا_مد".
++  for (let i = 0; i < chars.length; i += 1) {
++    if (chars[i] === " ") continue;
++    add(
++      containsPattern(
++        `${literal(chars.slice(0, i))}_${literal(chars.slice(i + 1))}`,
++      ),
++    );
++  }
++
++  // Missing character in query: "ahmd" can match "ahmed" via "ahm_d".
++  for (let i = 1; i < chars.length; i += 1) {
++    if (chars[i - 1] === " " || chars[i] === " ") continue;
++    add(
++      containsPattern(
++        `${literal(chars.slice(0, i))}_${literal(chars.slice(i))}`,
++      ),
++    );
++  }
++
++  // Adjacent transposition: "mohmaed" can match "mohamed".
++  for (let i = 0; i < chars.length - 1; i += 1) {
++    if (
++      chars[i] === " " ||
++      chars[i + 1] === " " ||
++      chars[i] === chars[i + 1]
++    ) {
++      continue;
++    }
++    const swapped = [...chars];
++    [swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]];
++    add(containsPattern(literal(swapped)));
++  }
++
++  // Extra character in query. Do not reduce four-character queries to a noisy
++  // three-character contains match.
++  if (chars.length >= FUZZY_SEARCH_MIN_QUERY_LENGTH + 1) {
++    for (let i = 0; i < chars.length; i += 1) {
++      if (chars[i] === " ") continue;
++      const deleted = [...chars.slice(0, i), ...chars.slice(i + 1)];
++      add(containsPattern(literal(deleted)));
++    }
++  }
++
++  return Array.from(patterns);
++}
+diff --git a/shared/searchFuzzy.test.ts b/shared/searchFuzzy.test.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchFuzzy.test.ts
+@@ -0,0 +1,74 @@
++import { describe, expect, it } from "vitest";
++import {
++  buildFuzzyContainsPatterns,
++  FUZZY_SEARCH_MAX_PATTERNS,
++  isFuzzySearchEligible,
++} from "./searchFuzzy";
++import { normalizeSearchText } from "./searchNormalization";
++
++function escapeRegex(value: string) {
++  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
++}
++
++function likePatternToRegex(pattern: string) {
++  let source = "";
++  for (let i = 0; i < pattern.length; i += 1) {
++    const char = pattern[i];
++    if (char === "!") {
++      i += 1;
++      source += escapeRegex(pattern[i] ?? "");
++    } else if (char === "%") {
++      source += ".*";
++    } else if (char === "_") {
++      source += ".";
++    } else {
++      source += escapeRegex(char);
++    }
++  }
++  return new RegExp(`^${source}$`, "u");
++}
++
++function fuzzyMatches(query: string, candidate: string) {
++  const normalizedCandidate = normalizeSearchText(candidate);
++  return buildFuzzyContainsPatterns(query).some((pattern) =>
++    likePatternToRegex(pattern).test(normalizedCandidate),
++  );
++}
++
++describe("bounded fuzzy search patterns", () => {
++  it("keeps normalized exact matching as the first pattern", () => {
++    expect(buildFuzzyContainsPatterns(" أحمَد ")[0]).toBe("%احمد%");
++  });
++
++  it("tolerates one substituted Arabic character", () => {
++    expect(fuzzyMatches("اخمد", "أحمد")).toBe(true);
++  });
++
++  it("tolerates one missing or extra character", () => {
++    expect(fuzzyMatches("ahmd", "Ahmed")).toBe(true);
++    expect(fuzzyMatches("ahmmed", "Ahmed")).toBe(true);
++  });
++
++  it("tolerates one adjacent transposition", () => {
++    expect(fuzzyMatches("mohmaed", "Mohamed")).toBe(true);
++    expect(fuzzyMatches("احدم", "أحمد")).toBe(true);
++  });
++
++  it("keeps short queries and emails exact-only", () => {
++    expect(isFuzzySearchEligible("ali")).toBe(false);
++    expect(buildFuzzyContainsPatterns("ali")).toEqual(["%ali%"]);
++    expect(isFuzzySearchEligible("user@example.com")).toBe(false);
++    expect(buildFuzzyContainsPatterns("user@example.com")).toHaveLength(1);
++  });
++
++  it("escapes literal SQL LIKE wildcard characters", () => {
++    const exact = buildFuzzyContainsPatterns("ab_cd")[0];
++    expect(exact).toBe("%ab!_cd%");
++    expect(fuzzyMatches("ab_cd", "ab_cd")).toBe(true);
++  });
++
++  it("caps SQL expansion to a predictable maximum", () => {
++    const patterns = buildFuzzyContainsPatterns("abcdefghijklmn");
++    expect(patterns.length).toBeLessThanOrEqual(FUZZY_SEARCH_MAX_PATTERNS);
++  });
++});
+diff --git a/server/utils/searchNormalizationSql.ts b/server/utils/searchNormalizationSql.ts
+--- a/server/utils/searchNormalizationSql.ts
++++ b/server/utils/searchNormalizationSql.ts
+@@ -1,4 +1,5 @@
+-import { sql } from "drizzle-orm";
++import { or, sql } from "drizzle-orm";
++import { buildFuzzyContainsPatterns } from "@shared/searchFuzzy";
+ import { normalizeSearchText } from "@shared/searchNormalization";
+ 
+ // Mirrors the character-level transformations in shared/searchNormalization.
+@@ -59,3 +60,22 @@
+   const normalized = normalizeSearchText(query);
+   return sql`${normalizedSearchColumn(column)} LIKE ${`%${normalized}%`}`;
+ }
++
++/**
++ * Bounded typo tolerance for human-readable text fields.
++ *
++ * Phase 2 deliberately limits fuzzy expansion to one edit (substitution,
++ * missing/extra character, or adjacent transposition). Short/structured/long
++ * queries fall back to one exact normalized LIKE pattern. The fixed `!` escape
++ * character must stay in sync with shared/searchFuzzy.ts.
++ */
++export function fuzzyContains(column: any, query: unknown) {
++  const expression = normalizedSearchColumn(column);
++  const patterns = buildFuzzyContainsPatterns(query);
++  if (patterns.length === 0) return sql`1 = 0`;
++
++  const clauses = patterns.map(
++    (pattern) => sql`${expression} LIKE ${pattern} ESCAPE '!'`,
++  );
++  return or(...clauses) ?? sql`1 = 0`;
++}
+diff --git a/server/db.ts b/server/db.ts
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -145,7 +145,7 @@ import {
+   hashClientCreatePayload,
+   isValidClientCreateRequestId,
+ } from "./utils/clientCreateIdempotency";
+-import { normalizedContains } from "./utils/searchNormalizationSql";
++import { fuzzyContains, normalizedContains } from "./utils/searchNormalizationSql";
+
+ let _db: ReturnType<typeof drizzle> | null = null;
+ let _dealServicesRuntimeMigration: Promise<void> | null = null;
+@@ -4265,15 +4265,15 @@ function buildClientListConditions(filters: ClientListFilters = {}) {
+   if (filters.search?.trim()) {
+     const q = filters.search.trim();
+     conditions.push(or(
+-      normalizedContains(clients.businessProfile, q),
+-      normalizedContains(clients.leadName, q),
+-      normalizedContains(clients.competentPerson, q),
+-      normalizedContains(clients.group, q),
++      fuzzyContains(clients.businessProfile, q),
++      fuzzyContains(clients.leadName, q),
++      fuzzyContains(clients.competentPerson, q),
++      fuzzyContains(clients.group, q),
+       normalizedContains(clients.phone, q),
+       normalizedContains(clients.otherPhones, q),
+       normalizedContains(clients.contactPhone, q),
+       normalizedContains(clients.contactEmail, q),
+-      normalizedContains(clients.servicesNeeded, q),
+-      normalizedContains(clients.marketingObjective, q),
++      fuzzyContains(clients.servicesNeeded, q),
++      fuzzyContains(clients.marketingObjective, q),
+     ));
+   }
+diff --git a/server/routes/bd/search.ts b/server/routes/bd/search.ts
+--- a/server/routes/bd/search.ts
++++ b/server/routes/bd/search.ts
+@@ -4,7 +4,7 @@
+ import { bdDeals, bdCompanies, bdContacts, bdStages } from "../../../drizzle/schema_bd";
+ import { and, eq, isNull, or } from "drizzle-orm";
+ import { normalizeSearchText } from "@shared/searchNormalization";
+-import { normalizedContains } from "../../utils/searchNormalizationSql";
++import { fuzzyContains, normalizedContains } from "../../utils/searchNormalizationSql";
+ 
+ const router = Router();
+ 
+@@ -23,19 +23,19 @@
+     .innerJoin(bdStages, eq(bdDeals.stageId, bdStages.id))
+     .where(and(
+       isNull(bdDeals.deletedAt),
+-      normalizedContains(bdDeals.title, q),
++      fuzzyContains(bdDeals.title, q),
+       ...(isLimited ? [eq(bdDeals.ownerId, userId)] : []),
+     ))
+     .limit(8);
+ 
+     const companiesQ = db.select({ id: bdCompanies.id, name: bdCompanies.name, industry: (bdCompanies as any).industry, country: bdCompanies.country })
+       .from(bdCompanies)
+-      .where(and(isNull(bdCompanies.deletedAt), or(normalizedContains(bdCompanies.name, q), normalizedContains((bdCompanies as any).industry, q))))
++      .where(and(isNull(bdCompanies.deletedAt), or(fuzzyContains(bdCompanies.name, q), fuzzyContains((bdCompanies as any).industry, q))))
+       .limit(8);
+ 
+     const contactsQ = db.select({ id: bdContacts.id, fullName: bdContacts.fullName, email: bdContacts.email, jobTitle: bdContacts.jobTitle, companyId: bdContacts.companyId })
+       .from(bdContacts)
+-      .where(and(isNull(bdContacts.deletedAt), or(normalizedContains(bdContacts.fullName, q), normalizedContains(bdContacts.email, q))))
++      .where(and(isNull(bdContacts.deletedAt), or(fuzzyContains(bdContacts.fullName, q), normalizedContains(bdContacts.email, q))))
+       .limit(8);
+ 
+     const [deals, companies, contacts] = await Promise.all([dealsQ, companiesQ, contactsQ]);
+diff --git a/vitest.config.ts b/vitest.config.ts
+--- a/vitest.config.ts
++++ b/vitest.config.ts
+@@ -16,7 +16,12 @@
+   plugins: [react()],
+   test: {
+     environment: "node",
+-    include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
++    include: [
++      "server/**/*.test.ts",
++      "server/**/*.spec.ts",
++      "shared/**/*.test.ts",
++      "shared/**/*.spec.ts",
++    ],
+     testTimeout: 15000,
+   },
+ });
