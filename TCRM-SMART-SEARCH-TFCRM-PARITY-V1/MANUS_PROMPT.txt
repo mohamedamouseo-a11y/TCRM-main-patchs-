@@ -1,0 +1,418 @@
+You are working directly on the CURRENT TCRM server checkout.
+
+TASK
+Apply and COMPLETE TCRM-SMART-SEARCH-TFCRM-PARITY-V1.
+
+Patch repository:
+mohamedamouseo-a11y/TCRM-main-patchs-
+
+Patch folder:
+TCRM-SMART-SEARCH-TFCRM-PARITY-V1
+
+IMPORTANT CURRENT STATE
+- TCRM Main GitHub may still be behind the current server working tree.
+- Phase 6 system-wide Smart Search is expected to already be complete in the CURRENT server checkout.
+- The patch MUST be applied to the current server state, not to an outdated GitHub snapshot.
+
+FIRST
+Inspect and report:
+- current branch
+- current HEAD
+- git status
+- tracked changes
+- untracked files
+
+Do NOT reset, checkout, clean, discard, or overwrite existing server changes.
+
+==================================================
+PRECONDITION
+==================================================
+
+Before changing anything, run:
+
+pnpm exec tsx scripts/audit-smart-search-bars.ts --strict
+
+Required:
+Pending: 0
+
+If Phase 6 strict audit is not green:
+STOP.
+Do not apply the parity patch.
+Return PARITY_PREREQUISITE: FAIL.
+
+==================================================
+APPLY BOOTSTRAP
+==================================================
+
+Clone/read the patch repository and run:
+
+python3 APPLY_PATCH.py <CURRENT_TCRM_CHECKOUT_PATH>
+
+This should add:
+- shared/systemSmartSearchParity.ts
+- shared/systemSmartSearchParity.test.ts
+- server/utils/searchExactFirstFallback.ts
+- server/utils/searchExactFirstFallback.test.ts
+- scripts/audit-tfcrm-search-parity.ts
+
+And update:
+- client/src/components/search/SmartSearchBar.tsx
+
+Do NOT overwrite existing parity artifacts if they already exist. If the patch refuses because the server has a newer/manual version, inspect and adapt carefully without losing newer code.
+
+==================================================
+GOAL: MATCH TFCRM SEARCH BEHAVIOR
+==================================================
+
+The final behavior must match the proven TFCRM search flow:
+
+AUTHORIZED SCOPE
+→ normalized exact/partial search FIRST
+→ if exact/normalized returns one or more results, return ONLY those
+→ if exact/normalized returns ZERO, run bounded fuzzy fallback
+→ suggestions
+→ same typed/voice result pipeline
+
+Do NOT mix fuzzy rows into exact results when exact matches exist.
+
+==================================================
+P1 — NORMALIZATION
+==================================================
+
+KEEP TCRM's existing stronger normalization.
+Do NOT weaken it to TFCRM's older normalization.
+
+Preserve current TCRM rules including:
+- Alef variants
+- tashkeel/harakat removal
+- tatweel removal
+- ى → ي
+- ؤ → و
+- ئ → ي
+- ة → ه
+- Arabic/Persian digits → Western digits
+- English lowercase/case-insensitive
+- whitespace normalization
+
+==================================================
+P2 — EXACT-FIRST FUZZY FALLBACK
+==================================================
+
+For EVERY true Phase 6 search control:
+
+A) CLIENT-SIDE / AUTHORIZED IN-MEMORY COLLECTIONS
+
+Use shared/systemSmartSearchParity.ts.
+
+Preferred helpers:
+- filterTfcrmParityExactFirst(...)
+- buildTfcrmParitySuggestions(...)
+
+Rules:
+- stage 1 exact/normalized/partial over the FULL already-authorized collection
+- if stage 1 returns >=1 result: fuzzy MUST NOT run
+- only if stage 1 returns 0: fuzzy may run
+- fuzzy candidate cap: 1000 for normal lists
+- Global Search candidate cap: 500
+- do not fetch unauthorized extra records for fuzzy
+
+Pass human-readable fields under:
+text: [...]
+
+Pass structured fields under:
+structured: [...]
+
+Structured fields must NEVER fuzzy-match:
+- phone
+- email
+- client/user/contact/deal IDs
+- campaign IDs
+- ticket/quotation codes
+- external IDs
+- account IDs
+- provider IDs
+
+B) SERVER-BACKED SEARCH
+
+Inspect every existing fuzzyContains(...) callsite.
+
+If fuzzyContains is currently inside the PRIMARY WHERE path such that fuzzy and exact can be returned together, migrate it to exact-first two-stage behavior.
+
+Stage 1:
+- existing authorized query
+- normalizedContains / normalized exact/partial semantics for human-readable fields
+- structured fields remain normalized/exact/contains only
+
+If stage 1 has results:
+RETURN stage 1.
+DO NOT execute fuzzy fallback.
+
+If stage 1 returns zero and query is fuzzy-eligible:
+Stage 2:
+- SAME authorization predicates
+- SAME ownership/team/tenant/account/deleted restrictions
+- SAME applicable filters
+- fuzzyContains only for human-readable text fields
+- structured fields remain non-fuzzy
+- bounded candidates after authorization scope
+
+Use:
+server/utils/searchExactFirstFallback.ts
+where appropriate, or equivalent explicit code preserving exactly the same contract.
+
+CRITICAL:
+Do not change API response shapes.
+Do not weaken pagination/sorting/security.
+If list/stats/count endpoints share search semantics, they MUST resolve the same exact/fuzzy search mode and candidate identity set so totals do not disagree with rows.
+
+==================================================
+P3 — SUGGESTIONS / AUTOCOMPLETE
+==================================================
+
+Match TFCRM behavior:
+- start after 2 normalized characters
+- maximum visible suggestions: 6
+- suggestions come only from already-authorized results/data
+- no new unrestricted suggestion endpoint
+- selecting a suggestion feeds the SAME existing search state
+
+SmartSearchBar bootstrap already changes generic datalist policy to 2 chars / max 6.
+
+Review specialized search UIs too and align them when safe.
+
+==================================================
+P4 — VOICE
+==================================================
+
+Preserve/standardize current TCRM voice behavior:
+
+Mic
+→ Browser SpeechRecognition/webkitSpeechRecognition
+→ transcript
+→ SAME search state as typing
+→ exact-first search
+→ fuzzy only on zero exact results
+→ suggestions/results
+
+Do NOT:
+- create a voice search endpoint
+- store audio
+- use AI just to search
+- create a second search pipeline
+
+Unsupported browsers must keep text search fully usable.
+
+==================================================
+PHASE 5 LEARNING
+==================================================
+
+TCRM has adaptive local learning beyond TFCRM.
+KEEP IT.
+
+But learning is ONLY:
+- secondary ranking
+- tie-breaker among already-authorized/matched results
+
+It MUST NOT:
+- cause fuzzy to run before exact
+- pull in a fuzzy result when exact results exist
+- expand authorization
+- store query text/PII
+
+==================================================
+SYSTEM-WIDE COVERAGE
+==================================================
+
+Review every search control already classified/integrated in Phase 6.
+Do not assume one shared component automatically guarantees behavioral parity.
+
+For each true search control, verify its ACTUAL matching path.
+
+After parity integration add a nearby marker:
+
+TFCRM_SEARCH_PARITY_INTEGRATED: <specific exact-first/fuzzy-fallback behavior and scope>
+
+For specialized non-entity controls that remain intentionally outside the TFCRM entity/content search behavior:
+- preserve existing SMART_SEARCH_AUDIT_EXEMPT marker
+or add:
+TFCRM_SEARCH_PARITY_EXEMPT: <specific reason>
+
+For every server fuzzyContains callsite reviewed/migrated add nearby:
+
+TFCRM_SEARCH_PARITY_SERVER: <exact-first/fuzzy-fallback + security/scope explanation>
+
+Do NOT add markers without implementing/verifying the behavior.
+
+==================================================
+AUDIT LOOP
+==================================================
+
+Run:
+
+pnpm exec tsx scripts/audit-tfcrm-search-parity.ts
+
+Inspect EVERY pending result.
+
+Repeat integration/review until:
+
+pnpm exec tsx scripts/audit-tfcrm-search-parity.ts --strict
+
+passes with:
+- UI Pending: 0
+- Server fuzzy callsites Pending: 0
+
+Do NOT stop with a partial inventory.
+
+==================================================
+TESTS
+==================================================
+
+Run focused parity + Smart Search tests:
+
+pnpm exec vitest run \
+  shared/systemSmartSearchParity.test.ts \
+  server/utils/searchExactFirstFallback.test.ts \
+  shared/systemSmartSearch.test.ts \
+  shared/searchNormalization.test.ts \
+  shared/searchFuzzy.test.ts \
+  shared/searchSuggestions.test.ts \
+  shared/searchLearning.test.ts \
+  shared/searchLearningStore.test.ts \
+  shared/globalSearchScope.test.ts \
+  --reporter=dot
+
+Run:
+
+git diff --check
+pnpm test
+pnpm check
+
+If pnpm check hits heap OOM:
+
+NODE_OPTIONS=--max-old-space-size=4096 pnpm check
+
+Distinguish unrelated pre-existing failures from parity failures.
+
+==================================================
+MANUAL/BEHAVIORAL VERIFICATION
+==================================================
+
+Verify representative searches across major modules:
+
+1) Exact/normalized Arabic result exists
+   → fuzzy result must NOT appear alongside it.
+
+2) Exact/normalized English result exists
+   → fuzzy fallback must NOT execute.
+
+3) Typo query with zero exact matches
+   → fuzzy returns the intended human-readable match.
+
+4) Phone/email/ID typo
+   → must NOT fuzzy-match.
+
+5) Suggestions
+   → no suggestions at 0–1 chars
+   → max 6 at 2+ chars.
+
+6) Voice
+   → transcript enters same search state and same exact-first/fallback behavior.
+
+7) Global Search
+   → fuzzy candidate cap 500.
+
+8) normal lists
+   → candidate cap <=1000 where fallback requires bounded in-memory/server candidates.
+
+9) Permissions
+   → no unauthorized entity appears under exact, fuzzy, suggestion, learning, or voice paths.
+
+==================================================
+SECURITY MUST REMAIN UNCHANGED
+==================================================
+
+Explicitly verify no regression in:
+- Lead/TAM/Tara visibility
+- Account Manager scope
+- Account Manager Lead scope
+- Sales Manager scope
+- Client Pool redaction
+- BD ownership/role restrictions
+- Inbox ownership/team access
+- WhatsApp session/team restrictions
+- Workspace tenant scope
+- Chat ownership/team scope
+- campaign/ad-account scope
+- HR restrictions
+- deleted-record filters
+- provider-specific scope such as Supabase/Zaghloul
+
+==================================================
+NO INFRASTRUCTURE CHANGES
+==================================================
+
+Do NOT add:
+- DB migration/schema change/db:push
+- new npm dependency
+- external search SaaS
+- unrestricted endpoint
+- background worker
+
+==================================================
+SERVER / DELIVERY RULE
+==================================================
+
+DO NOT:
+- commit
+- push GitHub
+- deploy
+- restart/reload PM2
+- run migrations
+
+Only modify and validate the CURRENT server checkout.
+Leave it ready for the user's normal system-managed push.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+TFCRM_PARITY_COMPLETE: YES/NO
+PARITY_PREREQUISITE: PASS/FAIL
+PATCH_APPLIED: YES/NO
+server branch
+server HEAD before application
+baseline/newer-state compatibility
+files added
+files modified during parity migration
+UI search controls reviewed
+UI parity integrated count
+UI parity exempt count
+UI parity pending count
+server fuzzy callsites reviewed
+server parity pending count
+strict parity audit PASS/FAIL
+focused tests result
+pnpm test result
+pnpm check result
+git diff --check
+exact-first behavior verification
+fuzzy-zero-only verification
+structured non-fuzzy verification
+suggestion 2-char/max-6 verification
+voice same-pipeline verification
+Global 500 cap verification
+list 1000 cap verification
+Phase 5 learning still secondary-only
+full authorization review
+no migration/dependency/unrestricted endpoint confirmation
+ready for normal system-managed push: YES/NO
+
+TFCRM_PARITY_COMPLETE may be YES only if:
+- Phase 6 prerequisite is green
+- every true Phase 6 search path has actual TFCRM exact-first behavior
+- every server fuzzy callsite is reviewed/migrated
+- strict parity audit has zero pending
+- parity focused tests pass
+- no authorization regression is found
