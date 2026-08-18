@@ -1,0 +1,82 @@
+diff --git a/client/src/pages/TaraAgentPage.tsx b/client/src/pages/TaraAgentPage.tsx
+--- a/client/src/pages/TaraAgentPage.tsx
++++ b/client/src/pages/TaraAgentPage.tsx
+@@ -118 +118 @@
+-    <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6" dir={isRTL ? "rtl" : "ltr"}>
++    <div className="mx-auto max-w-[1600px] space-y-5 p-4 md:p-6 xl:p-8" dir={isRTL ? "rtl" : "ltr"}>
+@@ -119 +119 @@
+-      <div className="flex flex-col gap-4 rounded-3xl border bg-gradient-to-br from-primary/10 via-background to-background p-6 shadow-sm md:flex-row md:items-center md:justify-between">
++      <div className="flex flex-col gap-4 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+@@ -124 +124 @@
+-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
++      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+@@ -125 +125 @@
+-        {[[taraText("\u0627\u0644\u062D\u0645\u0644\u0627\u062A"), counts.campaigns, Brain], [taraText("\u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A"), counts.conversations, MessageSquareText], [taraText("\u062A\u0627\u0631\u0627 \u0646\u0634\u0637\u0629"), counts.active, Activity], [taraText("\u062A\u062D\u0648\u064A\u0644 \u0628\u0634\u0631\u064A"), counts.handoff, Users], [taraText("\u0639\u0645\u0644\u064A\u0627\u062A AI"), counts.runs, Bot], [taraText("\u0623\u062E\u0637\u0627\u0621"), counts.failedRuns, ShieldCheck]].map(([label, value, Icon]: any) => <Card key={label}><CardContent className="p-4"><Icon className="mb-3 h-5 w-5 text-primary"/><p className="text-2xl font-black">{value || 0}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>)}
++        {[[taraText("\u0627\u0644\u062D\u0645\u0644\u0627\u062A"), counts.campaigns, Brain], [taraText("\u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A"), counts.conversations, MessageSquareText], [taraText("\u062A\u0627\u0631\u0627 \u0646\u0634\u0637\u0629"), counts.active, Activity], [taraText("\u062A\u062D\u0648\u064A\u0644 \u0628\u0634\u0631\u064A"), counts.handoff, Users], [taraText("\u0639\u0645\u0644\u064A\u0627\u062A AI"), counts.runs, Bot], [taraText("\u0623\u062E\u0637\u0627\u0621"), counts.failedRuns, ShieldCheck]].map(([label, value, Icon]: any) => <Card key={label} className="border-border/70 shadow-sm transition-shadow hover:shadow-md"><CardContent className="flex min-h-[112px] flex-col justify-between p-4"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary"><Icon className="h-4 w-4"/></div><div><p className="text-2xl font-black tracking-tight">{value || 0}</p><p className="mt-0.5 text-xs font-medium text-muted-foreground">{label}</p></div></CardContent></Card>)}
+@@ -129 +129 @@
+-        <TabsList className="h-auto flex-wrap justify-start">
++        <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-2xl bg-muted/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0">
+@@ -143 +143 @@
+-        <TabsContent value="settings"><Card><CardHeader><CardTitle>{taraText("\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629 \u0627\u0644\u0645\u0633\u062A\u0642\u0644\u0629")}</CardTitle></CardHeader><CardContent className="grid gap-5 md:grid-cols-2">
++        <TabsContent value="settings"><Card className="overflow-hidden border-border/70 shadow-sm"><CardHeader className="border-b bg-muted/20"><CardTitle>{taraText("\u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A \u0627\u0644\u0639\u0627\u0645\u0629 \u0627\u0644\u0645\u0633\u062A\u0642\u0644\u0629")}</CardTitle></CardHeader><CardContent className="grid gap-5 p-5 md:grid-cols-2 md:p-6">
+@@ -147 +147 @@
+-          <div className="space-y-2 md:col-span-2"><Label>{taraText("\u0648\u0635\u0641 \u0627\u0644\u062F\u0648\u0631")}</Label><Textarea value={settings.roleDescription || ""} onChange={e => setSettings({ ...settings, roleDescription: e.target.value })}/></div>
++          <div className="space-y-2 md:col-span-2"><Label>{taraText("\u0648\u0635\u0641 \u0627\u0644\u062F\u0648\u0631")}</Label><Textarea dir="auto" value={settings.roleDescription || ""} onChange={e => setSettings({ ...settings, roleDescription: e.target.value })}/></div>
+@@ -148 +148 @@
+-          <div className="space-y-2 md:col-span-2"><Label>{taraText("Instructions \u0627\u0644\u0639\u0627\u0645\u0629")}</Label><Textarea className="min-h-40" value={settings.generalInstructions || ""} onChange={e => setSettings({ ...settings, generalInstructions: e.target.value })} placeholder={taraText("\u0627\u0643\u062A\u0628 \u0637\u0628\u064A\u0639\u0629 \u0627\u0644\u0634\u0631\u0643\u0629\u060C \u0623\u0633\u0644\u0648\u0628 \u0627\u0644\u062D\u062F\u064A\u062B\u060C \u0627\u0644\u0645\u0645\u0646\u0648\u0639\u0627\u062A\u060C \u0648\u062D\u062F\u0648\u062F \u0627\u0644\u0648\u0643\u064A\u0644...")}/></div>
++          <div className="space-y-2 md:col-span-2"><Label>{taraText("Instructions \u0627\u0644\u0639\u0627\u0645\u0629")}</Label><Textarea dir="auto" className="min-h-44 resize-y" value={settings.generalInstructions || ""} onChange={e => setSettings({ ...settings, generalInstructions: e.target.value })} placeholder={taraText("\u0627\u0643\u062A\u0628 \u0637\u0628\u064A\u0639\u0629 \u0627\u0644\u0634\u0631\u0643\u0629\u060C \u0623\u0633\u0644\u0648\u0628 \u0627\u0644\u062D\u062F\u064A\u062B\u060C \u0627\u0644\u0645\u0645\u0646\u0648\u0639\u0627\u062A\u060C \u0648\u062D\u062F\u0648\u062F \u0627\u0644\u0648\u0643\u064A\u0644...")}/></div>
+@@ -152 +152 @@
+-          <div className="space-y-2"><Label>{taraText("\u0631\u0633\u0627\u0644\u0629 \u062E\u0627\u0631\u062C \u0627\u0644\u062F\u0648\u0627\u0645")}</Label><Textarea value={settings.outOfHoursMessage || ""} onChange={e => setSettings({ ...settings, outOfHoursMessage: e.target.value })}/></div>
++          <div className="space-y-2"><Label>{taraText("\u0631\u0633\u0627\u0644\u0629 \u062E\u0627\u0631\u062C \u0627\u0644\u062F\u0648\u0627\u0645")}</Label><Textarea dir="auto" value={settings.outOfHoursMessage || ""} onChange={e => setSettings({ ...settings, outOfHoursMessage: e.target.value })}/></div>
+@@ -157 +157 @@
+-          <div className="space-y-2 md:col-span-2"><Label>{taraText("\u0643\u0644\u0645\u0627\u062A \u0627\u0644\u062A\u062D\u0648\u064A\u0644 \u0644\u0645\u0648\u0638\u0641 \u2014 \u0633\u0637\u0631 \u0644\u0643\u0644 \u0643\u0644\u0645\u0629")}</Label><Textarea value={settings.handoffKeywordsText || ""} onChange={e => setSettings({ ...settings, handoffKeywordsText: e.target.value })}/></div>
++          <div className="space-y-2 md:col-span-2"><Label>{taraText("\u0643\u0644\u0645\u0627\u062A \u0627\u0644\u062A\u062D\u0648\u064A\u0644 \u0644\u0645\u0648\u0638\u0641 \u2014 \u0633\u0637\u0631 \u0644\u0643\u0644 \u0643\u0644\u0645\u0629")}</Label><Textarea dir="auto" value={settings.handoffKeywordsText || ""} onChange={e => setSettings({ ...settings, handoffKeywordsText: e.target.value })}/></div>
+@@ -159 +159 @@
+-          <div className="flex flex-wrap gap-2 md:col-span-2"><Button onClick={() => saveSettingsM.mutate(settingsPayload())} disabled={saveSettingsM.isPending}>{saveSettingsM.isPending && <Loader2 className="ms-2 h-4 w-4 animate-spin"/>}{taraText("\u062D\u0641\u0638 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A")}</Button><Button variant="outline" onClick={() => testProviderM.mutate()} disabled={testProviderM.isPending}>{taraText("\u0627\u062E\u062A\u0628\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644")}</Button><Button variant="secondary" onClick={() => processQueueM.mutate({ limit: 10 })}>{taraText("\u0645\u0639\u0627\u0644\u062C\u0629 Queue \u0627\u0644\u0622\u0646")}</Button></div>
++          <div className="sticky bottom-3 z-20 flex flex-wrap gap-2 rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur md:col-span-2"><Button onClick={() => saveSettingsM.mutate(settingsPayload())} disabled={saveSettingsM.isPending}>{saveSettingsM.isPending && <Loader2 className="ms-2 h-4 w-4 animate-spin"/>}{taraText("\u062D\u0641\u0638 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A")}</Button><Button variant="outline" onClick={() => testProviderM.mutate()} disabled={testProviderM.isPending}>{taraText("\u0627\u062E\u062A\u0628\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644")}</Button><Button variant="secondary" onClick={() => processQueueM.mutate({ limit: 10 })}>{taraText("\u0645\u0639\u0627\u0644\u062C\u0629 Queue \u0627\u0644\u0622\u0646")}</Button></div>
+
+diff --git a/client/src/pages/ZaghloulV5Page.tsx b/client/src/pages/ZaghloulV5Page.tsx
+--- a/client/src/pages/ZaghloulV5Page.tsx
++++ b/client/src/pages/ZaghloulV5Page.tsx
+@@ -38 +38 @@
+-    <Card>
++    <Card className="border-border/70 shadow-sm transition-shadow hover:shadow-md">
+@@ -39 +39 @@
+-      <CardContent className="flex items-center gap-4 p-4">
++      <CardContent className="flex min-h-[112px] items-center gap-4 p-4 md:p-5">
+@@ -40 +40 @@
+-        <Icon className="h-8 w-8 text-muted-foreground" />
++        <Icon className="h-7 w-7 shrink-0 text-primary" />
+@@ -41 +41 @@
+-        <div><p className="text-2xl font-bold">{value}</p><p className="text-sm text-muted-foreground">{label}</p></div>
++        <div><p className="text-2xl font-black tracking-tight">{value}</p><p className="mt-0.5 text-sm font-medium text-muted-foreground">{label}</p></div>
+@@ -73 +73 @@
+-      <div className="flex flex-col gap-6 p-6" dir={isRTL ? "rtl" : "ltr"}>
++      <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 md:p-6 xl:p-8" dir={isRTL ? "rtl" : "ltr"}>
+@@ -75 +75 @@
+-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
++        <div className="flex flex-col gap-4 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+@@ -77 +77 @@
+-            <h1 className="text-3xl font-black tracking-tight">{ar ? "زغلول" : "Zaghloul"}</h1>
++            <h1 className="text-2xl font-black tracking-tight md:text-3xl">{ar ? "زغلول" : "Zaghloul"}</h1>
+@@ -91 +91 @@
+-        <Card>
++        <Card className="border-border/70 bg-muted/20 shadow-none">
+@@ -92 +92 @@
+-          <CardHeader className="pb-3">
++          <CardHeader className="pb-2 pt-4">
+@@ -93 +93 @@
+-            <CardTitle className="flex items-center gap-2 text-base">
++            <CardTitle className="flex items-center gap-2 text-sm font-bold md:text-base">
+@@ -101 +101 @@
+-          <CardContent className="flex flex-wrap gap-2">
++          <CardContent className="flex flex-wrap gap-1.5 pb-4">
+@@ -109 +109 @@
+-        <Tabs defaultValue="dashboard" className="w-full">
++        <Tabs defaultValue="dashboard" className="w-full space-y-4">
+@@ -110 +110 @@
+-          <TabsList className="h-auto w-full flex-wrap justify-start gap-1 rounded-2xl bg-muted/60 p-1">
++          <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-2xl bg-muted/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0">
+@@ -126 +126 @@
+-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
++            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
