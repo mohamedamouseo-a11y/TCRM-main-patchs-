@@ -1,0 +1,660 @@
+diff --git a/shared/systemSmartSearch.ts b/shared/systemSmartSearch.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/systemSmartSearch.ts
+@@ -0,0 +1,105 @@
++import { normalizeSearchText } from "./searchNormalization";
++
++export type SystemSmartSearchFields = {
++  /** Human-readable fields: normalization + bounded one-edit fuzzy matching. */
++  text?: unknown[];
++  /** Structured fields: normalization + exact/prefix/contains only, never fuzzy. */
++  structured?: unknown[];
++};
++
++export const SYSTEM_SMART_SEARCH_MIN_FUZZY_LENGTH = 4;
++export const SYSTEM_SMART_SEARCH_MAX_FUZZY_LENGTH = 14;
++
++function oneEditAway(left: string, right: string): boolean {
++  const a = Array.from(left);
++  const b = Array.from(right);
++  if (Math.abs(a.length - b.length) > 1) return false;
++
++  if (a.length === b.length) {
++    const diff: number[] = [];
++    for (let index = 0; index < a.length; index += 1) {
++      if (a[index] !== b[index]) diff.push(index);
++      if (diff.length > 2) return false;
++    }
++    if (diff.length <= 1) return true;
++    const [x, y] = diff;
++    return y === x + 1 && a[x] === b[y] && a[y] === b[x];
++  }
++
++  const shorter = a.length < b.length ? a : b;
++  const longer = a.length < b.length ? b : a;
++  let i = 0;
++  let j = 0;
++  let edits = 0;
++  while (i < shorter.length && j < longer.length) {
++    if (shorter[i] === longer[j]) {
++      i += 1;
++      j += 1;
++    } else {
++      edits += 1;
++      j += 1;
++      if (edits > 1) return false;
++    }
++  }
++  return true;
++}
++
++function textFieldScore(query: string, value: unknown): number {
++  const field = normalizeSearchText(value);
++  if (!field) return 0;
++  if (field === query) return 1000;
++  if (field.startsWith(query)) return 920;
++  const words = field.split(" ").filter(Boolean);
++  if (words.some(word => word === query)) return 900;
++  if (words.some(word => word.startsWith(query))) return 860;
++  if (field.includes(query)) return 800;
++  if (
++    query.length >= SYSTEM_SMART_SEARCH_MIN_FUZZY_LENGTH &&
++    query.length <= SYSTEM_SMART_SEARCH_MAX_FUZZY_LENGTH &&
++    words.some(word => oneEditAway(query, word))
++  ) return 700;
++  return 0;
++}
++
++function structuredFieldScore(query: string, value: unknown): number {
++  const field = normalizeSearchText(value);
++  if (!field) return 0;
++  if (field === query) return 980;
++  if (field.startsWith(query)) return 840;
++  if (field.includes(query)) return 780;
++  return 0;
++}
++
++export function systemSmartSearchScore(
++  query: unknown,
++  fields: SystemSmartSearchFields,
++): number {
++  const normalized = normalizeSearchText(query);
++  if (!normalized) return 1;
++  return Math.max(
++    0,
++    ...(fields.text ?? []).map(value => textFieldScore(normalized, value)),
++    ...(fields.structured ?? []).map(value => structuredFieldScore(normalized, value)),
++  );
++}
++
++export function matchesSystemSmartSearch(
++  query: unknown,
++  fields: SystemSmartSearchFields,
++): boolean {
++  return systemSmartSearchScore(query, fields) > 0;
++}
++
++export function rankSystemSmartSearch<T>(
++  query: unknown,
++  items: T[],
++  getFields: (item: T) => SystemSmartSearchFields,
++): T[] {
++  const normalized = normalizeSearchText(query);
++  if (!normalized) return [...items];
++  return items
++    .map((item, index) => ({ item, index, score: systemSmartSearchScore(normalized, getFields(item)) }))
++    .filter(row => row.score > 0)
++    .sort((a, b) => b.score - a.score || a.index - b.index)
++    .map(row => row.item);
++}
++diff --git a/shared/systemSmartSearch.test.ts b/shared/systemSmartSearch.test.ts
++new file mode 100644
++--- /dev/null
+++++ b/shared/systemSmartSearch.test.ts
++@@ -0,0 +1,51 @@
+++import { describe, expect, it } from "vitest";
+++import {
+++  matchesSystemSmartSearch,
+++  rankSystemSmartSearch,
+++  systemSmartSearchScore,
+++} from "./systemSmartSearch";
+++
+++describe("system-wide smart search", () => {
+++  it("reuses Arabic normalization", () => {
+++    expect(matchesSystemSmartSearch("الامل", { text: ["الأمل"] })).toBe(true);
+++    expect(matchesSystemSmartSearch("احمد", { text: ["أحمد"] })).toBe(true);
+++  });
+++
+++  it("supports bounded one-edit fuzzy matching for human text", () => {
+++    expect(matchesSystemSmartSearch("mohmaed", { text: ["Mohamed"] })).toBe(true);
+++    expect(matchesSystemSmartSearch("احدم", { text: ["أحمد"] })).toBe(true);
+++  });
+++
+++  it("never fuzzes structured identifiers", () => {
+++    expect(matchesSystemSmartSearch("ahmd@example.com", { structured: ["ahmed@example.com"] })).toBe(false);
+++    expect(matchesSystemSmartSearch("1235", { structured: ["1234"] })).toBe(false);
+++    expect(matchesSystemSmartSearch("123", { structured: ["00123-456"] })).toBe(true);
+++  });
+++
+++  it("keeps semantic ranking exact before prefix before contains before fuzzy", () => {
+++    const rows = [
+++      { id: "fuzzy", name: "ahmd" },
+++      { id: "contains", name: "the ahmed company" },
+++      { id: "prefix", name: "ahmed group" },
+++      { id: "exact", name: "Ahmed" },
+++    ];
+++    expect(rankSystemSmartSearch("ahmed", rows, row => ({ text: [row.name] })).map(row => row.id))
+++      .toEqual(["exact", "prefix", "contains", "fuzzy"]);
+++  });
+++
+++  it("preserves stable source ordering when scores tie", () => {
+++    const rows = [{ id: 1, name: "Ahmed One" }, { id: 2, name: "Ahmed Two" }];
+++    expect(rankSystemSmartSearch("ahmed", rows, row => ({ text: [row.name] })).map(row => row.id))
+++      .toEqual([1, 2]);
+++  });
+++
+++  it("returns the original set for an empty query", () => {
+++    const rows = [{ id: 1 }, { id: 2 }];
+++    expect(rankSystemSmartSearch("", rows, () => ({ text: [] }))).toEqual(rows);
+++  });
+++
+++  it("gives structured exact matches a score without fuzzy expansion", () => {
+++    expect(systemSmartSearchScore("C-100", { structured: ["C-100"] })).toBeGreaterThan(0);
+++    expect(systemSmartSearchScore("C-101", { structured: ["C-100"] })).toBe(0);
+++  });
+++});
++diff --git a/client/src/components/search/SmartSearchBar.tsx b/client/src/components/search/SmartSearchBar.tsx
++new file mode 100644
++--- /dev/null
+++++ b/client/src/components/search/SmartSearchBar.tsx
++@@ -0,0 +1,99 @@
+++import { useId } from "react";
+++import { Search } from "lucide-react";
+++import { Input } from "@/components/ui/input";
+++import { cn } from "@/lib/utils";
+++import VoiceSearchButton from "./VoiceSearchButton";
+++
+++type SmartSearchBarProps = {
+++  value: string;
+++  onValueChange: (value: string) => void;
+++  placeholder?: string;
+++  language?: "ar-EG" | "en-US";
+++  suggestions?: string[];
+++  containerClassName?: string;
+++  inputClassName?: string;
+++  compact?: boolean;
+++  disabled?: boolean;
+++  showVoice?: boolean;
+++  onFocus?: () => void;
+++  onBlur?: () => void;
+++};
+++
+++export default function SmartSearchBar({
+++  value,
+++  onValueChange,
+++  placeholder,
+++  language = "en-US",
+++  suggestions = [],
+++  containerClassName,
+++  inputClassName,
+++  compact = false,
+++  disabled = false,
+++  showVoice = true,
+++  onFocus,
+++  onBlur,
+++}: SmartSearchBarProps) {
+++  const datalistId = useId().replace(/:/g, "-");
+++  const isRTL = language.startsWith("ar");
+++  const uniqueSuggestions = Array.from(new Set(
+++    suggestions.map(item => String(item ?? "").trim()).filter(Boolean)
+++  )).slice(0, 8);
+++  const labels = isRTL
+++    ? {
+++        start: "بحث بالصوت",
+++        listening: "جاري الاستماع... اضغط للإيقاف",
+++        unsupported: "البحث الصوتي غير مدعوم في هذا المتصفح",
+++        error: "تعذر التقاط الصوت. حاول مرة أخرى.",
+++      }
+++    : {
+++        start: "Search by voice",
+++        listening: "Listening... click to stop",
+++        unsupported: "Voice search is not supported in this browser",
+++        error: "Could not capture speech. Please try again.",
+++      };
+++
+++  return (
+++    <div className={cn("relative w-full", containerClassName)} dir={isRTL ? "rtl" : "ltr"}>
+++      <Search
+++        aria-hidden="true"
+++        className={cn(
+++          "pointer-events-none absolute top-1/2 z-10 -translate-y-1/2 text-muted-foreground",
+++          compact ? "h-3.5 w-3.5" : "h-4 w-4",
+++          isRTL ? "right-3" : "left-3",
+++        )}
+++      />
+++      <Input
+++        type="search"
+++        value={value}
+++        onChange={event => onValueChange(event.target.value)}
+++        placeholder={placeholder}
+++        disabled={disabled}
+++        autoComplete="off"
+++        list={uniqueSuggestions.length ? datalistId : undefined}
+++        onFocus={onFocus}
+++        onBlur={onBlur}
+++        className={cn(
+++          compact ? "h-8 text-xs" : "h-10",
+++          isRTL ? (showVoice ? "pr-9 pl-11" : "pr-9") : (showVoice ? "pl-9 pr-11" : "pl-9"),
+++          inputClassName,
+++        )}
+++      />
+++      {showVoice && (
+++        <VoiceSearchButton
+++          language={language}
+++          onTranscript={onValueChange}
+++          labels={labels}
+++          className={cn(
+++            "absolute top-1/2 -translate-y-1/2",
+++            isRTL ? "left-1" : "right-1",
+++          )}
+++        />
+++      )}
+++      {uniqueSuggestions.length > 0 && (
+++        <datalist id={datalistId}>
+++          {uniqueSuggestions.map(suggestion => <option key={suggestion} value={suggestion} />)}
+++        </datalist>
+++      )}
+++    </div>
+++  );
+++}
++diff --git a/scripts/audit-smart-search-bars.ts b/scripts/audit-smart-search-bars.ts
++new file mode 100644
++--- /dev/null
+++++ b/scripts/audit-smart-search-bars.ts
++@@ -0,0 +1,73 @@
+++import fs from "node:fs";
+++import path from "node:path";
+++
+++const ROOT = path.resolve(process.cwd(), "client/src");
+++const strict = process.argv.includes("--strict");
+++const extensions = new Set([".ts", ".tsx"]);
+++const searchSignals = [
+++  /placeholder\s*=\s*(?:\{[^\n]*(?:search|Search|بحث|ابحث)[^\n]*\}|["'`][^"'`]*(?:search|Search|بحث|ابحث)[^"'`]*["'`])/,
+++  /type\s*=\s*["']search["']/,
+++  /<CommandInput\b/,
+++  /\b(?:searchQuery|searchTerm|debouncedSearch|onSearchChange|setSearch)\b/,
+++];
+++const integrationSignals = [
+++  /SmartSearchBar/,
+++  /matchesSystemSmartSearch/,
+++  /rankSystemSmartSearch/,
+++  /normalizeSearchText/,
+++  /VoiceSearchButton/,
+++];
+++const exemptSignal = /SMART_SEARCH_AUDIT_EXEMPT:\s*(.+)/;
+++
+++function walk(dir: string): string[] {
+++  if (!fs.existsSync(dir)) return [];
+++  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+++    const full = path.join(dir, entry.name);
+++    if (entry.isDirectory()) return walk(full);
+++    return extensions.has(path.extname(entry.name)) ? [full] : [];
+++  });
+++}
+++
+++type AuditRow = {
+++  file: string;
+++  lines: number[];
+++  status: "integrated" | "exempt" | "pending";
+++  reason?: string;
+++};
+++
+++const rows: AuditRow[] = [];
+++for (const file of walk(ROOT)) {
+++  const source = fs.readFileSync(file, "utf8");
+++  const lines = source.split(/\r?\n/);
+++  const hitLines = lines.flatMap((line, index) =>
+++    searchSignals.some(pattern => pattern.test(line)) ? [index + 1] : []
+++  );
+++  if (!hitLines.length) continue;
+++  const exemption = source.match(exemptSignal)?.[1]?.trim();
+++  const integrated = integrationSignals.some(pattern => pattern.test(source));
+++  rows.push({
+++    file: path.relative(process.cwd(), file).replace(/\\/g, "/"),
+++    lines: hitLines.slice(0, 12),
+++    status: exemption ? "exempt" : integrated ? "integrated" : "pending",
+++    reason: exemption,
+++  });
+++}
+++
+++rows.sort((a, b) => a.file.localeCompare(b.file));
+++const pending = rows.filter(row => row.status === "pending");
+++console.log("# TCRM Smart Search Bar Audit");
+++console.log("");
+++console.log(`Candidates: ${rows.length} | Integrated: ${rows.filter(r => r.status === "integrated").length} | Exempt: ${rows.filter(r => r.status === "exempt").length} | Pending: ${pending.length}`);
+++console.log("");
+++console.log("| Status | File | Candidate lines | Reason |");
+++console.log("|---|---|---:|---|");
+++for (const row of rows) {
+++  console.log(`| ${row.status.toUpperCase()} | ${row.file} | ${row.lines.join(", ")} | ${row.reason ?? ""} |`);
+++}
+++console.log("");
+++console.log("Review rule: every PENDING file must be inspected manually. If it contains a true search bar, integrate Smart Search. If it is only a form/filter false-positive, add a specific SMART_SEARCH_AUDIT_EXEMPT comment explaining why.");
+++
+++if (strict && pending.length > 0) {
+++  console.error(`\nSmart Search audit failed: ${pending.length} candidate file(s) remain unreviewed.`);
+++  process.exitCode = 1;
+++}
++diff --git a/server/db.ts b/server/db.ts
++--- a/server/db.ts
+++++ b/server/db.ts
++@@ -807,9 +807,9 @@ export async function getLeads(filters: LeadFilters = {}) {
++   if (filters.search) {
++     conditions.push(
++       or(
++-        like(leads.name, `%${filters.search}%`),
++-        like(leads.phone, `%${filters.search}%`),
++-        like(leads.businessProfile, `%${filters.search}%`)
+++        fuzzyContains(leads.name, filters.search),
+++        normalizedContains(leads.phone, filters.search),
+++        fuzzyContains(leads.businessProfile, filters.search)
++       )!
++     );
++   }
++diff --git a/server/routes/bd/companies.ts b/server/routes/bd/companies.ts
++--- a/server/routes/bd/companies.ts
+++++ b/server/routes/bd/companies.ts
++@@ -5,5 +5,6 @@ import { bdCompanies, bdAuditLogs } from "../../../drizzle/schema_bd";
++ import { and, desc, eq, isNull, like, sql, or } from "drizzle-orm";
++ import { z } from "zod";
+++import { fuzzyContains, normalizedContains } from "../../utils/searchNormalizationSql";
++ 
++ const router = Router();
++@@ -16,7 +17,12 @@ router.get("/", async (req: BdAuthedRequest, res) => {
++   const offset = parseInt(req.query.offset as string) || 0;
++ 
++   const where: any[] = [isNull(bdCompanies.deletedAt)];
++-  if (search) where.push(or(like(bdCompanies.name, `%${search}%`), like(bdCompanies.domain, `%${search}%`)) as any);
+++  if (search) where.push(or(
+++    fuzzyContains(bdCompanies.name, search),
+++    normalizedContains(bdCompanies.domain, search),
+++    fuzzyContains(bdCompanies.city, search),
+++    fuzzyContains(bdCompanies.currentAgencyName, search),
+++  ) as any);
++   if (country) where.push(eq(bdCompanies.country, country as any));
++ 
++   const rows = await db.select().from(bdCompanies).where(and(...where)).orderBy(desc(bdCompanies.createdAt)).limit(limit).offset(offset);
++diff --git a/server/routes/bd/contacts.ts b/server/routes/bd/contacts.ts
++--- a/server/routes/bd/contacts.ts
+++++ b/server/routes/bd/contacts.ts
++@@ -5,5 +5,6 @@ import { bdContacts, bdAuditLogs } from "../../../drizzle/schema_bd";
++ import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
++ import { z } from "zod";
+++import { fuzzyContains, normalizedContains } from "../../utils/searchNormalizationSql";
++ 
++ const router = Router();
++@@ -16,7 +17,12 @@ router.get("/", async (req: BdAuthedRequest, res) => {
++   const offset = parseInt(req.query.offset as string) || 0;
++ 
++   const where: any[] = [isNull(bdContacts.deletedAt)];
++-  if (search) where.push(or(like(bdContacts.fullName, `%${search}%`), like(bdContacts.email, `%${search}%`), like(bdContacts.phone, `%${search}%`)) as any);
+++  if (search) where.push(or(
+++    fuzzyContains(bdContacts.fullName, search),
+++    fuzzyContains(bdContacts.jobTitle, search),
+++    normalizedContains(bdContacts.email, search),
+++    normalizedContains(bdContacts.phone, search),
+++  ) as any);
++   if (companyId) where.push(eq(bdContacts.companyId, companyId));
++ 
++   const rows = await db.select().from(bdContacts).where(and(...where)).orderBy(desc(bdContacts.createdAt)).limit(limit).offset(offset);
++diff --git a/client/src/pages/Inbox.tsx b/client/src/pages/Inbox.tsx
++--- a/client/src/pages/Inbox.tsx
+++++ b/client/src/pages/Inbox.tsx
++@@ -24,5 +24,6 @@ import {
++   type InboxTab,
++ } from "../components/inbox/types";
+++import { matchesSystemSmartSearch } from "@shared/systemSmartSearch";
++ 
++ const PAGE_SIZE = 30;
++@@ -145,7 +146,10 @@ export default function InboxPage() {
++       .filter((item) => {
++         if (!debouncedSearch) return true;
++-        return getSearchableText(item).includes(debouncedSearch.toLowerCase());
+++        return matchesSystemSmartSearch(debouncedSearch, {
+++          text: [getSearchableText(item)],
+++          structured: [item.id, getMessageLeadId(item)],
+++        });
++       })
++       .map((item) => ({ ...item, isRead: forcedUnreadIds.has(item.id) ? false : item.isRead }))
++       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
++diff --git a/client/src/components/inbox/MessageList.tsx b/client/src/components/inbox/MessageList.tsx
++--- a/client/src/components/inbox/MessageList.tsx
+++++ b/client/src/components/inbox/MessageList.tsx
++@@ -11,7 +11,6 @@ import {
++   Inbox,
++   Loader2,
++   Megaphone,
++-  Search,
++   Trash2,
++   UserCheck,
++   UserPlus,
++@@ -20,7 +19,7 @@ import {
++ } from "lucide-react";
++ import { Button } from "@/components/ui/button";
++ import { Checkbox } from "@/components/ui/checkbox";
++-import { Input } from "@/components/ui/input";
++ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
++ import { Skeleton } from "@/components/ui/skeleton";
++ import { cn } from "@/lib/utils";
+++import SmartSearchBar from "@/components/search/SmartSearchBar";
++@@ -143,12 +141,14 @@ export function MessageList({
++       <div className="border-b bg-background/95 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
++         <div className="flex items-center gap-2">
++           <div className="relative flex-1 min-w-0">
++-            <Search className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
++-            <Input
+++            <SmartSearchBar
++               value={searchQuery}
++-              onChange={(e) => onSearchChange(e.target.value)}
++-              className="h-8 rounded-lg bg-muted/40 ps-8 text-xs"
+++              onValueChange={onSearchChange}
++               placeholder={isArabic ? "بحث..." : "Search..."}
+++              language={isArabic ? "ar-EG" : "en-US"}
+++              compact
+++              inputClassName="rounded-lg bg-muted/40"
+++              suggestions={items.flatMap(item => [getMessageLeadName(item), getMessageTitle(item, isArabic)]).filter(Boolean) as string[]}
++             />
++           </div>
++ 
++diff --git a/client/src/pages/BD/DealsKanban.tsx b/client/src/pages/BD/DealsKanban.tsx
++--- a/client/src/pages/BD/DealsKanban.tsx
+++++ b/client/src/pages/BD/DealsKanban.tsx
++@@ -8,5 +8,7 @@ import BulkActionBar from '@/components/BulkActionBar';
++ import SavedViewsDropdown from '@/components/SavedViewsDropdown';
++ import { getUrlString, getUrlNumber, useSyncUrlState } from '@/hooks/useUrlSyncedState';
++ import { trpc } from '@/lib/trpc';
+++import SmartSearchBar from '@/components/search/SmartSearchBar';
+++import { matchesSystemSmartSearch } from '@shared/systemSmartSearch';
++ 
++ export default function DealsKanban() {
++@@ -58,6 +60,10 @@ export default function DealsKanban() {
++ 
++   if (err) return <CRMLayout><div className='p-8 text-red-600 text-center'>⚠️ {err}</div></CRMLayout>;
++ 
++-  const filterDeal = (d: any) => !search || (d.title?.toLowerCase().includes(search.toLowerCase()) || d.companyName?.toLowerCase().includes(search.toLowerCase()));
+++  const filterDeal = (d: any) => matchesSystemSmartSearch(search, {
+++    text: [d.title, d.companyName],
+++    structured: [d.id],
+++  });
+++  const dealSuggestions = columns.flatMap((column: any) => column.deals ?? []).flatMap((deal: any) => [deal.title, deal.companyName]).filter(Boolean);
++ 
++   return (
++@@ -101,11 +108,13 @@ export default function DealsKanban() {
++             {pipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
++           </select>
++         </div>
++-        <input
++-          type='text'
+++        <SmartSearchBar
++           value={search}
++-          onChange={e => setSearch(e.target.value)}
+++          onValueChange={setSearch}
++           placeholder={isRTL ? 'بحث في الصفقات...' : 'Search deals...'}
++-          className='flex-1 min-w-[200px] border border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none'
+++          language={lang === 'ar' ? 'ar-EG' : 'en-US'}
+++          suggestions={dealSuggestions}
+++          containerClassName='flex-1 min-w-[200px]'
+++          inputClassName='border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg focus-visible:ring-indigo-500'
++         />
++         <button onClick={() => setShowCreate(true)} className='inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg text-sm font-semibold hover:shadow-lg transition shadow-md'>
++diff --git a/client/src/pages/BD/CompaniesList.tsx b/client/src/pages/BD/CompaniesList.tsx
++--- a/client/src/pages/BD/CompaniesList.tsx
+++++ b/client/src/pages/BD/CompaniesList.tsx
++@@ -3,7 +3,8 @@ import { Link } from 'wouter';
++ import { bdApi } from '@/api/bd';
++ import CRMLayout from '@/components/CRMLayout';
++ import { useLanguage } from '@/contexts/LanguageContext';
++-import { ArrowLeft, Plus, Search, Building2, Globe, MapPin, Trash2, ExternalLink } from 'lucide-react';
+++import { ArrowLeft, Plus, Building2, Globe, MapPin, Trash2, ExternalLink } from 'lucide-react';
++ import { getUrlString, useSyncUrlState } from '@/hooks/useUrlSyncedState';
+++import SmartSearchBar from '@/components/search/SmartSearchBar';
++ 
++ export default function CompaniesList() {
++@@ -51,7 +52,13 @@ export default function CompaniesList() {
++       {/* Toolbar */}
++       <div className='flex gap-2 flex-wrap bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 shadow-sm'>
++         <div className='flex-1 relative min-w-[240px]'>
++-          <Search size={14} className={'absolute top-1/2 -translate-y-1/2 text-slate-400 ' + (isRTL ? 'right-3' : 'left-3')} />
++-          <input placeholder={t('bdSearchCompanies')} value={search} onChange={e => setSearch(e.target.value)} className={'w-full border border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none ' + (isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3')} />
+++          <SmartSearchBar
+++            value={search}
+++            onValueChange={setSearch}
+++            placeholder={t('bdSearchCompanies')}
+++            language={lang === 'ar' ? 'ar-EG' : 'en-US'}
+++            suggestions={rows.map(row => row.name).filter(Boolean)}
+++            inputClassName='border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg focus-visible:ring-emerald-500'
+++          />
++         </div>
++         <select value={country} onChange={e => setCountry(e.target.value)} className='border border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none'>
++diff --git a/client/src/pages/BD/ContactsList.tsx b/client/src/pages/BD/ContactsList.tsx
++--- a/client/src/pages/BD/ContactsList.tsx
+++++ b/client/src/pages/BD/ContactsList.tsx
++@@ -3,8 +3,9 @@ import { Link } from 'wouter';
++ import { bdApi } from '@/api/bd';
++ import CRMLayout from '@/components/CRMLayout';
++ import { useLanguage } from '@/contexts/LanguageContext';
++-import { ArrowLeft, Plus, Search, Users, Mail, Phone, Crown, Trash2 } from 'lucide-react';
+++import { ArrowLeft, Plus, Users, Mail, Phone, Crown, Trash2 } from 'lucide-react';
++ import { getUrlString, useSyncUrlState } from '@/hooks/useUrlSyncedState';
+++import SmartSearchBar from '@/components/search/SmartSearchBar';
++ 
++ export default function ContactsList() {
++-  const { t, isRTL } = useLanguage();
+++  const { t, isRTL, lang } = useLanguage();
++@@ -43,7 +44,13 @@ export default function ContactsList() {
++ 
++       <div className='bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 shadow-sm'>
++         <div className='relative'>
++-          <Search size={14} className={'absolute top-1/2 -translate-y-1/2 text-slate-400 ' + (isRTL ? 'right-3' : 'left-3')} />
++-          <input placeholder={t('bdSearch')} value={search} onChange={e => setSearch(e.target.value)} className={'w-full border border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg py-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none ' + (isRTL ? 'pr-9 pl-3' : 'pl-9 pr-3')} />
+++          <SmartSearchBar
+++            value={search}
+++            onValueChange={setSearch}
+++            placeholder={t('bdSearch')}
+++            language={lang === 'ar' ? 'ar-EG' : 'en-US'}
+++            suggestions={rows.map(row => row.fullName).filter(Boolean)}
+++            inputClassName='border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg focus-visible:ring-purple-500'
+++          />
++         </div>
++       </div>
++diff --git a/client/src/pages/MetaCampaigns.tsx b/client/src/pages/MetaCampaigns.tsx
++--- a/client/src/pages/MetaCampaigns.tsx
+++++ b/client/src/pages/MetaCampaigns.tsx
++@@ -39,5 +39,7 @@ import {
++   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
++   ResponsiveContainer, BarChart, Bar, Legend,
++ } from "recharts";
+++import SmartSearchBar from "@/components/search/SmartSearchBar";
+++import { matchesSystemSmartSearch } from "@shared/systemSmartSearch";
++ 
++ // ─── Types ─────────────────────────────────────────────────────────────
++@@ -449,7 +451,9 @@ export default function MetaCampaigns() {
++     let result = [...campaigns];
++     // Search
++     if (searchQuery.trim()) {
++-      const q = searchQuery.toLowerCase();
++-      result = result.filter((c: any) => c.campaignName?.toLowerCase().includes(q) || c.campaignId?.toLowerCase().includes(q));
+++      result = result.filter((c: any) => matchesSystemSmartSearch(searchQuery, {
+++        text: [c.campaignName],
+++        structured: [c.campaignId],
+++      }));
++     }
++     // Status filter
++@@ -915,19 +919,14 @@ export default function MetaCampaigns() {
++               <div className="flex flex-col lg:flex-row items-start lg:items-center gap-3">
++                 {/* Search */}
++                 <div className="relative flex-1 min-w-[200px]">
++-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
++-                  <Input
+++                  <SmartSearchBar
++                     placeholder={isRTL ? "بحث باسم الحملة..." : "Search campaigns..."}
++                     value={searchQuery}
++-                    onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
++-                    className="pl-9 h-10 bg-muted/30 border-0 focus-visible:ring-1"
++-                    dir="ltr"
+++                    onValueChange={(value) => { setSearchQuery(value); setCurrentPage(1); }}
+++                    language={isRTL ? "ar-EG" : "en-US"}
+++                    suggestions={campaigns.map((campaign: any) => campaign.campaignName).filter(Boolean)}
+++                    inputClassName="bg-muted/30 border-0 focus-visible:ring-1"
++                   />
++-                  {searchQuery && (
++-                    <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
++-                      <X size={14} />
++-                    </button>
++-                  )}
++                 </div>
++ 
++                 {/* Status Filter */}
++diff --git a/client/src/pages/LeadsList.tsx b/client/src/pages/LeadsList.tsx
++--- a/client/src/pages/LeadsList.tsx
+++++ b/client/src/pages/LeadsList.tsx
++@@ -40,4 +40,5 @@ import { PhoneInput } from "@/components/PhoneInput";
++ import { CountrySelect } from "@/components/CountrySelect";
++ import { countries } from "@/lib/countries-data";
+++import SmartSearchBar from "@/components/search/SmartSearchBar";
++ 
++ const LEAD_QUALITIES = ["Hot", "Warm", "Cold", "Bad", "Unknown"];
++@@ -957,22 +958,14 @@ export default function LeadsList() {
++             <div className="flex flex-wrap items-end gap-3">
++               <div className="space-y-2 flex-1 min-w-[240px]">
++                 <Label>{t("search")}</Label>
++-                <div className="relative">
++-                  <Search
++-                    size={14}
++-                    className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground ${
++-                      isRTL ? "right-3" : "left-3"
++-                    }`}
++-                  />
++-                  <Input
++-                    placeholder={t("search")}
++-                    value={search}
++-                    onChange={(e) => {
++-                      setSearch(e.target.value);
++-                      setPage(0);
++-                    }}
++-                    className={isRTL ? "pr-9" : "pl-9"}
++-                  />
++-                </div>
+++                <SmartSearchBar
+++                  placeholder={t("search")}
+++                  value={search}
+++                  onValueChange={(value) => {
+++                    setSearch(value);
+++                    setPage(0);
+++                  }}
+++                  language={isRTL ? "ar-EG" : "en-US"}
+++                />
++                 {searchPhoneConflict?.conflictWithAnotherSalesAgent && (
++                   <div className="flex items-center gap-2 rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-600 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 mt-1">
++
