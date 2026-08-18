@@ -1,0 +1,550 @@
+diff --git a/shared/searchLearning.ts b/shared/searchLearning.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchLearning.ts
+@@ -0,0 +1,128 @@
++export type SearchLearningEntityType = "client" | "deal" | "company" | "contact";
++
++export type SearchLearningEntry = {
++  key: string;
++  type: SearchLearningEntityType;
++  count: number;
++  lastSelectedAt: number;
++};
++
++export type SearchLearningProfile = {
++  version: 1;
++  entries: SearchLearningEntry[];
++};
++
++export const SEARCH_LEARNING_MAX_ENTRIES = 50;
++export const SEARCH_LEARNING_TTL_MS = 180 * 24 * 60 * 60 * 1000;
++export const SEARCH_LEARNING_RECENCY_HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000;
++export const SEARCH_LEARNING_MAX_COUNT = 20;
++export const SEARCH_LEARNING_MAX_BOOST = 60;
++
++export const EMPTY_SEARCH_LEARNING_PROFILE: SearchLearningProfile = {
++  version: 1,
++  entries: [],
++};
++
++const ENTITY_KEY_RE = /^(client|deal|company|contact):[1-9]\d*$/;
++
++function isEntityType(value: unknown): value is SearchLearningEntityType {
++  return ["client", "deal", "company", "contact"].includes(String(value));
++}
++
++function isSafeTimestamp(value: unknown): value is number {
++  return Number.isFinite(value) && Number(value) > 0;
++}
++
++/**
++ * Sanitizes browser-stored learning data. The profile intentionally contains
++ * only opaque entity ids, selection count, and timestamp — never query text,
++ * names, emails, phone numbers, or result payloads.
++ */
++export function sanitizeSearchLearningProfile(
++  raw: unknown,
++  now = Date.now(),
++): SearchLearningProfile {
++  const input = raw && typeof raw === "object" ? raw as any : {};
++  const entries: unknown[] = Array.isArray(input.entries) ? input.entries : [];
++
++  const safe = entries
++    .map((entry: unknown): SearchLearningEntry | null => {
++      const candidate = entry && typeof entry === "object" ? entry as any : {};
++      const key = String(candidate?.key ?? "");
++      const type = String(candidate?.type ?? "");
++      const count = Math.max(1, Math.min(Number(candidate?.count) || 1, SEARCH_LEARNING_MAX_COUNT));
++      const lastSelectedAt = Number(candidate?.lastSelectedAt);
++
++      if (!ENTITY_KEY_RE.test(key) || !isEntityType(type) || !isSafeTimestamp(lastSelectedAt)) {
++        return null;
++      }
++      if (!key.startsWith(`${type}:`)) return null;
++      if (lastSelectedAt > now + 5 * 60 * 1000) return null;
++      if (now - lastSelectedAt > SEARCH_LEARNING_TTL_MS) return null;
++
++      return { key, type, count, lastSelectedAt };
++    })
++    .filter((entry: SearchLearningEntry | null): entry is SearchLearningEntry => Boolean(entry))
++    .sort((a, b) => b.lastSelectedAt - a.lastSelectedAt)
++    .slice(0, SEARCH_LEARNING_MAX_ENTRIES);
++
++  return { version: 1, entries: safe };
++}
++
++export function recordSearchLearningSelection(
++  profile: unknown,
++  type: SearchLearningEntityType,
++  id: number,
++  now = Date.now(),
++): SearchLearningProfile {
++  const current = sanitizeSearchLearningProfile(profile, now);
++  if (!Number.isInteger(id) || id <= 0) return current;
++
++  const key = `${type}:${id}`;
++  const existing = current.entries.find(entry => entry.key === key);
++  const nextEntry: SearchLearningEntry = {
++    key,
++    type,
++    count: Math.min((existing?.count ?? 0) + 1, SEARCH_LEARNING_MAX_COUNT),
++    lastSelectedAt: now,
++  };
++
++  return sanitizeSearchLearningProfile({
++    version: 1,
++    entries: [
++      nextEntry,
++      ...current.entries.filter(entry => entry.key !== key),
++    ],
++  }, now);
++}
++
++export function getSearchLearningBoost(
++  profile: unknown,
++  key: string,
++  now = Date.now(),
++): number {
++  const current = sanitizeSearchLearningProfile(profile, now);
++  const entry = current.entries.find(item => item.key === key);
++  if (!entry) return 0;
++
++  const age = Math.max(0, now - entry.lastSelectedAt);
++  const recency = 36 * Math.pow(0.5, age / SEARCH_LEARNING_RECENCY_HALF_LIFE_MS);
++  const frequency = Math.min(entry.count, 8) * 3;
++  return Math.max(0, Math.min(SEARCH_LEARNING_MAX_BOOST, recency + frequency));
++}
++
++export function rankSearchResultsByLearning<T>(
++  items: T[],
++  profile: unknown,
++  getKey: (item: T) => string,
++  now = Date.now(),
++): T[] {
++  return items
++    .map((item, index) => ({
++      item,
++      index,
++      boost: getSearchLearningBoost(profile, getKey(item), now),
++    }))
++    .sort((a, b) => b.boost - a.boost || a.index - b.index)
++    .map(row => row.item);
++}
++diff --git a/shared/searchLearning.test.ts b/shared/searchLearning.test.ts
++new file mode 100644
++--- /dev/null
+++++ b/shared/searchLearning.test.ts
++@@ -0,0 +1,105 @@
+++import { describe, expect, it } from "vitest";
+++import {
+++  EMPTY_SEARCH_LEARNING_PROFILE,
+++  SEARCH_LEARNING_MAX_ENTRIES,
+++  SEARCH_LEARNING_TTL_MS,
+++  getSearchLearningBoost,
+++  rankSearchResultsByLearning,
+++  recordSearchLearningSelection,
+++  sanitizeSearchLearningProfile,
+++} from "./searchLearning";
+++
+++const NOW = 2_000_000_000_000;
+++
+++describe("search learning", () => {
+++  it("learns repeated selections without storing query text or PII", () => {
+++    let profile = recordSearchLearningSelection(
+++      EMPTY_SEARCH_LEARNING_PROFILE,
+++      "client",
+++      42,
+++      NOW,
+++    );
+++    profile = recordSearchLearningSelection(profile, "client", 42, NOW + 1_000);
+++
+++    expect(profile.entries).toEqual([
+++      {
+++        key: "client:42",
+++        type: "client",
+++        count: 2,
+++        lastSelectedAt: NOW + 1_000,
+++      },
+++    ]);
+++    expect(JSON.stringify(profile)).not.toContain("query");
+++    expect(JSON.stringify(profile)).not.toContain("email");
+++    expect(JSON.stringify(profile)).not.toContain("phone");
+++  });
+++
+++  it("gives stronger boost to recent/frequent selections", () => {
+++    let profile = recordSearchLearningSelection(
+++      EMPTY_SEARCH_LEARNING_PROFILE,
+++      "deal",
+++      7,
+++      NOW - 60 * 24 * 60 * 60 * 1000,
+++    );
+++    profile = recordSearchLearningSelection(profile, "deal", 8, NOW);
+++    profile = recordSearchLearningSelection(profile, "deal", 8, NOW + 1);
+++
+++    expect(getSearchLearningBoost(profile, "deal:8", NOW + 2))
+++      .toBeGreaterThan(getSearchLearningBoost(profile, "deal:7", NOW + 2));
+++  });
+++
+++  it("expires stale learning signals", () => {
+++    const profile = sanitizeSearchLearningProfile({
+++      version: 1,
+++      entries: [{
+++        key: "company:3",
+++        type: "company",
+++        count: 10,
+++        lastSelectedAt: NOW - SEARCH_LEARNING_TTL_MS - 1,
+++      }],
+++    }, NOW);
+++
+++    expect(profile.entries).toEqual([]);
+++    expect(getSearchLearningBoost(profile, "company:3", NOW)).toBe(0);
+++  });
+++
+++  it("caps, sanitizes, and rejects malformed entity keys", () => {
+++    const entries = Array.from({ length: SEARCH_LEARNING_MAX_ENTRIES + 10 }, (_, index) => ({
+++      key: `contact:${index + 1}`,
+++      type: "contact",
+++      count: 100,
+++      lastSelectedAt: NOW - index,
+++    }));
+++    entries.push({
+++      key: "contact:evil",
+++      type: "contact",
+++      count: 1,
+++      lastSelectedAt: NOW,
+++    });
+++
+++    const profile = sanitizeSearchLearningProfile({ version: 99, entries }, NOW);
+++    expect(profile.version).toBe(1);
+++    expect(profile.entries).toHaveLength(SEARCH_LEARNING_MAX_ENTRIES);
+++    expect(profile.entries.every(entry => entry.count <= 20)).toBe(true);
+++    expect(profile.entries.some(entry => entry.key === "contact:evil")).toBe(false);
+++  });
+++
+++  it("reorders only the authorized result set supplied by the caller", () => {
+++    let profile = recordSearchLearningSelection(
+++      EMPTY_SEARCH_LEARNING_PROFILE,
+++      "client",
+++      2,
+++      NOW,
+++    );
+++    const authorized = [{ id: 1 }, { id: 2 }, { id: 3 }];
+++    const ranked = rankSearchResultsByLearning(
+++      authorized,
+++      profile,
+++      item => `client:${item.id}`,
+++      NOW,
+++    );
+++
+++    expect(ranked.map(item => item.id)).toEqual([2, 1, 3]);
+++    expect(ranked).toHaveLength(authorized.length);
+++  });
+++});
++diff --git a/client/src/lib/searchLearningStore.ts b/client/src/lib/searchLearningStore.ts
++new file mode 100644
++--- /dev/null
+++++ b/client/src/lib/searchLearningStore.ts
++@@ -0,0 +1,54 @@
+++import {
+++  EMPTY_SEARCH_LEARNING_PROFILE,
+++  recordSearchLearningSelection as recordSelection,
+++  sanitizeSearchLearningProfile,
+++  type SearchLearningEntityType,
+++  type SearchLearningProfile,
+++} from "@shared/searchLearning";
+++
+++const STORAGE_PREFIX = "tcrm-smart-search-learning-v1";
+++
+++function getStorageKey(userId: number) {
+++  return `${STORAGE_PREFIX}:${userId}`;
+++}
+++
+++export function loadSearchLearningProfile(
+++  userId: number,
+++  now = Date.now(),
+++): SearchLearningProfile {
+++  if (!Number.isInteger(userId) || userId <= 0 || typeof window === "undefined") {
+++    return EMPTY_SEARCH_LEARNING_PROFILE;
+++  }
+++
+++  try {
+++    const raw = window.localStorage.getItem(getStorageKey(userId));
+++    if (!raw) return EMPTY_SEARCH_LEARNING_PROFILE;
+++    return sanitizeSearchLearningProfile(JSON.parse(raw), now);
+++  } catch {
+++    return EMPTY_SEARCH_LEARNING_PROFILE;
+++  }
+++}
+++
+++function persistSearchLearningProfile(
+++  userId: number,
+++  profile: SearchLearningProfile,
+++) {
+++  if (!Number.isInteger(userId) || userId <= 0 || typeof window === "undefined") return;
+++  try {
+++    window.localStorage.setItem(getStorageKey(userId), JSON.stringify(profile));
+++  } catch {
+++    // Storage may be disabled or full. Search must continue without learning.
+++  }
+++}
+++
+++export function recordSearchLearningSelection(
+++  userId: number,
+++  profile: SearchLearningProfile,
+++  type: SearchLearningEntityType,
+++  id: number,
+++  now = Date.now(),
+++): SearchLearningProfile {
+++  const next = recordSelection(profile, type, id, now);
+++  persistSearchLearningProfile(userId, next);
+++  return next;
+++}
++diff --git a/shared/searchSuggestions.ts b/shared/searchSuggestions.ts
++--- a/shared/searchSuggestions.ts
+++++ b/shared/searchSuggestions.ts
++@@ -1,10 +1,12 @@
++ import { normalizeSearchText } from "./searchNormalization";
++ 
++ export const SEARCH_SUGGESTION_MIN_QUERY_LENGTH = 2;
++ export const SEARCH_SUGGESTION_DEFAULT_LIMIT = 6;
+++export const SEARCH_SUGGESTION_MAX_LEARNING_BOOST = 60;
++ 
++ export type SearchSuggestionInput<T> = {
++   value: T;
++   fields: unknown[];
+++  learningBoost?: number;
++ };
++ 
++ function oneEditAway(left: string, right: string): boolean {
++@@ -69,9 +71,19 @@
++       value: candidate.value,
++       index,
++       score: Math.max(0, ...candidate.fields.map(field => fieldScore(normalized, field))),
+++      learningBoost: Math.max(
+++        0,
+++        Math.min(Number(candidate.learningBoost) || 0, SEARCH_SUGGESTION_MAX_LEARNING_BOOST),
+++      ),
++     }))
++     .filter(candidate => candidate.score > 0)
++-    .sort((a, b) => b.score - a.score || a.index - b.index)
+++    // Learning can reorder equally relevant matches, but can never promote a
+++    // weaker semantic tier over an exact/prefix/contains match.
+++    .sort((a, b) =>
+++      b.score - a.score ||
+++      b.learningBoost - a.learningBoost ||
+++      a.index - b.index
+++    )
++     .slice(0, safeLimit)
++     .map(candidate => candidate.value);
++ }
++diff --git a/shared/searchSuggestions.test.ts b/shared/searchSuggestions.test.ts
++--- a/shared/searchSuggestions.test.ts
+++++ b/shared/searchSuggestions.test.ts
++@@ -11,6 +11,18 @@
++     ], 10)).toEqual(["exact", "prefix", "contains", "fuzzy"]);
++   });
++ 
+++  it("uses learning only to reorder equally relevant suggestions", () => {
+++    expect(rankSearchSuggestions("ahmed", [
+++      { value: "first", fields: ["Ahmed One"], learningBoost: 0 },
+++      { value: "learned", fields: ["Ahmed Two"], learningBoost: 60 },
+++    ], 10)).toEqual(["learned", "first"]);
+++
+++    expect(rankSearchSuggestions("ahmed", [
+++      { value: "prefix-learned", fields: ["Ahmed Group"], learningBoost: 60 },
+++      { value: "exact", fields: ["Ahmed"], learningBoost: 0 },
+++    ], 10)).toEqual(["exact", "prefix-learned"]);
+++  });
+++
++   it("reuses Arabic normalization", () => {
++     expect(rankSearchSuggestions("الامل", [
++       { value: "normalized", fields: ["الأمل"] },
++diff --git a/client/src/components/GlobalSearch.tsx b/client/src/components/GlobalSearch.tsx
++--- a/client/src/components/GlobalSearch.tsx
+++++ b/client/src/components/GlobalSearch.tsx
++@@ -9,6 +9,17 @@
++ import { normalizeSearchText } from '@shared/searchNormalization';
++ import { rankSearchSuggestions } from '@shared/searchSuggestions';
++ import { canIncludeClientsInGlobalSearch, GLOBAL_SEARCH_CLIENT_LIMIT } from '@shared/globalSearchScope';
+++import {
+++  EMPTY_SEARCH_LEARNING_PROFILE,
+++  getSearchLearningBoost,
+++  rankSearchResultsByLearning,
+++  type SearchLearningEntityType,
+++  type SearchLearningProfile,
+++} from '@shared/searchLearning';
+++import {
+++  loadSearchLearningProfile,
+++  recordSearchLearningSelection,
+++} from '@/lib/searchLearningStore';
++ 
++ export default function GlobalSearch() {
++   const { t, isRTL, lang } = useLanguage();
++@@ -18,7 +29,11 @@
++   const [q, setQ] = useState('');
++   const [results, setResults] = useState<any>({ deals: [], companies: [], contacts: [] });
++   const [loading, setLoading] = useState(false);
+++  const [learningProfile, setLearningProfile] = useState<SearchLearningProfile>(
+++    EMPTY_SEARCH_LEARNING_PROFILE,
+++  );
++   const inputRef = useRef<HTMLInputElement>(null);
+++  const userId = Number((user as any)?.id ?? 0);
++   const normalizedQ = normalizeSearchText(q);
++   const clientSearchEnabled =
++     open &&
++@@ -31,6 +46,10 @@
++     { enabled: clientSearchEnabled, retry: false, staleTime: 10_000 },
++   );
++ 
+++  useEffect(() => {
+++    setLearningProfile(loadSearchLearningProfile(userId));
+++  }, [userId]);
+++
++   useEffect(() => {
++     const onKey = (e: KeyboardEvent) => {
++       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
++@@ -61,14 +80,44 @@
++   if (!open) return null;
++   const cur = t('bdCurrencyEgp');
++   const clientResults = clientSearchEnabled ? (clientsQ.data?.data ?? []) : [];
++-  const total = clientResults.length + (results.deals?.length || 0) + (results.companies?.length || 0) + (results.contacts?.length || 0);
+++  const dealResults = results.deals ?? [];
+++  const companyResults = results.companies ?? [];
+++  const contactResults = results.contacts ?? [];
+++  const total = clientResults.length + dealResults.length + companyResults.length + contactResults.length;
++   const isSearching = loading || (clientSearchEnabled && clientsQ.isFetching);
+++  const learningNow = Date.now();
+++  const learningBoost = (type: SearchLearningEntityType, id: unknown) =>
+++    getSearchLearningBoost(learningProfile, `${type}:${Number(id)}`, learningNow);
+++  const rankedClientResults = rankSearchResultsByLearning(
+++    clientResults,
+++    learningProfile,
+++    (client: any) => `client:${client.id}`,
+++    learningNow,
+++  );
+++  const rankedDealResults = rankSearchResultsByLearning(
+++    dealResults,
+++    learningProfile,
+++    (deal: any) => `deal:${deal.id}`,
+++    learningNow,
+++  );
+++  const rankedCompanyResults = rankSearchResultsByLearning(
+++    companyResults,
+++    learningProfile,
+++    (company: any) => `company:${company.id}`,
+++    learningNow,
+++  );
+++  const rankedContactResults = rankSearchResultsByLearning(
+++    contactResults,
+++    learningProfile,
+++    (contact: any) => `contact:${contact.id}`,
+++    learningNow,
+++  );
+++  const handleResultSelected = (type: SearchLearningEntityType, id: unknown) => {
+++    const next = recordSearchLearningSelection(userId, learningProfile, type, Number(id), learningNow);
+++    setLearningProfile(next);
+++    setOpen(false);
+++  };
++   const autocompleteSuggestions = rankSearchSuggestions(
++     q,
++     [
++@@ -79,18 +128,22 @@
++           label: client.leadName || client.competentPerson || client.group || `Client #${client.id}`,
++         },
++         fields: [client.leadName, client.businessProfile, client.competentPerson, client.group, client.servicesNeeded, client.phone, client.contactEmail],
+++        learningBoost: learningBoost('client', client.id),
++       })),
++-      ...(results.deals ?? []).map((deal: any) => ({
+++      ...dealResults.map((deal: any) => ({
++         value: { key: `deal:${deal.id}`, label: deal.title || `Deal #${deal.id}` },
++         fields: [deal.title, deal.stageName],
+++        learningBoost: learningBoost('deal', deal.id),
++       })),
++-      ...(results.companies ?? []).map((company: any) => ({
+++      ...companyResults.map((company: any) => ({
++         value: { key: `company:${company.id}`, label: company.name || `Company #${company.id}` },
++         fields: [company.name, company.industry, company.country],
+++        learningBoost: learningBoost('company', company.id),
++       })),
++-      ...(results.contacts ?? []).map((contact: any) => ({
+++      ...contactResults.map((contact: any) => ({
++         value: { key: `contact:${contact.id}`, label: contact.fullName || `Contact #${contact.id}` },
++         fields: [contact.fullName, contact.jobTitle, contact.email],
+++        learningBoost: learningBoost('contact', contact.id),
++       })),
++     ],
++     5,
++@@ -133,10 +186,10 @@
++             <div className='p-8 text-center text-sm text-slate-400'>{isRTL ? 'لا نتائج' : 'No results'}</div>
++           ) : (
++             <div className='py-2'>
++-              {clientResults.length > 0 && (
+++              {rankedClientResults.length > 0 && (
++                 <Section icon={<UsersRound size={14} />} title={isRTL ? 'العملاء' : 'Clients'}>
++-                  {clientResults.map((c: any) => (
+++                  {rankedClientResults.map((c: any) => (
++                     <Link key={c.id} href={`/clients/${c.id}`}>
++-                      <a onClick={() => setOpen(false)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+++                      <a onClick={() => handleResultSelected('client', c.id)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                         <span className='w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center'>C</span>
++                         <div className='min-w-0 flex-1'>
++                           <div className='font-medium text-slate-800 dark:text-slate-200 truncate'>{c.leadName || c.competentPerson || c.group || `Client #${c.id}`}</div>
++@@ -147,10 +200,10 @@
++                   ))}
++                 </Section>
++               )}
++-              {results.deals?.length > 0 && (
+++              {rankedDealResults.length > 0 && (
++                 <Section icon={<Briefcase size={14} />} title={isRTL ? 'الصفقات' : 'Deals'}>
++-                  {results.deals.map((d: any) => (
+++                  {rankedDealResults.map((d: any) => (
++                     <Link key={d.id} href={`/bd/deals/${d.id}`}>
++-                      <a onClick={() => setOpen(false)} className='flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+++                      <a onClick={() => handleResultSelected('deal', d.id)} className='flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                         <div className='flex items-center gap-2 min-w-0'>
++                           <span className='w-2 h-2 rounded-full flex-shrink-0' style={{ background: d.stageColor }} />
++                           <span className='font-medium text-slate-800 dark:text-slate-200 truncate'>{d.title}</span>
++@@ -162,10 +215,10 @@
++                   ))}
++                 </Section>
++               )}
++-              {results.companies?.length > 0 && (
+++              {rankedCompanyResults.length > 0 && (
++                 <Section icon={<Building2 size={14} />} title={isRTL ? 'الشركات' : 'Companies'}>
++-                  {results.companies.map((c: any) => (
+++                  {rankedCompanyResults.map((c: any) => (
++                     <Link key={c.id} href={`/bd/companies/${c.id}`}>
++-                      <a onClick={() => setOpen(false)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+++                      <a onClick={() => handleResultSelected('company', c.id)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                         <span className='w-7 h-7 rounded-md bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold text-xs flex items-center justify-center'>{(c.name || '?').charAt(0).toUpperCase()}</span>
++                         <div className='min-w-0 flex-1'>
++                           <div className='font-medium text-slate-800 dark:text-slate-200 truncate'>{c.name}</div>
++@@ -176,10 +229,10 @@
++                   ))}
++                 </Section>
++               )}
++-              {results.contacts?.length > 0 && (
+++              {rankedContactResults.length > 0 && (
++                 <Section icon={<User size={14} />} title={isRTL ? 'جهات الاتصال' : 'Contacts'}>
++-                  {results.contacts.map((c: any) => (
+++                  {rankedContactResults.map((c: any) => (
++                     <Link key={c.id} href={`/bd/contacts/${c.id}`}>
++-                      <a onClick={() => setOpen(false)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
+++                      <a onClick={() => handleResultSelected('contact', c.id)} className='flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition'>
++                         <span className='w-7 h-7 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center justify-center'>{(c.fullName || '?').charAt(0).toUpperCase()}</span>
++                         <div className='min-w-0 flex-1'>
++                           <div className='font-medium text-slate-800 dark:text-slate-200 truncate'>{c.fullName}</div>
++@@ -194,7 +247,11 @@
++           )}
++         </div>
++         <div className='px-4 py-2 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-500 flex items-center justify-between'>
++-          <span>{isRTL ? 'بحث موحّد عبر CRM' : 'Unified CRM search'}</span>
+++          <span>
+++            {learningProfile.entries.length > 0
+++              ? (isRTL ? 'بحث موحّد · ترتيب ذكي حسب استخدامك' : 'Unified search · adaptive ranking')
+++              : (isRTL ? 'بحث موحّد عبر CRM' : 'Unified CRM search')}
+++          </span>
++           <span><kbd className='px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded'>Cmd</kbd> + <kbd className='px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded'>K</kbd></span>
++         </div>
++       </div>
