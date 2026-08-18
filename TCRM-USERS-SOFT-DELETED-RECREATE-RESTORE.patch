@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Tamiyouz Patch <patch@tamiyouz.local>
+Date: Tue, 18 Aug 2026 08:15:00 +0300
+Subject: [PATCH] fix(users): restore soft-deleted account when admin recreates same email
+
+Base TCRM Main commit: 9a7842c90667706a4bf37802f9373fce5fa6b202
+
+When an email belongs to a soft-deleted user, Settings -> Users -> Add User
+currently rejects it as "Email already registered" even though the user is
+hidden from identityList/getAllUsers.
+
+This patch keeps the existing duplicate protection for active users, but when
+the matching account is soft-deleted it updates that same row with the new
+admin-supplied user data, bumps sessionVersion, restores/reactivates it, and
+returns the restored user. The existing openId/user id is preserved so linked
+records are not orphaned. Existing BusinessDeveloper and Moderator role hooks
+continue through the normal post-create/update paths.
+---
+ server/routers.ts | 47 +++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 37 insertions(+), 10 deletions(-)
+
+diff --git a/server/routers.ts b/server/routers.ts
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -1,19 +1,44 @@
+         const existing = await getUserByEmail(normalizedEmail);
+-        if (existing) {
++        const softDeletedExisting = existing?.deletedAt ? existing : null;
++        if (existing && !softDeletedExisting) {
+           throw new TRPCError({ code: "CONFLICT", message: "Email already registered" });
+         }
+-        const identity = await assertCentralIdentityUnique(input);
++        const identity = await assertCentralIdentityUnique(input, softDeletedExisting?.id);
+         const passwordHash = await bcrypt.hash(input.password, 12);
+-        const openId = "local_" + nanoid(16);
+-        const user = await createUser({
+-          openId,
+-          name: input.name,
+-          email: normalizedEmail,
+-          loginMethod: "email",
+-          role: input.role,
+-          passwordHash,
+-          lastSignedIn: new Date(),
+-          ...identity,
+-          hrSyncStatus: identity.centralEmail && identity.centralId && (identity.nationalId || identity.passportNumber) ? "UNLINKED" : "MISSING_DATA",
+-        } as any);
++        let user;
++        if (softDeletedExisting) {
++          await updateUser(
++            softDeletedExisting.id,
++            {
++              name: input.name,
++              email: normalizedEmail,
++              loginMethod: "email",
++              role: input.role,
++              passwordHash,
++              lastSignedIn: new Date(),
++              sessionVersion: Number(softDeletedExisting.sessionVersion ?? 1) + 1,
++              ...identity,
++              hrSyncStatus: identity.centralEmail && identity.centralId && (identity.nationalId || identity.passportNumber) ? "UNLINKED" : "MISSING_DATA",
++            } as any,
++            { actorUserId: ctx.user.id, source: "routers.users.create.restore_soft_deleted" },
++          );
++          await restoreUser(softDeletedExisting.id);
++          user = await getUserByEmail(normalizedEmail);
++          if (!user || user.deletedAt) {
++            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to restore existing user" });
++          }
++        } else {
++          const openId = "local_" + nanoid(16);
++          user = await createUser({
++            openId,
++            name: input.name,
++            email: normalizedEmail,
++            loginMethod: "email",
++            role: input.role,
++            passwordHash,
++            lastSignedIn: new Date(),
++            ...identity,
++            hrSyncStatus: identity.centralEmail && identity.centralId && (identity.nationalId || identity.passportNumber) ? "UNLINKED" : "MISSING_DATA",
++          } as any);
++        }
+         // Auto-grant bd_rep access when role is BusinessDeveloper
+-- 
+2.43.0
