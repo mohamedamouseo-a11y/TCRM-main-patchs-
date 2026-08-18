@@ -1,0 +1,513 @@
+diff --git a/shared/searchNormalization.ts b/shared/searchNormalization.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchNormalization.ts
+@@ -0,0 +1,41 @@
++/**
++ * Canonical search normalization shared by the browser and server.
++ *
++ * Keep this intentionally deterministic: voice transcripts and typed queries
++ * must enter the exact same search pipeline.
++ */
++const ARABIC_DIACRITICS =
++  /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
++
++const ARABIC_INDIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
++const EASTERN_ARABIC_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
++
++function normalizeDigit(char: string) {
++  const arabicIndic = ARABIC_INDIC_DIGITS.indexOf(char);
++  if (arabicIndic >= 0) return String(arabicIndic);
++  const easternArabic = EASTERN_ARABIC_DIGITS.indexOf(char);
++  if (easternArabic >= 0) return String(easternArabic);
++  return char;
++}
++
++export function normalizeSearchText(value: unknown): string {
++  return String(value ?? "")
++    .normalize("NFKC")
++    .toLocaleLowerCase("en-US")
++    .replace(ARABIC_DIACRITICS, "")
++    .replace(/\u0640/g, "")
++    .replace(/[أإآٱ]/g, "ا")
++    .replace(/ى/g, "ي")
++    .replace(/ؤ/g, "و")
++    .replace(/ئ/g, "ي")
++    .replace(/ة/g, "ه")
++    .replace(/[٠-٩۰-۹]/g, normalizeDigit)
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++export function isSearchReady(value: unknown, minLength = 2): boolean {
++  return normalizeSearchText(value).length >= minLength;
++}
++
++export const SEARCH_NORMALIZATION_VERSION = "tcrm-smart-search-v1";
+diff --git a/shared/searchNormalization.test.ts b/shared/searchNormalization.test.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchNormalization.test.ts
+@@ -0,0 +1,33 @@
++import { describe, expect, it } from "vitest";
++import { isSearchReady, normalizeSearchText } from "./searchNormalization";
++
++describe("search normalization", () => {
++  it("treats common Arabic alef forms as equivalent", () => {
++    expect(normalizeSearchText("الأمل")).toBe("الامل");
++    expect(normalizeSearchText("الإمل")).toBe("الامل");
++    expect(normalizeSearchText("آمال")).toBe("امال");
++  });
++
++  it("removes Arabic diacritics and tatweel", () => {
++    expect(normalizeSearchText("مُحَمَّــد")).toBe("محمد");
++  });
++
++  it("normalizes ya, hamza carriers, and taa marbuta for tolerant matching", () => {
++    expect(normalizeSearchText("هدى")).toBe("هدي");
++    expect(normalizeSearchText("بيئة")).toBe("بييه");
++    expect(normalizeSearchText("رؤوف")).toBe("رووف");
++  });
++
++  it("normalizes Arabic and Persian digits", () => {
++    expect(normalizeSearchText("٠١٢٣ ۴۵۶")).toBe("0123 456");
++  });
++
++  it("normalizes English case and repeated whitespace", () => {
++    expect(normalizeSearchText("  SEO   Campaign  ")).toBe("seo campaign");
++  });
++
++  it("uses normalized length for search readiness", () => {
++    expect(isSearchReady(" أ ")).toBe(false);
++    expect(isSearchReady(" أم ")).toBe(true);
++  });
++});
+diff --git a/server/utils/searchNormalizationSql.ts b/server/utils/searchNormalizationSql.ts
+new file mode 100644
+--- /dev/null
++++ b/server/utils/searchNormalizationSql.ts
+@@ -0,0 +1,61 @@
++import { sql } from "drizzle-orm";
++import { normalizeSearchText } from "@shared/searchNormalization";
++
++// Mirrors the character-level transformations in shared/searchNormalization.
++// Using SQL-side normalization means a normalized query can still match legacy
++// rows that were stored before smart search existed.
++const SQL_SEARCH_REPLACEMENTS: Array<[string, string]> = [
++  ["أ", "ا"],
++  ["إ", "ا"],
++  ["آ", "ا"],
++  ["ٱ", "ا"],
++  ["ى", "ي"],
++  ["ؤ", "و"],
++  ["ئ", "ي"],
++  ["ة", "ه"],
++  ["ـ", ""],
++  ["ً", ""],
++  ["ٌ", ""],
++  ["ٍ", ""],
++  ["َ", ""],
++  ["ُ", ""],
++  ["ِ", ""],
++  ["ّ", ""],
++  ["ْ", ""],
++  ["ٰ", ""],
++  ["٠", "0"],
++  ["١", "1"],
++  ["٢", "2"],
++  ["٣", "3"],
++  ["٤", "4"],
++  ["٥", "5"],
++  ["٦", "6"],
++  ["٧", "7"],
++  ["٨", "8"],
++  ["٩", "9"],
++  ["۰", "0"],
++  ["۱", "1"],
++  ["۲", "2"],
++  ["۳", "3"],
++  ["۴", "4"],
++  ["۵", "5"],
++  ["۶", "6"],
++  ["۷", "7"],
++  ["۸", "8"],
++  ["۹", "9"],
++  ["  ", " "],
++  ["  ", " "],
++];
++
++export function normalizedSearchColumn(column: any) {
++  let expression = sql<string>`LOWER(TRIM(COALESCE(${column}, '')))`;
++  for (const [from, to] of SQL_SEARCH_REPLACEMENTS) {
++    expression = sql<string>`REPLACE(${expression}, ${from}, ${to})`;
++  }
++  return expression;
++}
++
++export function normalizedContains(column: any, query: unknown) {
++  const normalized = normalizeSearchText(query);
++  return sql`${normalizedSearchColumn(column)} LIKE ${`%${normalized}%`}`;
++}
+diff --git a/client/src/components/search/VoiceSearchButton.tsx b/client/src/components/search/VoiceSearchButton.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/search/VoiceSearchButton.tsx
+@@ -0,0 +1,137 @@
++import { useEffect, useRef, useState } from "react";
++import { Mic, MicOff } from "lucide-react";
++import { toast } from "sonner";
++import { cn } from "@/lib/utils";
++
++type VoiceSearchLabels = {
++  start: string;
++  listening: string;
++  unsupported: string;
++  error: string;
++};
++
++type VoiceSearchButtonProps = {
++  language: string;
++  onTranscript: (transcript: string) => void;
++  labels: VoiceSearchLabels;
++  className?: string;
++};
++
++function getSpeechRecognitionConstructor() {
++  if (typeof window === "undefined") return null;
++  const w = window as any;
++  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
++}
++
++export default function VoiceSearchButton({
++  language,
++  onTranscript,
++  labels,
++  className,
++}: VoiceSearchButtonProps) {
++  const recognitionRef = useRef<any>(null);
++  const [listening, setListening] = useState(false);
++  const [supported, setSupported] = useState(() =>
++    typeof window === "undefined"
++      ? true
++      : Boolean(getSpeechRecognitionConstructor())
++  );
++
++  useEffect(() => {
++    setSupported(Boolean(getSpeechRecognitionConstructor()));
++    return () => {
++      try {
++        recognitionRef.current?.abort?.();
++      } catch {
++        // Browser speech implementations may throw during teardown.
++      }
++      recognitionRef.current = null;
++    };
++  }, []);
++
++  const stopListening = () => {
++    try {
++      recognitionRef.current?.stop?.();
++    } catch {
++      setListening(false);
++    }
++  };
++
++  const startListening = () => {
++    if (listening) {
++      stopListening();
++      return;
++    }
++
++    const SpeechRecognitionCtor = getSpeechRecognitionConstructor();
++    if (!SpeechRecognitionCtor) {
++      setSupported(false);
++      toast.error(labels.unsupported);
++      return;
++    }
++
++    try {
++      const recognition = new SpeechRecognitionCtor();
++      recognition.lang = language;
++      recognition.continuous = false;
++      recognition.interimResults = false;
++      recognition.maxAlternatives = 1;
++
++      recognition.onstart = () => setListening(true);
++      recognition.onresult = (event: any) => {
++        const transcript = Array.from(event?.results ?? [])
++          .map((result: any) => result?.[0]?.transcript ?? "")
++          .join(" ")
++          .trim();
++        if (transcript) onTranscript(transcript);
++      };
++      recognition.onerror = (event: any) => {
++        setListening(false);
++        if (event?.error !== "aborted") toast.error(labels.error);
++      };
++      recognition.onend = () => {
++        setListening(false);
++        if (recognitionRef.current === recognition) {
++          recognitionRef.current = null;
++        }
++      };
++
++      recognitionRef.current = recognition;
++      recognition.start();
++    } catch {
++      setListening(false);
++      recognitionRef.current = null;
++      toast.error(labels.error);
++    }
++  };
++
++  return (
++    <button
++      type="button"
++      onClick={startListening}
++      disabled={!supported}
++      aria-label={listening ? labels.listening : labels.start}
++      aria-pressed={listening}
++      title={
++        supported
++          ? listening
++            ? labels.listening
++            : labels.start
++          : labels.unsupported
++      }
++      className={cn(
++        "relative z-10 inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition",
++        "hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
++        "disabled:cursor-not-allowed disabled:opacity-35",
++        listening && "bg-primary/10 text-primary",
++        className
++      )}
++    >
++      {listening ? (
++        <MicOff className="h-4 w-4" />
++      ) : (
++        <Mic className="h-4 w-4" />
++      )}
++    </button>
++  );
++}
+diff --git a/server/db.ts b/server/db.ts
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -113,6 +113,7 @@ import {
+   hashClientCreatePayload,
+   isValidClientCreateRequestId,
+ } from "./utils/clientCreateIdempotency";
++import { normalizedContains } from "./utils/searchNormalizationSql";
+
+ let _db: ReturnType<typeof drizzle> | null = null;
+ let _dealServicesRuntimeMigration: Promise<void> | null = null;
+@@ -4262,18 +4263,18 @@ function buildClientListConditions(filters: ClientListFilters = {}) {
+   }
+   if (filters.accountManagerId) conditions.push(eq(clients.accountManagerId, filters.accountManagerId));
+   if (filters.search?.trim()) {
+-    const q = `%${filters.search.trim()}%`;
++    const q = filters.search.trim();
+     conditions.push(or(
+-      like(clients.businessProfile, q),
+-      like(clients.leadName, q),
+-      like(clients.competentPerson, q),
+-      like(clients.group, q),
+-      like(clients.phone, q),
+-      like(clients.otherPhones, q),
+-      like(clients.contactPhone, q),
+-      like(clients.contactEmail, q),
+-      like(clients.servicesNeeded, q),
+-      like(clients.marketingObjective, q),
++      normalizedContains(clients.businessProfile, q),
++      normalizedContains(clients.leadName, q),
++      normalizedContains(clients.competentPerson, q),
++      normalizedContains(clients.group, q),
++      normalizedContains(clients.phone, q),
++      normalizedContains(clients.otherPhones, q),
++      normalizedContains(clients.contactPhone, q),
++      normalizedContains(clients.contactEmail, q),
++      normalizedContains(clients.servicesNeeded, q),
++      normalizedContains(clients.marketingObjective, q),
+     ));
+   }
+
+diff --git a/client/src/pages/ClientPool.tsx b/client/src/pages/ClientPool.tsx
+--- a/client/src/pages/ClientPool.tsx
++++ b/client/src/pages/ClientPool.tsx
+@@ -71,5 +71,7 @@ import PaginationPro from "@/components/ui/pagination-pro";
+ import ClientPoolExcelExportDialog from "@/components/clientPool/ClientPoolExcelExportDialog";
+ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
++import VoiceSearchButton from "@/components/search/VoiceSearchButton";
++import { normalizeSearchText } from "@shared/searchNormalization";
+
+ const planStatusColors: Record<string, string> = {
+   Active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+@@ -193,6 +195,10 @@ const uiText = {
+     subscriptionNotesRequired: "ملاحظات الاشتراك مطلوبة",
+     requiredFieldsMissing: "حقول مطلوبة",
+     searchPlaceholder: "ابحث بالاسم، الهاتف، الإيميل، الخدمة...",
++    voiceSearch: "بحث بالصوت",
++    voiceListening: "جاري الاستماع... اضغط للإيقاف",
++    voiceUnsupported: "البحث الصوتي غير مدعوم في هذا المتصفح",
++    voiceError: "تعذر التقاط الصوت. حاول مرة أخرى.",
+     all: "الكل",
+     handover: "التسليم",
+     reset: "إعادة ضبط",
+@@ -303,6 +309,10 @@ const uiText = {
+     subscriptionNotesRequired: "Subscription Notes are required",
+     requiredFieldsMissing: "Required fields",
+     searchPlaceholder: "Search name, phone, email, service...",
++    voiceSearch: "Search by voice",
++    voiceListening: "Listening... click to stop",
++    voiceUnsupported: "Voice search is not supported in this browser",
++    voiceError: "Could not capture speech. Please try again.",
+     all: "All",
+     handover: "Handover",
+     reset: "Reset",
+@@ -903,7 +913,7 @@ export default function ClientPool() {
+   useEffect(() => {
+     localStorage.setItem("clients_search", search);
+     const timer = window.setTimeout(() => {
+-      setDebouncedSearch(search.trim());
++      setDebouncedSearch(normalizeSearchText(search));
+       setPage(0);
+     }, 300);
+     return () => window.clearTimeout(timer);
+@@ -1857,13 +1867,27 @@ export default function ClientPool() {
+                   isRTL ? "right-3" : "left-3"
+                 )}
+               />
++              <VoiceSearchButton
++                language={lang === "ar" ? "ar-EG" : "en-US"}
++                onTranscript={setSearch}
++                labels={{
++                  start: copy.voiceSearch,
++                  listening: copy.voiceListening,
++                  unsupported: copy.voiceUnsupported,
++                  error: copy.voiceError,
++                }}
++                className={cn(
++                  "absolute top-1/2 -translate-y-1/2",
++                  isRTL ? "left-1.5" : "right-1.5"
++                )}
++              />
+               <Input
+                 placeholder={copy.searchPlaceholder}
+                 value={search}
+                 onChange={e => setSearch(e.target.value)}
+                 className={cn(
+                   "h-11 rounded-2xl bg-background",
+-                  isRTL ? "pr-9" : "pl-9"
++                  isRTL ? "pr-9 pl-11" : "pl-9 pr-11"
+                 )}
+               />
+             </div>
+diff --git a/client/src/components/GlobalSearch.tsx b/client/src/components/GlobalSearch.tsx
+--- a/client/src/components/GlobalSearch.tsx
++++ b/client/src/components/GlobalSearch.tsx
+@@ -3,6 +3,8 @@ import { Search, X, Briefcase, Building2, User } from 'lucide-react';
+ import { useLanguage } from '@/contexts/LanguageContext';
+ import { bdApi } from '@/api/bd';
+ import { Link } from 'wouter';
++import VoiceSearchButton from '@/components/search/VoiceSearchButton';
++import { normalizeSearchText } from '@shared/searchNormalization';
+
+ export default function GlobalSearch() {
+   const { t, isRTL, lang } = useLanguage();
+@@ -30,10 +32,15 @@ export default function GlobalSearch() {
+   }, [open]);
+
+   useEffect(() => {
+-    if (!open || q.trim().length < 2) return;
++    const normalizedQ = normalizeSearchText(q);
++    if (!open || normalizedQ.length < 2) {
++      setLoading(false);
++      if (open) setResults({ deals: [], companies: [], contacts: [] });
++      return;
++    }
+     setLoading(true);
+     const t = setTimeout(() => {
+-      bdApi.search(q.trim()).then(setResults).catch(() => {}).finally(() => setLoading(false));
++      bdApi.search(normalizedQ).then(setResults).catch(() => {}).finally(() => setLoading(false));
+     }, 200);
+     return () => clearTimeout(t);
+   }, [q, open]);
+@@ -42,6 +49,7 @@ export default function GlobalSearch() {
+   if (!open) return null;
+   const cur = t('bdCurrencyEgp');
+   const total = (results.deals?.length || 0) + (results.companies?.length || 0) + (results.contacts?.length || 0);
++  const normalizedQ = normalizeSearchText(q);
+
+   return (
+     <div className='fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-start justify-center pt-[12vh]' onClick={() => setOpen(false)} dir={isRTL ? 'rtl' : 'ltr'}>
+@@ -50,11 +58,22 @@ export default function GlobalSearch() {
+         <div className='flex items-center gap-3 p-4 border-b border-slate-200 dark:border-slate-800'>
+           <Search size={18} className='text-slate-400' />
+           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder={isRTL ? 'ابحث في الصفقات والشركات وجهات الاتصال...' : 'Search deals, companies, contacts...'} className='flex-1 bg-transparent outline-none text-slate-900 dark:text-white placeholder:text-slate-400' />
++          <VoiceSearchButton
++            language={lang === 'ar' ? 'ar-EG' : 'en-US'}
++            onTranscript={setQ}
++            labels={{
++              start: isRTL ? 'بحث بالصوت' : 'Search by voice',
++              listening: isRTL ? 'جاري الاستماع... اضغط للإيقاف' : 'Listening... click to stop',
++              unsupported: isRTL ? 'البحث الصوتي غير مدعوم في هذا المتصفح' : 'Voice search is not supported in this browser',
++              error: isRTL ? 'تعذر التقاط الصوت. حاول مرة أخرى.' : 'Could not capture speech. Please try again.',
++            }}
++            className='shrink-0'
++          />
+           <button onClick={() => setOpen(false)} className='p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded'><X size={16} /></button>
+           <kbd className='hidden sm:inline-block text-xs px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-500'>Esc</kbd>
+         </div>
+         <div className='max-h-[60vh] overflow-y-auto'>
+-          {q.length < 2 ? (
++          {normalizedQ.length < 2 ? (
+             <div className='p-8 text-center text-sm text-slate-400'>{isRTL ? 'اكتب حرفين أو أكثر للبحث' : 'Type 2+ characters to search'}</div>
+           ) : loading ? (
+             <div className='p-8 text-center text-sm text-slate-400'>{isRTL ? 'جارٍ البحث...' : 'Searching...'}</div>
+diff --git a/server/routes/bd/search.ts b/server/routes/bd/search.ts
+--- a/server/routes/bd/search.ts
++++ b/server/routes/bd/search.ts
+@@ -2,16 +2,17 @@ import { Router } from "express";
+ import type { BdAuthedRequest } from "./index";
+ import { getDb } from "../../db";
+ import { bdDeals, bdCompanies, bdContacts, bdStages } from "../../../drizzle/schema_bd";
+-import { and, eq, isNull, like, or, sql } from "drizzle-orm";
++import { and, eq, isNull, or } from "drizzle-orm";
++import { normalizeSearchText } from "@shared/searchNormalization";
++import { normalizedContains } from "../../utils/searchNormalizationSql";
+
+ const router = Router();
+
+ router.get("/", async (req: BdAuthedRequest, res) => {
+   try {
+-    const q = String(req.query.q || "").trim();
++    const q = normalizeSearchText(req.query.q);
+     if (q.length < 2) return res.json({ deals: [], companies: [], contacts: [] });
+     const db = (await getDb())!;
+-    const like_ = `%${q}%`;
+     const isLimited = req.bdUser!.bdRole === "bd_rep" || req.bdUser!.bdRole === "bd_viewer";
+     const userId = req.bdUser!.id;
+
+@@ -20,19 +21,19 @@ router.get("/", async (req: BdAuthedRequest, res) => {
+     .innerJoin(bdStages, eq(bdDeals.stageId, bdStages.id))
+     .where(and(
+       isNull(bdDeals.deletedAt),
+-      like(bdDeals.title, like_),
++      normalizedContains(bdDeals.title, q),
+       ...(isLimited ? [eq(bdDeals.ownerId, userId)] : []),
+     ))
+     .limit(8);
+
+     const companiesQ = db.select({ id: bdCompanies.id, name: bdCompanies.name, industry: (bdCompanies as any).industry, country: bdCompanies.country })
+       .from(bdCompanies)
+-      .where(and(isNull(bdCompanies.deletedAt), or(like(bdCompanies.name, like_), like((bdCompanies as any).industry, like_))))
++      .where(and(isNull(bdCompanies.deletedAt), or(normalizedContains(bdCompanies.name, q), normalizedContains((bdCompanies as any).industry, q))))
+       .limit(8);
+
+     const contactsQ = db.select({ id: bdContacts.id, fullName: bdContacts.fullName, email: bdContacts.email, jobTitle: bdContacts.jobTitle, companyId: bdContacts.companyId })
+       .from(bdContacts)
+-      .where(and(isNull(bdContacts.deletedAt), or(like(bdContacts.fullName, like_), like(bdContacts.email, like_))))
++      .where(and(isNull(bdContacts.deletedAt), or(normalizedContains(bdContacts.fullName, q), normalizedContains(bdContacts.email, q))))
+       .limit(8);
+
+     const [deals, companies, contacts] = await Promise.all([dealsQ, companiesQ, contactsQ]);
