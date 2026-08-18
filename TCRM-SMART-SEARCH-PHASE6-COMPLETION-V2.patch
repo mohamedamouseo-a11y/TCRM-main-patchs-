@@ -1,0 +1,270 @@
+diff --git a/shared/systemSmartSearch.test.ts b/shared/systemSmartSearch.test.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/systemSmartSearch.test.ts
+@@ -0,0 +1,51 @@
++import { describe, expect, it } from "vitest";
++import {
++  matchesSystemSmartSearch,
++  rankSystemSmartSearch,
++  systemSmartSearchScore,
++} from "./systemSmartSearch";
++
++describe("system-wide smart search", () => {
++  it("reuses Arabic normalization", () => {
++    expect(matchesSystemSmartSearch("الامل", { text: ["الأمل"] })).toBe(true);
++    expect(matchesSystemSmartSearch("احمد", { text: ["أحمد"] })).toBe(true);
++  });
++
++  it("supports bounded one-edit fuzzy matching for human text", () => {
++    expect(matchesSystemSmartSearch("mohmaed", { text: ["Mohamed"] })).toBe(true);
++    expect(matchesSystemSmartSearch("احدم", { text: ["أحمد"] })).toBe(true);
++  });
++
++  it("never fuzzes structured identifiers", () => {
++    expect(matchesSystemSmartSearch("ahmd@example.com", { structured: ["ahmed@example.com"] })).toBe(false);
++    expect(matchesSystemSmartSearch("1235", { structured: ["1234"] })).toBe(false);
++    expect(matchesSystemSmartSearch("123", { structured: ["00123-456"] })).toBe(true);
++  });
++
++  it("keeps semantic ranking exact before prefix before contains before fuzzy", () => {
++    const rows = [
++      { id: "fuzzy", name: "ahmd" },
++      { id: "contains", name: "the ahmed company" },
++      { id: "prefix", name: "ahmed group" },
++      { id: "exact", name: "Ahmed" },
++    ];
++    expect(rankSystemSmartSearch("ahmed", rows, row => ({ text: [row.name] })).map(row => row.id))
++      .toEqual(["exact", "prefix", "contains", "fuzzy"]);
++  });
++
++  it("preserves stable source ordering when scores tie", () => {
++    const rows = [{ id: 1, name: "Ahmed One" }, { id: 2, name: "Ahmed Two" }];
++    expect(rankSystemSmartSearch("ahmed", rows, row => ({ text: [row.name] })).map(row => row.id))
++      .toEqual([1, 2]);
++  });
++
++  it("returns the original set for an empty query", () => {
++    const rows = [{ id: 1 }, { id: 2 }];
++    expect(rankSystemSmartSearch("", rows, () => ({ text: [] }))).toEqual(rows);
++  });
++
++  it("gives structured exact matches a score without fuzzy expansion", () => {
++    expect(systemSmartSearchScore("C-100", { structured: ["C-100"] })).toBeGreaterThan(0);
++    expect(systemSmartSearchScore("C-101", { structured: ["C-100"] })).toBe(0);
++  });
++});
+diff --git a/client/src/components/search/SmartSearchBar.tsx b/client/src/components/search/SmartSearchBar.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/search/SmartSearchBar.tsx
+@@ -0,0 +1,102 @@
++import { useId } from "react";
++import { Search } from "lucide-react";
++import { Input } from "@/components/ui/input";
++import { cn } from "@/lib/utils";
++import VoiceSearchButton from "./VoiceSearchButton";
++
++type SmartSearchBarProps = {
++  value: string;
++  onValueChange: (value: string) => void;
++  placeholder?: string;
++  language?: "ar-EG" | "en-US";
++  suggestions?: string[];
++  containerClassName?: string;
++  inputClassName?: string;
++  compact?: boolean;
++  disabled?: boolean;
++  showVoice?: boolean;
++  onFocus?: () => void;
++  onBlur?: () => void;
++};
++
++export default function SmartSearchBar({
++  value,
++  onValueChange,
++  placeholder,
++  language = "en-US",
++  suggestions = [],
++  containerClassName,
++  inputClassName,
++  compact = false,
++  disabled = false,
++  showVoice = true,
++  onFocus,
++  onBlur,
++}: SmartSearchBarProps) {
++  const datalistId = useId().replace(/:/g, "-");
++  const isRTL = language.startsWith("ar");
++  const uniqueSuggestions = Array.from(
++    new Set(suggestions.map(item => String(item ?? "").trim()).filter(Boolean)),
++  ).slice(0, 8);
++
++  const labels = isRTL
++    ? {
++        start: "بحث بالصوت",
++        listening: "جاري الاستماع... اضغط للإيقاف",
++        unsupported: "البحث الصوتي غير مدعوم في هذا المتصفح",
++        error: "تعذر التقاط الصوت. حاول مرة أخرى.",
++      }
++    : {
++        start: "Search by voice",
++        listening: "Listening... click to stop",
++        unsupported: "Voice search is not supported in this browser",
++        error: "Could not capture speech. Please try again.",
++      };
++
++  return (
++    <div className={cn("relative w-full", containerClassName)} dir={isRTL ? "rtl" : "ltr"}>
++      <Search
++        aria-hidden="true"
++        className={cn(
++          "pointer-events-none absolute top-1/2 z-10 -translate-y-1/2 text-muted-foreground",
++          compact ? "h-3.5 w-3.5" : "h-4 w-4",
++          isRTL ? "right-3" : "left-3",
++        )}
++      />
++      <Input
++        type="search"
++        value={value}
++        onChange={event => onValueChange(event.target.value)}
++        placeholder={placeholder}
++        disabled={disabled}
++        autoComplete="off"
++        list={uniqueSuggestions.length ? datalistId : undefined}
++        onFocus={onFocus}
++        onBlur={onBlur}
++        className={cn(
++          compact ? "h-8 text-xs" : "h-10",
++          isRTL ? (showVoice ? "pr-9 pl-11" : "pr-9") : (showVoice ? "pl-9 pr-11" : "pl-9"),
++          inputClassName,
++        )}
++      />
++      {showVoice && (
++        <VoiceSearchButton
++          language={language}
++          onTranscript={onValueChange}
++          labels={labels}
++          className={cn(
++            "absolute top-1/2 -translate-y-1/2",
++            isRTL ? "left-1" : "right-1",
++          )}
++        />
++      )}
++      {uniqueSuggestions.length > 0 && (
++        <datalist id={datalistId}>
++          {uniqueSuggestions.map(suggestion => (
++            <option key={suggestion} value={suggestion} />
++          ))}
++        </datalist>
++      )}
++    </div>
++  );
++}
+diff --git a/scripts/audit-smart-search-bars.ts b/scripts/audit-smart-search-bars.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/audit-smart-search-bars.ts
+@@ -0,0 +1,102 @@
++import fs from "node:fs";
++import path from "node:path";
++
++const ROOT = path.resolve(process.cwd(), "client/src");
++const strict = process.argv.includes("--strict");
++const extensions = new Set([".ts", ".tsx"]);
++
++const candidatePatterns = [
++  /placeholder\s*=\s*(?:\{[^\n]*(?:search|Search|بحث|ابحث)[^\n]*\}|["'`][^"'`]*(?:search|Search|بحث|ابحث)[^"'`]*["'`])/,
++  /placeholder\s*=\s*\{[^}]*\bt\(\s*["'](?:search|bdSearch|bdSearchCompanies)["']/,
++  /type\s*=\s*["']search["']/,
++  /<CommandInput\b/,
++];
++
++const integratedMarker = /SMART_SEARCH_AUDIT_INTEGRATED:\s*(.+)/;
++const exemptMarker = /SMART_SEARCH_AUDIT_EXEMPT:\s*(.+)/;
++const WINDOW = 14;
++
++function walk(dir: string): string[] {
++  if (!fs.existsSync(dir)) return [];
++  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
++    const full = path.join(dir, entry.name);
++    if (entry.isDirectory()) return walk(full);
++    return extensions.has(path.extname(entry.name)) ? [full] : [];
++  });
++}
++
++type AuditRow = {
++  file: string;
++  line: number;
++  status: "integrated" | "exempt" | "pending";
++  reason?: string;
++  source: string;
++};
++
++function nearbyMarker(lines: string[], lineIndex: number) {
++  const from = Math.max(0, lineIndex - WINDOW);
++  const to = Math.min(lines.length, lineIndex + WINDOW + 1);
++  for (let index = from; index < to; index += 1) {
++    const line = lines[index];
++    const integrated = line.match(integratedMarker);
++    if (integrated) return { status: "integrated" as const, reason: integrated[1].trim() };
++    const exempt = line.match(exemptMarker);
++    if (exempt) return { status: "exempt" as const, reason: exempt[1].trim() };
++  }
++  return null;
++}
++
++const rows: AuditRow[] = [];
++
++for (const file of walk(ROOT)) {
++  const source = fs.readFileSync(file, "utf8");
++  const lines = source.split(/\r?\n/);
++
++  lines.forEach((line, index) => {
++    if (!candidatePatterns.some(pattern => pattern.test(line))) return;
++    const marker = nearbyMarker(lines, index);
++    rows.push({
++      file: path.relative(process.cwd(), file).replace(/\\/g, "/"),
++      line: index + 1,
++      status: marker?.status ?? "pending",
++      reason: marker?.reason,
++      source: line.trim().slice(0, 160),
++    });
++  });
++}
++
++rows.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
++
++const integrated = rows.filter(row => row.status === "integrated");
++const exempt = rows.filter(row => row.status === "exempt");
++const pending = rows.filter(row => row.status === "pending");
++
++console.log("# TCRM Smart Search Bar Audit");
++console.log("");
++console.log(
++  `Candidates: ${rows.length} | Integrated: ${integrated.length} | Exempt: ${exempt.length} | Pending: ${pending.length}`,
++);
++console.log("");
++console.log("| Status | File | Line | Reason | Candidate |");
++console.log("|---|---|---:|---|---|");
++
++for (const row of rows) {
++  const escaped = row.source.replace(/\|/g, "\\|");
++  console.log(
++    `| ${row.status.toUpperCase()} | ${row.file} | ${row.line} | ${row.reason ?? ""} | \`${escaped}\` |`,
++  );
++}
++
++console.log("");
++console.log("Rules:");
++console.log("1. Every TRUE free-text search control must use Smart Search matching and have a nearby comment:");
++console.log("   SMART_SEARCH_AUDIT_INTEGRATED: <module + matching/security note>");
++console.log("2. False positives or specialized picker-only searches need a nearby specific comment:");
++console.log("   SMART_SEARCH_AUDIT_EXEMPT: <why this is not a system free-text entity/content search>");
++console.log("3. Do not use blanket file-level markers. Put the marker within 14 lines of the specific control.");
++console.log("4. A strict audit is only a mechanical guard. The final manual inventory must still account for every true search bar.");
++
++if (strict && pending.length > 0) {
++  console.error(`\nSmart Search audit failed: ${pending.length} candidate control(s) remain unreviewed.`);
++  process.exitCode = 1;
++}
