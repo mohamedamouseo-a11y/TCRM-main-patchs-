@@ -1,0 +1,123 @@
+TCRM-SMART-SEARCH-TFCRM-PARITY-V1
+
+PURPOSE
+Make TCRM Smart Search behavior match the proven TFCRM search flow while preserving TCRM's stronger Arabic normalization and Phase 5 local learning.
+
+PREREQUISITE
+- Smart Search Phase 6 must already be complete in the CURRENT server working tree.
+- scripts/audit-smart-search-bars.ts --strict must pass with Pending: 0.
+- The patch intentionally supports the current state where Phase 6 may not yet be system-pushed to TCRM Main.
+- It refuses to apply when Phase 6 artifacts are missing or the strict audit is not green.
+
+TFCRM PARITY POLICY
+1) Authorized results/data source first.
+2) Normalized exact/partial search first.
+3) Fuzzy matching only when exact/normalized returns zero matches.
+4) Human-readable text only may fuzzy-match.
+5) Structured values never fuzzy-match:
+   - phone
+   - email
+   - IDs
+   - codes
+   - campaign/external identifiers
+6) Suggestions:
+   - start after 2 normalized characters
+   - maximum 6
+   - use existing authorized data/results; no new unrestricted endpoint
+7) Candidate caps after authorization/scoping:
+   - Global search: 500
+   - normal list/server searches: 1000
+8) Voice transcript stays in the exact same typed-search state/pipeline.
+9) TCRM Phase 5 learning stays secondary ranking/tie-break only; it must not expand visibility or bypass exact-first matching.
+
+PATCH BOOTSTRAP CHANGES
+Adds:
+- shared/systemSmartSearchParity.ts
+- shared/systemSmartSearchParity.test.ts
+- server/utils/searchExactFirstFallback.ts
+- server/utils/searchExactFirstFallback.test.ts
+- scripts/audit-tfcrm-search-parity.ts
+
+Updates:
+- client/src/components/search/SmartSearchBar.tsx
+  - suggestions start after 2 normalized chars
+  - suggestion list capped at 6
+
+IMPORTANT
+The bootstrap itself does NOT automatically rewrite every search endpoint/control.
+Manus must complete the migration on the CURRENT server checkout by reviewing every Phase 6 integrated search control and every fuzzyContains server callsite.
+
+CLIENT-SIDE MIGRATION
+For already-authorized in-memory collections, use:
+- filterTfcrmParityExactFirst(...)
+- buildTfcrmParitySuggestions(...)
+
+Required behavior:
+- exact/normalized/contains stage runs across the full authorized collection
+- if exact stage has >=1 result, return exact results only
+- only if exact stage returns zero, evaluate fuzzy against a bounded candidate set
+- candidate set default <=1000; Global <=500
+- structured fields are passed only through `structured`, never `text`
+
+SERVER-SIDE MIGRATION
+For server-backed search, do NOT keep fuzzyContains in the primary WHERE path if it causes fuzzy results to appear alongside exact results.
+
+Use exact-first two-stage behavior:
+- exact query using normalizedContains / normalized exact semantics and existing permission/filter WHERE clauses
+- if zero, fuzzy fallback query using existing fuzzyContains for human-readable fields only
+- preserve identical auth, ownership, team, tenant, deleted filters, pagination/sort/API shapes
+- candidate limit applies after authorized scoping
+
+Use server/utils/searchExactFirstFallback.ts where it fits, or equivalent code preserving the same contract.
+
+AUDIT MARKERS
+For each true UI search control after parity migration add nearby:
+TFCRM_SEARCH_PARITY_INTEGRATED: <specific behavior + scope>
+
+For a specialized Phase 6-exempt control, keep the existing SMART_SEARCH_AUDIT_EXEMPT marker or add:
+TFCRM_SEARCH_PARITY_EXEMPT: <specific reason>
+
+For each server fuzzyContains callsite migrated to exact-first fallback add nearby:
+TFCRM_SEARCH_PARITY_SERVER: <exact-first/fuzzy-fallback + scope explanation>
+
+STRICT COMPLETION
+Run:
+pnpm exec tsx scripts/audit-tfcrm-search-parity.ts --strict
+
+Required final result:
+- UI Pending: 0
+- Server fuzzy callsites Pending: 0
+
+TESTS
+Run:
+pnpm exec vitest run \
+  shared/systemSmartSearchParity.test.ts \
+  server/utils/searchExactFirstFallback.test.ts \
+  shared/systemSmartSearch.test.ts \
+  shared/searchNormalization.test.ts \
+  shared/searchFuzzy.test.ts \
+  shared/searchSuggestions.test.ts \
+  shared/searchLearning.test.ts \
+  shared/searchLearningStore.test.ts \
+  shared/globalSearchScope.test.ts \
+  --reporter=dot
+
+git diff --check
+pnpm test
+pnpm check
+
+If check OOM:
+NODE_OPTIONS=--max-old-space-size=4096 pnpm check
+
+NO INFRASTRUCTURE CHANGES
+- no DB schema/migration/db:push
+- no dependency
+- no external search SaaS
+- no new unrestricted endpoint
+- no production deploy/restart/reload by Manus
+
+SERVER RULE
+Manus works directly on the CURRENT TCRM server checkout.
+It must preserve all current local/newer changes.
+It must NOT commit, push, deploy, restart/reload PM2, or run migrations.
+Leave the checkout ready for the user's normal system-managed push.
