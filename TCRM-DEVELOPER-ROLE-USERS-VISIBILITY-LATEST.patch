@@ -1,0 +1,70 @@
+# TCRM Developer Role Users Visibility Patch
+# Target repository: mohamedamouseo-a11y/TCRM-MAIN-Tamiyouz-CRM-
+# Verified base main commit: ad8ed2cd2dbda4440d493a02ee673540a048db42
+# Purpose: keep the canonical Developer role explicitly present in the client role catalog and add regression coverage so it remains assignable/visible in Users/Add User.
+
+diff --git a/client/src/lib/roles.ts b/client/src/lib/roles.ts
+index bfc8a2f..ccfeb0c 100644
+--- a/client/src/lib/roles.ts
++++ b/client/src/lib/roles.ts
+@@ -1,6 +1,8 @@
++export const DEVELOPER_ROLE = "Developer" as const;
++
+ export const APP_USER_ROLES = [
+   "Admin",
+-  "Developer",
++  DEVELOPER_ROLE,
+   "SalesManager",
+   "SalesAgent",
+   "ColdSalesAgent",
+@@ -20,7 +22,7 @@ export type AppUserRole = (typeof APP_USER_ROLES)[number];
+ 
+ const LEGACY_ROLE_MAP: Record<string, AppUserRole> = {
+   admin: "Admin",
+-  developer: "Developer",
++  developer: DEVELOPER_ROLE,
+   superadmin: "Admin",
+   super_admin: "Admin",
+   superadministrator: "Admin",
+@@ -65,12 +67,13 @@ export function normalizeUserRole(role?: string | null): string {
+ }
+ 
+ export function isAdminRole(role?: string | null): boolean {
+-  return ["Admin", "Developer"].includes(normalizeUserRole(role));
++  const normalized = normalizeUserRole(role);
++  return normalized === "Admin" || normalized === DEVELOPER_ROLE;
+ }
+ 
+ export function isManagerRole(role?: string | null): boolean {
+   const normalized = normalizeUserRole(role);
+-  return normalized === "Admin" || normalized === "Developer" || normalized === "SalesManager";
++  return normalized === "Admin" || normalized === DEVELOPER_ROLE || normalized === "SalesManager";
+ }
+ 
+ export const SALES_AGENT_ROLES = ["SalesAgent", "ColdSalesAgent"] as const;
+
+diff --git a/client/src/lib/roles.developer.test.ts b/client/src/lib/roles.developer.test.ts
+new file mode 100644
+index 0000000..9f4e4a2
+--- /dev/null
++++ b/client/src/lib/roles.developer.test.ts
+@@ -0,0 +1,19 @@
++import { describe, expect, it } from "vitest";
++import { APP_USER_ROLES, DEVELOPER_ROLE, isAdminRole, isManagerRole, normalizeUserRole } from "./roles";
++
++describe("Developer role catalog", () => {
++  it("keeps Developer visible in the assignable role catalog", () => {
++    expect(APP_USER_ROLES).toContain(DEVELOPER_ROLE);
++    expect(APP_USER_ROLES.indexOf(DEVELOPER_ROLE)).toBeGreaterThanOrEqual(0);
++  });
++
++  it("normalizes legacy developer values to the canonical role", () => {
++    expect(normalizeUserRole("developer")).toBe(DEVELOPER_ROLE);
++    expect(normalizeUserRole("Developer")).toBe(DEVELOPER_ROLE);
++  });
++
++  it("keeps Developer in admin/manager access checks", () => {
++    expect(isAdminRole(DEVELOPER_ROLE)).toBe(true);
++    expect(isManagerRole(DEVELOPER_ROLE)).toBe(true);
++  });
++});
