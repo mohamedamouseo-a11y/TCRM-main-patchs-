@@ -1,0 +1,242 @@
+diff --git a/shared/searchSuggestions.ts b/shared/searchSuggestions.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchSuggestions.ts
+@@ -0,0 +1,77 @@
++import { normalizeSearchText } from "./searchNormalization";
++
++export const SEARCH_SUGGESTION_MIN_QUERY_LENGTH = 2;
++export const SEARCH_SUGGESTION_DEFAULT_LIMIT = 6;
++
++export type SearchSuggestionInput<T> = {
++  value: T;
++  fields: unknown[];
++};
++
++function oneEditAway(left: string, right: string): boolean {
++  const a = Array.from(left);
++  const b = Array.from(right);
++  if (Math.abs(a.length - b.length) > 1) return false;
++
++  if (a.length === b.length) {
++    const diff = a.reduce<number[]>((items, char, index) => {
++      if (char !== b[index]) items.push(index);
++      return items;
++    }, []);
++    if (diff.length <= 1) return true;
++    if (diff.length !== 2) return false;
++    const [x, y] = diff;
++    return y === x + 1 && a[x] === b[y] && a[y] === b[x];
++  }
++
++  const shorter = a.length < b.length ? a : b;
++  const longer = a.length < b.length ? b : a;
++  let i = 0;
++  let j = 0;
++  let edits = 0;
++  while (i < shorter.length && j < longer.length) {
++    if (shorter[i] === longer[j]) {
++      i += 1;
++      j += 1;
++    } else {
++      edits += 1;
++      j += 1;
++      if (edits > 1) return false;
++    }
++  }
++  return true;
++}
++
++function fieldScore(query: string, value: unknown) {
++  const field = normalizeSearchText(value);
++  if (!field) return 0;
++  if (field === query) return 1000;
++  if (field.startsWith(query)) return 920;
++  const words = field.split(" ").filter(Boolean);
++  if (words.some(word => word === query)) return 900;
++  if (words.some(word => word.startsWith(query))) return 860;
++  if (field.includes(query)) return 800;
++  if (query.length >= 4 && words.some(word => oneEditAway(query, word))) return 700;
++  return 0;
++}
++
++export function rankSearchSuggestions<T>(
++  query: unknown,
++  candidates: SearchSuggestionInput<T>[],
++  limit = SEARCH_SUGGESTION_DEFAULT_LIMIT,
++): T[] {
++  const normalized = normalizeSearchText(query);
++  if (normalized.length < SEARCH_SUGGESTION_MIN_QUERY_LENGTH) return [];
++  const safeLimit = Math.max(1, Math.min(Number(limit) || SEARCH_SUGGESTION_DEFAULT_LIMIT, 12));
++
++  return candidates
++    .map((candidate, index) => ({
++      value: candidate.value,
++      index,
++      score: Math.max(0, ...candidate.fields.map(field => fieldScore(normalized, field))),
++    }))
++    .filter(candidate => candidate.score > 0)
++    .sort((a, b) => b.score - a.score || a.index - b.index)
++    .slice(0, safeLimit)
++    .map(candidate => candidate.value);
++}
+
+diff --git a/shared/searchSuggestions.test.ts b/shared/searchSuggestions.test.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/searchSuggestions.test.ts
+@@ -0,0 +1,42 @@
++import { describe, expect, it } from "vitest";
++import { rankSearchSuggestions } from "./searchSuggestions";
++
++describe("search suggestions", () => {
++  it("ranks exact, prefix, contains, then fuzzy", () => {
++    expect(rankSearchSuggestions("ahmed", [
++      { value: "fuzzy", fields: ["ahmd"] },
++      { value: "contains", fields: ["the ahmed company"] },
++      { value: "prefix", fields: ["ahmed group"] },
++      { value: "exact", fields: ["Ahmed"] },
++    ], 10)).toEqual(["exact", "prefix", "contains", "fuzzy"]);
++  });
++
++  it("reuses Arabic normalization", () => {
++    expect(rankSearchSuggestions("الامل", [
++      { value: "normalized", fields: ["الأمل"] },
++    ])).toEqual(["normalized"]);
++  });
++
++  it("recovers one-edit Arabic and English names", () => {
++    expect(rankSearchSuggestions("احدم", [
++      { value: "ahmed", fields: ["أحمد"] },
++    ])).toEqual(["ahmed"]);
++    expect(rankSearchSuggestions("mohmaed", [
++      { value: "mohamed", fields: ["Mohamed"] },
++    ])).toEqual(["mohamed"]);
++  });
++
++  it("returns no suggestions for one-character queries", () => {
++    expect(rankSearchSuggestions("a", [
++      { value: "ahmed", fields: ["Ahmed"] },
++    ])).toEqual([]);
++  });
++
++  it("keeps stable server order for tied scores and caps results", () => {
++    const candidates = Array.from({ length: 20 }, (_, index) => ({
++      value: index,
++      fields: [`test ${index}`],
++    }));
++    expect(rankSearchSuggestions("test", candidates)).toEqual([0, 1, 2, 3, 4, 5]);
++  });
++});
+
+diff --git a/client/src/pages/ClientPool.tsx b/client/src/pages/ClientPool.tsx
+--- a/client/src/pages/ClientPool.tsx
++++ b/client/src/pages/ClientPool.tsx
+@@ -70,2 +70,3 @@
+ import VoiceSearchButton from "@/components/search/VoiceSearchButton";
+ import { normalizeSearchText } from "@shared/searchNormalization";
++import { rankSearchSuggestions } from "@shared/searchSuggestions";
+@@ -1085,3 +1085,34 @@
+   const clients = data?.data ?? [];
+   const total = data?.total ?? 0;
++  const clientSearchSuggestions = rankSearchSuggestions(
++    search,
++    clients.map((client: any) => {
++      const label =
++        toPlainText(
++          client.leadName ||
++            client.competentPerson ||
++            client.businessProfile ||
++            `Client #${client.id}`
++        ) || `Client #${client.id}`;
++      const services = Array.isArray(client.servicesNeeded)
++        ? client.servicesNeeded.join(" ")
++        : client.servicesNeeded;
++      return {
++        value: { id: Number(client.id), label },
++        fields: [
++          client.leadName,
++          client.businessProfile,
++          client.competentPerson,
++          client.group,
++          client.phone,
++          client.otherPhones,
++          client.contactPhone,
++          client.contactEmail,
++          services,
++          client.marketingObjective,
++        ],
++      };
++    }),
++    6
++  );
+   const hasActiveFilters = Boolean(
+@@ -1885,9 +1885,20 @@
+                 placeholder={copy.searchPlaceholder}
+                 value={search}
+                 onChange={e => setSearch(e.target.value)}
++                list={
++                  normalizeSearchText(search).length >= 2
++                    ? "client-pool-search-suggestions"
++                    : undefined
++                }
++                autoComplete="off"
+                 className={cn(
+                   "h-11 rounded-2xl bg-background",
+                   isRTL ? "pr-9 pl-11" : "pl-9 pr-11"
+                 )}
+               />
++              <datalist id="client-pool-search-suggestions">
++                {clientSearchSuggestions.map((suggestion: any) => (
++                  <option key={suggestion.id} value={suggestion.label} />
++                ))}
++              </datalist>
+             </div>
+
+diff --git a/client/src/components/GlobalSearch.tsx b/client/src/components/GlobalSearch.tsx
+--- a/client/src/components/GlobalSearch.tsx
++++ b/client/src/components/GlobalSearch.tsx
+@@ -5,3 +5,4 @@
+ import { Link } from 'wouter';
+ import VoiceSearchButton from '@/components/search/VoiceSearchButton';
+ import { normalizeSearchText } from '@shared/searchNormalization';
++import { rankSearchSuggestions } from '@shared/searchSuggestions';
+@@ -46,3 +46,22 @@
++  const autocompleteSuggestions = rankSearchSuggestions(
++    q,
++    [
++      ...(results.deals ?? []).map((deal: any) => ({
++        value: { key: `deal:${deal.id}`, label: deal.title || `Deal #${deal.id}` },
++        fields: [deal.title, deal.stageName],
++      })),
++      ...(results.companies ?? []).map((company: any) => ({
++        value: { key: `company:${company.id}`, label: company.name || `Company #${company.id}` },
++        fields: [company.name, company.industry, company.country],
++      })),
++      ...(results.contacts ?? []).map((contact: any) => ({
++        value: { key: `contact:${contact.id}`, label: contact.fullName || `Contact #${contact.id}` },
++        fields: [contact.fullName, contact.jobTitle, contact.email],
++      })),
++    ],
++    5,
++  );
++
+   if (!open) return null;
+   const cur = t('bdCurrencyEgp');
+   const total = (results.deals?.length || 0) + (results.companies?.length || 0) + (results.contacts?.length || 0);
+@@ -61 +61,14 @@
+-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} placeholder={isRTL ? 'ابحث في الصفقات والشركات وجهات الاتصال...' : 'Search deals, companies, contacts...'} className='flex-1 bg-transparent outline-none text-slate-900 dark:text-white placeholder:text-slate-400' />
++          <input
++            ref={inputRef}
++            value={q}
++            onChange={(e) => setQ(e.target.value)}
++            list={normalizeSearchText(q).length >= 2 ? 'global-search-autocomplete' : undefined}
++            autoComplete='off'
++            placeholder={isRTL ? 'ابحث في الصفقات والشركات وجهات الاتصال...' : 'Search deals, companies, contacts...'}
++            className='flex-1 bg-transparent outline-none text-slate-900 dark:text-white placeholder:text-slate-400'
++          />
++          <datalist id='global-search-autocomplete'>
++            {autocompleteSuggestions.map((suggestion: any) => (
++              <option key={suggestion.key} value={suggestion.label} />
++            ))}
++          </datalist>
