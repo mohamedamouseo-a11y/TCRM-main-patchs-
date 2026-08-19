@@ -1,0 +1,841 @@
+diff --git a/package.json b/package.json
+index 4d02b44..8ba1ec8 100644
+--- a/package.json
++++ b/package.json
+@@ -3,6 +3,9 @@
+     "db:migrate:tam-foundation-v1f": "tsx scripts/apply-tam-foundation-v1f-migration.ts",
+     "db:verify:tam-foundation": "tsx scripts/verify-tam-foundation-v1f.ts",
+     "db:migrate:evolution-whatsapp": "tsx scripts/apply-evolution-whatsapp-migration.ts",
++    "db:dry-run:darwish-phase1": "tsx scripts/apply-darwish-phase1-migration.ts",
++    "db:migrate:darwish-phase1": "tsx scripts/apply-darwish-phase1-migration.ts --apply",
++    "test:darwish-phase1": "vitest run server/services/darwish/darwishGroupResolver.test.ts",
+     "verify:evolution-whatsapp-v3": "node scripts/verify-evolution-whatsapp-v3.mjs",
+     "verify:rakan-security-phase1.3": "node scripts/verify-rakan-security-phase1-3.mjs"
+   }
+diff --git a/drizzle/schema.ts b/drizzle/schema.ts
+index bd61fd5..f6dad95 100644
+--- a/drizzle/schema.ts
++++ b/drizzle/schema.ts
+@@ -12,6 +12,60 @@ export type TaraHandoffLog = typeof taraHandoffLogs.$inferSelect;
+ export type TaraInboundJob = typeof taraInboundJobs.$inferSelect;
+ export type TaraOutboundIntent = typeof taraOutboundIntents.$inferSelect;
+ 
++// ── Darwish — Customer Listening / Group Resolution (Phase 1) ─────────────
++//
++// Darwish is deliberately isolated from the canonical WhatsApp tables.
++// Phase 1 never rewrites whatsapp_messages / whatsapp_chats. It stores only
++// processing state and read-only mapping conclusions.
++export const darwishGroupJobs = mysqlTable("darwish_group_jobs", {
++  id: int().autoincrement().notNull(),
++  whatsappSessionId: int("whatsapp_session_id").notNull(),
++  whatsappChatId: int("whatsapp_chat_id").notNull(),
++  whatsappMessageId: int("whatsapp_message_id").notNull(),
++  providerMessageId: varchar("provider_message_id", { length: 255 }).notNull(),
++  direction: mysqlEnum(["Inbound", "Outbound"]).notNull(),
++  status: mysqlEnum(["Pending", "Processing", "Retry", "Completed", "Failed"]).default("Pending").notNull(),
++  attemptCount: int("attempt_count").default(0).notNull(),
++  maxAttempts: int("max_attempts").default(5).notNull(),
++  availableAt: timestamp("available_at", { mode: "string" }).default(sql`(now())`).notNull(),
++  lockedAt: timestamp("locked_at", { mode: "string" }),
++  lockToken: varchar("lock_token", { length: 96 }),
++  lastError: text("last_error"),
++  completedAt: timestamp("completed_at", { mode: "string" }),
++  createdAt: timestamp("created_at", { mode: "string" }).default(sql`(now())`).notNull(),
++  updatedAt: timestamp("updated_at", { mode: "string" }).default(sql`(now())`).onUpdateNow().notNull(),
++}, (table) => [
++  primaryKey({ columns: [table.id], name: "darwish_group_jobs_id" }),
++  uniqueIndex("uq_darwish_group_jobs_message").on(table.whatsappMessageId),
++  index("idx_darwish_group_jobs_ready").on(table.status, table.availableAt, table.id),
++  index("idx_darwish_group_jobs_chat").on(table.whatsappChatId, table.status),
++]);
++
++export const darwishGroupLinks = mysqlTable("darwish_group_links", {
++  id: int().autoincrement().notNull(),
++  whatsappChatId: int("whatsapp_chat_id").notNull(),
++  linkedClientId: int("linked_client_id"),
++  linkedAccountManagerId: int("linked_account_manager_id"),
++  resolutionStatus: mysqlEnum("resolution_status", ["Unresolved", "Resolved", "Ambiguous"]).default("Unresolved").notNull(),
++  confidence: int().default(0).notNull(),
++  reason: varchar({ length: 500 }),
++  evidence: json(),
++  resolvedAt: timestamp("resolved_at", { mode: "string" }),
++  lastEvaluatedAt: timestamp("last_evaluated_at", { mode: "string" }).default(sql`(now())`).notNull(),
++  createdAt: timestamp("created_at", { mode: "string" }).default(sql`(now())`).notNull(),
++  updatedAt: timestamp("updated_at", { mode: "string" }).default(sql`(now())`).onUpdateNow().notNull(),
++}, (table) => [
++  primaryKey({ columns: [table.id], name: "darwish_group_links_id" }),
++  uniqueIndex("uq_darwish_group_links_chat").on(table.whatsappChatId),
++  index("idx_darwish_group_links_client").on(table.linkedClientId),
++  index("idx_darwish_group_links_manager").on(table.linkedAccountManagerId),
++  index("idx_darwish_group_links_status").on(table.resolutionStatus, table.lastEvaluatedAt),
++]);
++
++export type DarwishGroupJob = typeof darwishGroupJobs.$inferSelect;
++export type DarwishGroupLink = typeof darwishGroupLinks.$inferSelect;
++
+ // ── BD Growth System (isolated module) ──────────────────────────────────
+diff --git a/scripts/apply-darwish-phase1-migration.ts b/scripts/apply-darwish-phase1-migration.ts
+new file mode 100644
+index 0000000..f5207f0
+--- /dev/null
++++ b/scripts/apply-darwish-phase1-migration.ts
+@@ -0,0 +1,100 @@
++import { config as dotenvConfig } from "dotenv";
++import { createConnection, type ConnectionOptions } from "mysql2/promise";
++
++dotenvConfig({ path: process.cwd() + "/.env", override: true });
++
++function databaseConfig(): string | ConnectionOptions {
++  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
++  const cfg: ConnectionOptions = {
++    host: process.env.DB_HOST || process.env.MYSQL_HOST || "127.0.0.1",
++    port: Number(process.env.DB_PORT || process.env.MYSQL_PORT || 3306),
++    user: process.env.DB_USER || process.env.MYSQL_USER || "",
++    password: process.env.DB_PASSWORD || process.env.MYSQL_PASSWORD || "",
++    database: process.env.DB_NAME || process.env.MYSQL_DATABASE || "",
++    multipleStatements: false,
++  };
++  if (!cfg.user || !cfg.database) {
++    throw new Error("DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME is required");
++  }
++  return cfg;
++}
++
++const statements = [
++  `CREATE TABLE IF NOT EXISTS darwish_group_jobs (
++    id INT NOT NULL AUTO_INCREMENT,
++    whatsapp_session_id INT NOT NULL,
++    whatsapp_chat_id INT NOT NULL,
++    whatsapp_message_id INT NOT NULL,
++    provider_message_id VARCHAR(255) NOT NULL,
++    direction ENUM('Inbound','Outbound') NOT NULL,
++    status ENUM('Pending','Processing','Retry','Completed','Failed') NOT NULL DEFAULT 'Pending',
++    attempt_count INT NOT NULL DEFAULT 0,
++    max_attempts INT NOT NULL DEFAULT 5,
++    available_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    locked_at TIMESTAMP NULL,
++    lock_token VARCHAR(96) NULL,
++    last_error TEXT NULL,
++    completed_at TIMESTAMP NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_darwish_group_jobs_message (whatsapp_message_id),
++    KEY idx_darwish_group_jobs_ready (status, available_at, id),
++    KEY idx_darwish_group_jobs_chat (whatsapp_chat_id, status)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++
++  `CREATE TABLE IF NOT EXISTS darwish_group_links (
++    id INT NOT NULL AUTO_INCREMENT,
++    whatsapp_chat_id INT NOT NULL,
++    linked_client_id INT NULL,
++    linked_account_manager_id INT NULL,
++    resolution_status ENUM('Unresolved','Resolved','Ambiguous') NOT NULL DEFAULT 'Unresolved',
++    confidence INT NOT NULL DEFAULT 0,
++    reason VARCHAR(500) NULL,
++    evidence JSON NULL,
++    resolved_at TIMESTAMP NULL,
++    last_evaluated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_darwish_group_links_chat (whatsapp_chat_id),
++    KEY idx_darwish_group_links_client (linked_client_id),
++    KEY idx_darwish_group_links_manager (linked_account_manager_id),
++    KEY idx_darwish_group_links_status (resolution_status, last_evaluated_at)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++];
++
++async function main() {
++  const apply = process.argv.includes("--apply");
++  if (!apply) {
++    console.log("[Darwish] DRY RUN — no database changes will be made.");
++    console.log("[Darwish] Planned tables: darwish_group_jobs, darwish_group_links");
++    console.log("[Darwish] Re-run with --apply to execute.");
++    return;
++  }
++
++  const config = databaseConfig();
++  const conn = await createConnection(config as any);
++  try {
++    for (const statement of statements) await conn.query(statement);
++    const [rows] = await conn.query<any[]>(
++      `SELECT table_name
++       FROM information_schema.tables
++       WHERE table_schema = DATABASE()
++         AND table_name IN ('darwish_group_jobs','darwish_group_links')
++       ORDER BY table_name`,
++    );
++    const names = rows.map(row => String(row.TABLE_NAME || row.table_name));
++    if (!names.includes("darwish_group_jobs") || !names.includes("darwish_group_links")) {
++      throw new Error("Darwish Phase 1 migration verification failed");
++    }
++    console.log("[Darwish] Phase 1 migration applied successfully.");
++  } finally {
++    await conn.end();
++  }
++}
++
++main().catch(error => {
++  console.error("[Darwish] migration failed:", String((error as Error)?.message || error));
++  process.exitCode = 1;
++});
+diff --git a/server/_core/index.ts b/server/_core/index.ts
+index 08814ff..6001427 100644
+--- a/server/_core/index.ts
++++ b/server/_core/index.ts
+@@ -3,6 +3,7 @@ import { cleanupExpiredRakanActionProposals } from "../services/rakanActionServic
+ import { warmPrimarySuperAdminIdentityBinding } from "../services/primarySuperAdminIdentity";
+ import { startTaraQueueWorker } from "../services/tara/taraQueueService";
+ import { startTaraFollowupWorker } from "../services/tara/taraFollowupService";
++import { startDarwishQueueWorker } from "../services/darwish/darwishQueueService";
+ 
+ function startAll() {
+   startNotificationSoundCleanupWorker();
+@@ -10,6 +11,7 @@ function startAll() {
+   startWAGatewayForwardQueueWorker();
+   void startTaraQueueWorker();
+   void startTaraFollowupWorker();
++  void startDarwishQueueWorker();
+   startTwsDriveCleanupWorker();
+   startTwsSecurityAttemptCleanupWorker();
+ }
+diff --git a/server/services/darwish/darwishGroupResolver.test.ts b/server/services/darwish/darwishGroupResolver.test.ts
+new file mode 100644
+index 0000000..af36f48
+--- /dev/null
++++ b/server/services/darwish/darwishGroupResolver.test.ts
+@@ -0,0 +1,80 @@
++import { describe, expect, it } from "vitest";
++import {
++  extractDarwishClientPhones,
++  normalizeDarwishPhone,
++  resolveDarwishClientCandidates,
++} from "./darwishGroupResolver";
++
++describe("Darwish Phase 1 group resolver", () => {
++  it("normalizes international phone formatting without fuzzy guessing", () => {
++    expect(normalizeDarwishPhone("+20 100 123 4567")).toBe("201001234567");
++    expect(normalizeDarwishPhone("0020-100-123-4567")).toBe("201001234567");
++    expect(normalizeDarwishPhone("123")).toBeNull();
++  });
++
++  it("extracts primary, contact and legacy other phones", () => {
++    expect(
++      extractDarwishClientPhones({
++        id: 1,
++        phone: "+20 100 000 0001",
++        contactPhone: "201000000002",
++        otherPhones: '["+20 100 000 0003", "201000000004"]',
++      }),
++    ).toEqual([
++      "201000000001",
++      "201000000002",
++      "201000000003",
++      "201000000004",
++    ]);
++  });
++
++  it("resolves a single client from participant evidence", () => {
++    const result = resolveDarwishClientCandidates({
++      participantPhones: ["+20 100 000 0001"],
++      senderJids: [],
++      clients: [
++        { id: 11, phone: "201000000001", accountManagerId: 7 },
++        { id: 12, phone: "201000000099", accountManagerId: 8 },
++      ],
++    });
++    expect(result.status).toBe("Resolved");
++    expect(result.clientId).toBe(11);
++    expect(result.accountManagerId).toBe(7);
++    expect(result.confidence).toBe(95);
++  });
++
++  it("uses inbound sender JIDs when participant rows are missing", () => {
++    const result = resolveDarwishClientCandidates({
++      participantPhones: [],
++      senderJids: ["201000000001@s.whatsapp.net"],
++      clients: [{ id: 11, phone: "201000000001", accountManagerId: 7 }],
++    });
++    expect(result.status).toBe("Resolved");
++    expect(result.clientId).toBe(11);
++    expect(result.confidence).toBe(80);
++  });
++
++  it("refuses to guess when multiple clients match the same group", () => {
++    const result = resolveDarwishClientCandidates({
++      participantPhones: ["201000000001", "201000000002"],
++      senderJids: [],
++      clients: [
++        { id: 11, phone: "201000000001", accountManagerId: 7 },
++        { id: 12, phone: "201000000002", accountManagerId: 8 },
++      ],
++    });
++    expect(result.status).toBe("Ambiguous");
++    expect(result.clientId).toBeNull();
++    expect(result.accountManagerId).toBeNull();
++  });
++
++  it("stays unresolved when there is no exact match", () => {
++    const result = resolveDarwishClientCandidates({
++      participantPhones: ["201999999999"],
++      senderJids: [],
++      clients: [{ id: 11, phone: "201000000001", accountManagerId: 7 }],
++    });
++    expect(result.status).toBe("Unresolved");
++    expect(result.clientId).toBeNull();
++  });
++});
+diff --git a/server/services/darwish/darwishGroupResolver.ts b/server/services/darwish/darwishGroupResolver.ts
+new file mode 100644
+index 0000000..50c3b8a
+--- /dev/null
++++ b/server/services/darwish/darwishGroupResolver.ts
+@@ -0,0 +1,148 @@
++export type DarwishClientCandidate = {
++  id: number;
++  phone?: string | null;
++  contactPhone?: string | null;
++  otherPhones?: string | null;
++  accountManagerId?: number | null;
++};
++
++export type DarwishResolution = {
++  status: "Unresolved" | "Resolved" | "Ambiguous";
++  clientId: number | null;
++  accountManagerId: number | null;
++  confidence: number;
++  reason: string;
++  evidence: {
++    participantEvidenceCount: number;
++    senderEvidenceCount: number;
++    matchedClientIds: number[];
++    source: "participants" | "senders" | "participants+senders" | "none";
++  };
++};
++
++export function normalizeDarwishPhone(value: unknown): string | null {
++  let digits = String(value ?? "").replace(/\D+/g, "");
++  if (digits.startsWith("00")) digits = digits.slice(2);
++  if (digits.length < 7 || digits.length > 18) return null;
++  return digits;
++}
++
++export function darwishPhoneFromJid(value: unknown): string | null {
++  const local = String(value ?? "").trim().split("@")[0] || "";
++  return normalizeDarwishPhone(local);
++}
++
++function parseOtherPhones(value: unknown): string[] {
++  const raw = String(value ?? "").trim();
++  if (!raw) return [];
++  try {
++    const parsed = JSON.parse(raw);
++    if (Array.isArray(parsed)) return parsed.flatMap(item => parseOtherPhones(item));
++  } catch {
++    // Legacy values are commonly comma/space/newline separated.
++  }
++  return raw
++    .split(/[\s,;|/]+/g)
++    .map(normalizeDarwishPhone)
++    .filter((phone): phone is string => Boolean(phone));
++}
++
++export function extractDarwishClientPhones(client: DarwishClientCandidate): string[] {
++  return [
++    normalizeDarwishPhone(client.phone),
++    normalizeDarwishPhone(client.contactPhone),
++    ...parseOtherPhones(client.otherPhones),
++  ].filter((phone, index, all): phone is string => Boolean(phone) && all.indexOf(phone) === index);
++}
++
++export function resolveDarwishClientCandidates(input: {
++  participantPhones?: unknown[];
++  senderJids?: unknown[];
++  clients: DarwishClientCandidate[];
++}): DarwishResolution {
++  const participantPhones = new Set(
++    (input.participantPhones || [])
++      .map(normalizeDarwishPhone)
++      .filter((phone): phone is string => Boolean(phone)),
++  );
++  const senderPhones = new Set(
++    (input.senderJids || [])
++      .map(darwishPhoneFromJid)
++      .filter((phone): phone is string => Boolean(phone)),
++  );
++
++  const participantMatches = new Set<number>();
++  const senderMatches = new Set<number>();
++  const byId = new Map<number, DarwishClientCandidate>();
++
++  for (const client of input.clients) {
++    const clientId = Number(client.id);
++    if (!Number.isInteger(clientId) || clientId <= 0) continue;
++    byId.set(clientId, client);
++    const phones = extractDarwishClientPhones(client);
++    if (phones.some(phone => participantPhones.has(phone))) participantMatches.add(clientId);
++    if (phones.some(phone => senderPhones.has(phone))) senderMatches.add(clientId);
++  }
++
++  const matchedClientIds = [...new Set([...participantMatches, ...senderMatches])].sort((a, b) => a - b);
++  const source =
++    participantMatches.size && senderMatches.size
++      ? "participants+senders"
++      : participantMatches.size
++        ? "participants"
++        : senderMatches.size
++          ? "senders"
++          : "none";
++
++  const evidence = {
++    participantEvidenceCount: participantPhones.size,
++    senderEvidenceCount: senderPhones.size,
++    matchedClientIds,
++    source,
++  } as DarwishResolution["evidence"];
++
++  if (!matchedClientIds.length) {
++    return {
++      status: "Unresolved",
++      clientId: null,
++      accountManagerId: null,
++      confidence: 0,
++      reason: "No exact normalized customer phone match was found in group participants or inbound senders.",
++      evidence,
++    };
++  }
++
++  if (matchedClientIds.length > 1) {
++    return {
++      status: "Ambiguous",
++      clientId: null,
++      accountManagerId: null,
++      confidence: 0,
++      reason: "More than one TCRM client matched the group evidence; Darwish will not guess.",
++      evidence,
++    };
++  }
++
++  const clientId = matchedClientIds[0];
++  const client = byId.get(clientId);
++  const matchedByParticipants = participantMatches.has(clientId);
++  const matchedBySenders = senderMatches.has(clientId);
++  const confidence = matchedByParticipants && matchedBySenders ? 100 : matchedByParticipants ? 95 : 80;
++
++  return {
++    status: "Resolved",
++    clientId,
++    accountManagerId:
++      client?.accountManagerId && Number(client.accountManagerId) > 0
++        ? Number(client.accountManagerId)
++        : null,
++    confidence,
++    reason:
++      matchedByParticipants && matchedBySenders
++        ? "A single client matched both group participant and inbound sender evidence."
++        : matchedByParticipants
++          ? "A single client matched an exact normalized group participant phone."
++          : "A single client matched an exact normalized inbound group sender phone.",
++    evidence,
++  };
++}
+diff --git a/server/services/darwish/darwishQueueService.ts b/server/services/darwish/darwishQueueService.ts
+new file mode 100644
+index 0000000..39733d0
+--- /dev/null
++++ b/server/services/darwish/darwishQueueService.ts
+@@ -0,0 +1,361 @@
++import crypto from "node:crypto";
++import { and, asc, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
++import {
++  clients,
++  darwishGroupJobs,
++  darwishGroupLinks,
++  whatsappChats,
++  whatsappGroupParticipants,
++  whatsappMessages,
++} from "../../../drizzle/schema";
++import { getDb } from "../../db";
++import { resolveDarwishClientCandidates } from "./darwishGroupResolver";
++
++let workerTimer: ReturnType<typeof setInterval> | null = null;
++let reconcileTimer: ReturnType<typeof setInterval> | null = null;
++let workerBusy = false;
++let reconcileCursor = 0;
++
++function enabled() {
++  return String(process.env.DARWISH_ENABLED || "true").toLowerCase() !== "false";
++}
++
++function retryDelaySeconds(attempt: number) {
++  return Math.min(300, Math.max(5, 5 * 2 ** Math.max(0, attempt - 1)));
++}
++
++export async function enqueueDarwishGroupMessage(input: {
++  whatsappSessionId: number;
++  whatsappChatId: number;
++  whatsappMessageId: number;
++  providerMessageId: string;
++  direction: "Inbound" | "Outbound";
++}) {
++  if (!enabled()) return { queued: false, reason: "disabled" };
++  const db = await getDb();
++  if (!db) return { queued: false, reason: "database_unavailable" };
++
++  await db
++    .insert(darwishGroupJobs)
++    .values({
++      whatsappSessionId: Number(input.whatsappSessionId),
++      whatsappChatId: Number(input.whatsappChatId),
++      whatsappMessageId: Number(input.whatsappMessageId),
++      providerMessageId: String(input.providerMessageId).slice(0, 255),
++      direction: input.direction,
++      status: "Pending",
++      availableAt: new Date() as any,
++    })
++    .onDuplicateKeyUpdate({
++      set: {
++        providerMessageId: String(input.providerMessageId).slice(0, 255),
++        direction: input.direction,
++        updatedAt: new Date() as any,
++      },
++    });
++
++  return { queued: true };
++}
++
++async function recoverStaleJobs() {
++  const db = await getDb();
++  if (!db) return;
++  await db
++    .update(darwishGroupJobs)
++    .set({
++      status: "Pending",
++      lockToken: null,
++      lockedAt: null,
++      availableAt: new Date() as any,
++    })
++    .where(
++      and(
++        eq(darwishGroupJobs.status, "Processing"),
++        lte(darwishGroupJobs.lockedAt, sql`DATE_SUB(NOW(), INTERVAL 10 MINUTE)` as any),
++      ),
++    );
++}
++
++async function claimNextJob() {
++  const db = await getDb();
++  if (!db) return null;
++  const [candidate] = await db
++    .select()
++    .from(darwishGroupJobs)
++    .where(
++      and(
++        or(eq(darwishGroupJobs.status, "Pending"), eq(darwishGroupJobs.status, "Retry")),
++        lte(darwishGroupJobs.availableAt, new Date() as any),
++      ),
++    )
++    .orderBy(asc(darwishGroupJobs.id))
++    .limit(1);
++  if (!candidate) return null;
++
++  const lockToken = crypto.randomUUID();
++  const result: any = await db
++    .update(darwishGroupJobs)
++    .set({
++      status: "Processing",
++      lockToken,
++      lockedAt: new Date() as any,
++      attemptCount: sql`${darwishGroupJobs.attemptCount} + 1`,
++    })
++    .where(
++      and(
++        eq(darwishGroupJobs.id, Number(candidate.id)),
++        or(eq(darwishGroupJobs.status, "Pending"), eq(darwishGroupJobs.status, "Retry")),
++      ),
++    );
++  const affected = Number(result?.[0]?.affectedRows ?? result?.affectedRows ?? 0);
++  if (!affected) return null;
++
++  const [claimed] = await db
++    .select()
++    .from(darwishGroupJobs)
++    .where(and(eq(darwishGroupJobs.id, Number(candidate.id)), eq(darwishGroupJobs.lockToken, lockToken)))
++    .limit(1);
++  return claimed || null;
++}
++
++async function completeJob(jobId: number, lockToken: string | null) {
++  const db = await getDb();
++  if (!db) return;
++  await db
++    .update(darwishGroupJobs)
++    .set({
++      status: "Completed",
++      completedAt: new Date() as any,
++      lockToken: null,
++      lockedAt: null,
++      lastError: null,
++    })
++    .where(
++      and(
++        eq(darwishGroupJobs.id, jobId),
++        eq(darwishGroupJobs.lockToken, String(lockToken || "")),
++      ),
++    );
++}
++
++async function failJob(job: any, error: unknown) {
++  const db = await getDb();
++  if (!db) return;
++  const attemptCount = Number(job.attemptCount || 0);
++  const maxAttempts = Number(job.maxAttempts || 5);
++  const terminal = attemptCount >= maxAttempts;
++  await db
++    .update(darwishGroupJobs)
++    .set({
++      status: terminal ? "Failed" : "Retry",
++      availableAt: terminal
++        ? (new Date() as any)
++        : (new Date(Date.now() + retryDelaySeconds(attemptCount) * 1000) as any),
++      lockToken: null,
++      lockedAt: null,
++      lastError: String((error as any)?.message || error || "Unknown Darwish queue error").slice(0, 4000),
++    })
++    .where(
++      and(
++        eq(darwishGroupJobs.id, Number(job.id)),
++        eq(darwishGroupJobs.lockToken, String(job.lockToken || "")),
++      ),
++    );
++}
++
++export async function resolveDarwishGroupLink(chatId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database is not available");
++
++  const [chat] = await db
++    .select({
++      id: whatsappChats.id,
++      chatType: whatsappChats.chatType,
++    })
++    .from(whatsappChats)
++    .where(and(eq(whatsappChats.id, Number(chatId)), isNull(whatsappChats.deletedAt)))
++    .limit(1);
++
++  if (!chat || String(chat.chatType) !== "Group") {
++    return { skipped: true, reason: "not_group" as const };
++  }
++
++  const participants = await db
++    .select({ phoneNumber: whatsappGroupParticipants.phoneNumber })
++    .from(whatsappGroupParticipants)
++    .where(eq(whatsappGroupParticipants.chatId, Number(chatId)))
++    .limit(5000);
++
++  const senders = await db
++    .select({ senderJid: whatsappMessages.senderJid })
++    .from(whatsappMessages)
++    .where(
++      and(
++        eq(whatsappMessages.chatId, Number(chatId)),
++        eq(whatsappMessages.direction, "Inbound"),
++      ),
++    )
++    .orderBy(desc(whatsappMessages.id))
++    .limit(500);
++
++  const customerRows = await db
++    .select({
++      id: clients.id,
++      phone: clients.phone,
++      contactPhone: clients.contactPhone,
++      otherPhones: clients.otherPhones,
++      accountManagerId: clients.accountManagerId,
++    })
++    .from(clients)
++    .where(isNull(clients.deletedAt));
++
++  const resolution = resolveDarwishClientCandidates({
++    participantPhones: participants.map(row => row.phoneNumber),
++    senderJids: senders.map(row => row.senderJid),
++    clients: customerRows,
++  });
++
++  const now = new Date() as any;
++  await db
++    .insert(darwishGroupLinks)
++    .values({
++      whatsappChatId: Number(chatId),
++      linkedClientId: resolution.clientId,
++      linkedAccountManagerId: resolution.accountManagerId,
++      resolutionStatus: resolution.status,
++      confidence: resolution.confidence,
++      reason: resolution.reason.slice(0, 500),
++      evidence: resolution.evidence,
++      resolvedAt: resolution.status === "Resolved" ? now : null,
++      lastEvaluatedAt: now,
++    })
++    .onDuplicateKeyUpdate({
++      set: {
++        linkedClientId: resolution.clientId,
++        linkedAccountManagerId: resolution.accountManagerId,
++        resolutionStatus: resolution.status,
++        confidence: resolution.confidence,
++        reason: resolution.reason.slice(0, 500),
++        evidence: resolution.evidence,
++        resolvedAt: resolution.status === "Resolved" ? now : null,
++        lastEvaluatedAt: now,
++      },
++    });
++
++  return { skipped: false, ...resolution };
++}
++
++export async function processDarwishQueue(input: { limit?: number } = {}) {
++  if (!enabled()) return { processed: 0, disabled: true };
++  if (workerBusy) return { processed: 0, busy: true };
++  workerBusy = true;
++  let processed = 0;
++  try {
++    await recoverStaleJobs();
++    const limit = Math.max(1, Math.min(25, Number(input.limit || 5)));
++    for (let index = 0; index < limit; index += 1) {
++      const job = await claimNextJob();
++      if (!job) break;
++      try {
++        await resolveDarwishGroupLink(Number(job.whatsappChatId));
++        await completeJob(Number(job.id), job.lockToken);
++        processed += 1;
++      } catch (error) {
++        await failJob(job, error);
++      }
++    }
++    return { processed, busy: false };
++  } finally {
++    workerBusy = false;
++  }
++}
++
++export async function reconcileDarwishGroups(input: { limit?: number } = {}) {
++  if (!enabled()) return { processed: 0, disabled: true };
++  const db = await getDb();
++  if (!db) return { processed: 0, reason: "database_unavailable" };
++  const limit = Math.max(1, Math.min(200, Number(input.limit || 100)));
++
++  let rows = await db
++    .select({ id: whatsappChats.id })
++    .from(whatsappChats)
++    .where(
++      and(
++        eq(whatsappChats.chatType, "Group"),
++        isNull(whatsappChats.deletedAt),
++        gt(whatsappChats.id, reconcileCursor),
++      ),
++    )
++    .orderBy(asc(whatsappChats.id))
++    .limit(limit);
++
++  if (!rows.length && reconcileCursor > 0) {
++    reconcileCursor = 0;
++    rows = await db
++      .select({ id: whatsappChats.id })
++      .from(whatsappChats)
++      .where(and(eq(whatsappChats.chatType, "Group"), isNull(whatsappChats.deletedAt)))
++      .orderBy(asc(whatsappChats.id))
++      .limit(limit);
++  }
++
++  let processed = 0;
++  for (const row of rows) {
++    reconcileCursor = Math.max(reconcileCursor, Number(row.id));
++    try {
++      await resolveDarwishGroupLink(Number(row.id));
++      processed += 1;
++    } catch (error) {
++      console.warn(
++        "[Darwish] group reconciliation failed",
++        Number(row.id),
++        String((error as Error)?.message || error),
++      );
++    }
++  }
++  return { processed, cursor: reconcileCursor };
++}
++
++export async function startDarwishQueueWorker() {
++  if (workerTimer || !enabled()) return;
++  const db = await getDb();
++  if (!db) {
++    console.warn("[Darwish] worker not started: database unavailable");
++    return;
++  }
++  try {
++    await db.select({ id: darwishGroupJobs.id }).from(darwishGroupJobs).limit(1);
++    await db.select({ id: darwishGroupLinks.id }).from(darwishGroupLinks).limit(1);
++  } catch {
++    console.warn("[Darwish] worker not started: run the Darwish Phase 1 migration first");
++    return;
++  }
++
++  const intervalMs = Math.max(1000, Number(process.env.DARWISH_QUEUE_INTERVAL_MS || 3000));
++  const batchSize = Math.max(1, Math.min(25, Number(process.env.DARWISH_QUEUE_BATCH_SIZE || 5)));
++  const run = () =>
++    processDarwishQueue({ limit: batchSize }).catch(error =>
++      console.error("[Darwish] queue failed:", String((error as Error)?.message || error)),
++    );
++  const interval = setInterval(run, intervalMs);
++  (interval as any).unref?.();
++  workerTimer = interval;
++  void run();
++
++  const reconcileIntervalMs = Math.max(
++    60_000,
++    Number(process.env.DARWISH_RECONCILE_INTERVAL_MS || 5 * 60_000),
++  );
++  const reconcileRun = () =>
++    reconcileDarwishGroups({ limit: Number(process.env.DARWISH_RECONCILE_BATCH_SIZE || 100) }).catch(error =>
++      console.error("[Darwish] reconciliation failed:", String((error as Error)?.message || error)),
++    );
++  const reconcileInterval = setInterval(reconcileRun, reconcileIntervalMs);
++  (reconcileInterval as any).unref?.();
++  reconcileTimer = reconcileInterval;
++  void reconcileRun();
++
++  console.log(
++    `[Darwish] Phase 1 worker started (queue=${intervalMs}ms, reconcile=${reconcileIntervalMs}ms)`,
++  );
++}
+diff --git a/server/services/waGatewayIntegrationService.ts b/server/services/waGatewayIntegrationService.ts
+index 6ab9eb3..f76fb55 100644
+--- a/server/services/waGatewayIntegrationService.ts
++++ b/server/services/waGatewayIntegrationService.ts
+@@ -5,6 +5,7 @@ import { createAuditLog, getDb } from "../db";
+ import { enqueueTaraInboundMessage } from "./tara/taraQueueService";
+ import { observeTaraOutboundWebhook } from "./tara/taraHandoffService";
++import { enqueueDarwishGroupMessage } from "./darwish/darwishQueueService";
+ import { toMysqlTimestamp, webhookMessageTimestamp } from "./waGatewayDateTime";
+ import {
+   clampWAGatewayPageSize,
+@@ -18,6 +19,20 @@ async function placeholder() {
+       .from(whatsappMessages)
+       .where(and(eq(whatsappMessages.sessionId, Number(session.id)), eq(whatsappMessages.messageId, id)))
+       .limit(1);
++    if (storedMessage?.id && chatType === "Group") {
++      enqueueDarwishGroupMessage({
++        whatsappSessionId: Number(session.id),
++        whatsappChatId: Number(chat.id),
++        whatsappMessageId: Number(storedMessage.id),
++        providerMessageId: id,
++        direction: fromMe ? "Outbound" : "Inbound",
++      }).catch(error =>
++        console.warn(
++          "[Darwish] failed to enqueue WhatsApp group message",
++          String((error as Error)?.message || error),
++        ),
++      );
++    }
+     if (Number((session as any).taraEnabled ?? 0) === 1 && storedMessage?.id && !fromMe && chatType === "Direct" && body.trim()) {
+       enqueueTaraInboundMessage({
+         whatsappSessionId: Number(session.id),
