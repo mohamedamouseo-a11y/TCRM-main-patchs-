@@ -1,0 +1,20 @@
+diff --git a/server/services/developerHubGitHubAdvancedSync.test.ts b/server/services/developerHubGitHubAdvancedSync.test.ts
+--- a/server/services/developerHubGitHubAdvancedSync.test.ts
++++ b/server/services/developerHubGitHubAdvancedSync.test.ts
+@@ -32,8 +32,15 @@ describe("Developer Hub advanced GitHub sync planning", () => {
+       .toBe("conflict");
+   });
+ 
+-  it("blocks a selected branch mismatch", () => {
++  it("allows push and sync to target a selected branch that differs from the local branch", () => {
+     expect(decideGitHubSyncPlan({ action: "sync", dirty: false, localAhead: 0, remoteAhead: 0, remoteExists: true, branchMatches: false }).syncState)
++      .toBe("synced");
++    expect(decideGitHubSyncPlan({ action: "push", dirty: true, localAhead: 0, remoteAhead: 0, remoteExists: true, branchMatches: false }).expectedAction)
++      .toBe("commit_and_push");
++  });
++
++  it("still blocks pull when the selected branch differs from the local branch", () => {
++    expect(decideGitHubSyncPlan({ action: "pull", dirty: false, localAhead: 0, remoteAhead: 1, remoteExists: true, branchMatches: false }).syncState)
+       .toBe("branch_mismatch");
+   });
+ 
