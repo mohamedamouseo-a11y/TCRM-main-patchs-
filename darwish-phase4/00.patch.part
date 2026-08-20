@@ -1,0 +1,53 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+index 3df91e5..3a95bb0 100644
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -30,7 +30,31 @@ export default function DarwishPage() {
+   const alertsQ = trpc.darwish.supervisorAlerts.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
+   const accountManagersQ = trpc.darwish.supervisorAccountManagers.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
+   const digestQ = trpc.darwish.supervisorDigest.useQuery({ period: "daily" }, { refetchInterval: 60_000 });
++  const actionStatsQ = trpc.darwish.actionStats.useQuery(undefined, { refetchInterval: 30_000 });
++  const actionsQ = trpc.darwish.actions.useQuery({ limit: 50, status: "all" }, { refetchInterval: 30_000 });
++  const actionCapabilitiesQ = trpc.darwish.actionCapabilities.useQuery();
+   const clientsQ = trpc.darwish.clients.useQuery({ search: clientSearch }, { enabled: clientSearch.trim().length > 1 });
++  const refreshActionData = () => { void utils.darwish.actionStats.invalidate(); void utils.darwish.actions.invalidate(); };
++  const refreshActionsM = trpc.darwish.refreshActions.useMutation({
++    onSuccess: (result) => { toast.success(ar ? `تم تحديث المقترحات: ${result.created}` : `Action proposals refreshed: ${result.created}`); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const draftReplyM = trpc.darwish.draftReply.useMutation({
++    onSuccess: () => { toast.success(ar ? "تم إنشاء مسودة رد للمراجعة" : "Reply draft created for review"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const approveActionM = trpc.darwish.approveAction.useMutation({
++    onSuccess: () => { toast.success(ar ? "تمت الموافقة — لم يتم التنفيذ بعد" : "Approved — not executed yet"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const rejectActionM = trpc.darwish.rejectAction.useMutation({
++    onSuccess: () => { toast.success(ar ? "تم رفض الإجراء" : "Action rejected"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const executeActionM = trpc.darwish.executeAction.useMutation({
++    onSuccess: () => { toast.success(ar ? "تم تنفيذ الإجراء المعتمد" : "Approved action executed"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
+   const upsertM = trpc.darwish.upsertGroupLink.useMutation({
+     onSuccess: () => { toast.success(ar ? "تم حفظ الربط" : "Mapping saved"); setGroupJid(""); setGroupName(""); setClientId(null); void utils.darwish.groupLinks.invalidate(); },
+     onError: (error) => toast.error(error.message),
+@@ -46,8 +70,8 @@ export default function DarwishPage() {
+   return <CRMLayout>
+     <div dir={isRTL ? "rtl" : "ltr"} className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+       <div className="flex flex-wrap items-center justify-between gap-3">
+-        <div><h1 className="text-2xl font-bold">{ar ? "درويش — مشرف خدمة العملاء" : "Darwish — Customer Service Supervisor"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الثالثة: مخاطر العملاء، الشكاوى المتكررة، زمن الاستجابة، التنبيهات وأداء مديري الحسابات — بدون ردود أو إجراءات تلقائية." : "Phase 3: customer risk, repeated complaints, response time, alerts and Account Manager performance — no automatic replies or actions."}</p></div>
+-        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
++        <div><h1 className="text-2xl font-bold">{ar ? "درويش — إجراءات بموافقة بشرية" : "Darwish — Human-Approved Actions"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الرابعة: يقترح درويش إجراءات داخلية ومسودات ردود، لكن لا يعتمد أو ينفذ أي شيء تلقائيًا." : "Phase 4: Darwish proposes internal actions and reply drafts, but never approves or executes anything automatically."}</p></div>
++        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); void actionStatsQ.refetch(); void actionsQ.refetch(); void actionCapabilitiesQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
+       </div>
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+@@ -67,7 +91,7 @@ export default function DarwishPage() {
+         <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "تصعيد مطلوب" : "Escalations"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.escalations || 0}</p></CardContent></Card>
+       </div>
+ 
+-      <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "ملخصات وتحذيرات داخلية فقط. درويش لا يرسل ردودًا في المرحلة الثانية." : "Internal summaries and alerts only. Darwish does not send replies in Phase 2."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data.map((item) => <div key={item.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.clientName || item.groupName || item.groupJid}</strong><div className="flex gap-2"><Badge variant={item.sentiment === "negative" ? "destructive" : "secondary"}>{item.sentiment}</Badge><Badge variant={item.urgency === "critical" || item.urgency === "high" ? "destructive" : "secondary"}>{item.urgency}</Badge>{item.complaintDetected ? <Badge>{ar ? "شكوى" : "Complaint"}</Badge> : null}</div></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{item.summary}</p>{item.escalationRequired ? <p className="mt-2 font-medium text-destructive">{ar ? "تصعيد: " : "Escalation: "}{item.escalationReason || "—"}</p> : null}</div>) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد تحليلات بعد." : "No intelligence results yet."}</p>}</div></CardContent></Card>
++      <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "يمكن إنشاء مسودة رد للمراجعة البشرية. إنشاء المسودة لا يرسل أي رسالة." : "A reply draft can be generated for human review. Drafting never sends a message."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data

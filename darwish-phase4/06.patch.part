@@ -1,0 +1,126 @@
+xecuteInternalNote(db, claimed, actorUserId);
++    else if (claimed.actionType === "follow_up_reminder") result = await executeFollowUpReminder(db, claimed);
++    else if (claimed.actionType === "customer_reply") result = await executeCustomerReply(claimed);
++    else throw new Error(`Unsupported Darwish action type: ${claimed.actionType}`);
++    await db.execute(sql`
++      UPDATE darwish_action_proposals
++      SET status = 'executed', executed_at = CURRENT_TIMESTAMP, execution_result = ${JSON.stringify(result)},
++          last_error = NULL, updated_at = CURRENT_TIMESTAMP
++      WHERE id = ${id} AND status = 'executing'
++    `);
++    await recordActionEvent(db, id, "executed", actorUserId, result);
++    return loadProposal(id);
++  } catch (error) {
++    const message = safeText(error instanceof Error ? error.message : String(error), 2000);
++    const uncertain = claimed.actionType === "customer_reply";
++    await db.execute(sql`
++      UPDATE darwish_action_proposals
++      SET status = ${uncertain ? "execution_uncertain" : "approved"}, last_error = ${message}, updated_at = CURRENT_TIMESTAMP
++      WHERE id = ${id} AND status = 'executing'
++    `);
++    await recordActionEvent(db, id, uncertain ? "execution_uncertain" : "execution_failed", actorUserId, { error: message });
++    throw error;
++  }
++}
++
++export function __deriveDarwishActionSuggestionsForTests(alert: SupervisorAlertInput) {
++  return deriveDarwishActionSuggestions(alert);
++}
++export function __normalizeDarwishReplyDraftForTests(raw: string) { return normalizeDarwishReplyDraft(raw); }
++export function __isDarwishActionExecutableStatusForTests(status: string) { return status === "approved"; }
+diff --git a/server/services/darwish/chatwoot/darwishChatwootService.ts b/server/services/darwish/chatwoot/darwishChatwootService.ts
+index a9fa56e..d49599e 100644
+--- a/server/services/darwish/chatwoot/darwishChatwootService.ts
++++ b/server/services/darwish/chatwoot/darwishChatwootService.ts
+@@ -67,3 +67,23 @@ export async function getDarwishIntegrationHealth() {
+   const [chatwoot, evolution] = await Promise.all([getDarwishChatwootHealth(), getDarwishEvolutionHealth()]);
+   return { chatwoot, evolution, whatsapp: evolution };
+ }
++
++export async function sendDarwishApprovedChatwootReply(conversationId: string, content: string) {
++  const config = getDarwishConfig();
++  if (!config.approvedOutboundEnabled) {
++    throw new Error("DARWISH_APPROVED_OUTBOUND_ENABLED is false; approved customer replies are blocked");
++  }
++  if (!config.enabled) throw new Error("Darwish Chatwoot integration is disabled");
++  if (!config.chatwootApiToken || !config.chatwootAccountId) {
++    throw new Error("Darwish Chatwoot account/token is not configured");
++  }
++  const safeConversationId = String(conversationId || "").trim();
++  const safeContent = String(content || "").replace(/\u0000/g, "").trim().slice(0, 4000);
++  if (!/^\d+$/.test(safeConversationId)) throw new Error("Invalid Chatwoot conversation id");
++  if (!safeContent) throw new Error("Approved Chatwoot reply is empty");
++  return request(`/api/v1/accounts/${encodeURIComponent(config.chatwootAccountId)}/conversations/${encodeURIComponent(safeConversationId)}/messages`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ content: safeContent, message_type: "outgoing", private: false }),
++  });
++}
+diff --git a/server/services/darwish/chatwoot/darwishConfig.ts b/server/services/darwish/chatwoot/darwishConfig.ts
+index f8aef08..f870685 100644
+--- a/server/services/darwish/chatwoot/darwishConfig.ts
++++ b/server/services/darwish/chatwoot/darwishConfig.ts
+@@ -16,6 +16,7 @@ export function getDarwishConfig() {
+     enabled: asBool(process.env.DARWISH_ENABLED, true) && asBool(process.env.DARWISH_CHATWOOT_ENABLED, false),
+     workerEnabled: asBool(process.env.DARWISH_WORKER_ENABLED, true),
+     workerIntervalMs: asPositiveInt(process.env.DARWISH_WORKER_INTERVAL_MS, 30000, 300000),
++    approvedOutboundEnabled: asBool(process.env.DARWISH_APPROVED_OUTBOUND_ENABLED, false),
+     chatwootUrl: String(process.env.DARWISH_CHATWOOT_BASE_URL || process.env.CHATWOOT_URL || "http://127.0.0.1:3308").replace(/\/$/, ""),
+     chatwootAccountId: String(process.env.DARWISH_CHATWOOT_ACCOUNT_ID || process.env.CHATWOOT_ACCOUNT_ID || "").trim(),
+     chatwootInboxId: String(process.env.DARWISH_CHATWOOT_INBOX_ID || process.env.CHATWOOT_DARWISH_INBOX_ID || "").trim(),
+@@ -33,6 +34,7 @@ export function getDarwishConfigStatus() {
+     enabled: config.enabled,
+     workerEnabled: config.workerEnabled,
+     workerIntervalMs: config.workerIntervalMs,
++    actions: { approvedOutboundEnabled: config.approvedOutboundEnabled },
+     chatwoot: {
+       url: config.chatwootUrl,
+       urlConfigured: Boolean(config.chatwootUrl),
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+index 61a2947..4778997 100644
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -27,6 +27,15 @@ import {
+   listDarwishSupervisorAlerts,
+   refreshDarwishSupervisor,
+ } from "./darwishSupervisorService";
++import {
++  approveDarwishAction,
++  draftDarwishReplyFromIntelligence,
++  executeDarwishApprovedAction,
++  getDarwishActionStats,
++  listDarwishActionProposals,
++  refreshDarwishActionProposals,
++  rejectDarwishAction,
++} from "./darwishActionService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   const role = String(ctx.user.role || "");
+@@ -36,6 +45,14 @@ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   return next();
+ });
+ 
++const darwishApproverProcedure = protectedProcedure.use(({ ctx, next }) => {
++  const role = String(ctx.user.role || "");
++  if (role !== "Admin") {
++    throw new TRPCError({ code: "FORBIDDEN", message: "Darwish action approval/execution requires Admin role" });
++  }
++  return next();
++});
++
+ export const darwishRouter = router({
+   health: darwishProcedure.query(async () => ({
+     config: getDarwishConfigStatus(),
+@@ -55,6 +72,20 @@ export const darwishRouter = router({
+   supervisorAccountManagers: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishAccountManagerPerformance(input?.limit || 50)),
+   supervisorDigest: darwishProcedure.input(z.object({ period: z.enum(["daily", "weekly"]).default("daily") })).query(({ input }) => getDarwishSupervisorDigest(input.period)),
+   refreshSupervisor: darwishProcedure.input(z.object({ maxScopes: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => refreshDarwishSupervisor(input?.maxScopes || 100)),
++  actionCapabilities: darwishProcedure.query(({ ctx }) => {
++    const config = getDarwishConfigStatus();
++    return { canApprove: String(ctx.user.role || "") === "Admin", approvedOutboundEnabled: Boolean(config.actions?.approvedOutboundEnabled) };
++  }),
++  actionStats: darwishProcedure.query(() => getDarwishActionStats()),
++  actions: darwishProcedure.input(z.object({
++    limit: z.number().int().min(1).max(200).default(50),
++    status: z.enum(["all", "proposed", "approved", "executing", "execution_uncertain", "executed", "rejected"]).default("all"),
++  }).optional()).query(({ input }) => listDarwishActionProposals(input?.limit || 50, 

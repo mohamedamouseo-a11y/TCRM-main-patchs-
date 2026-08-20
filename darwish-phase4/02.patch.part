@@ -1,0 +1,137 @@
+tline" disabled={!canApprove || rejectActionM.isPending} onClick={() => rejectActionM.mutate({ id: action.id, reason: "Rejected after approval from Darwish review queue" })}>{ar ? "إلغاء / رفض" : "Reject"}</Button></> : null}{!canApprove && (action.status === "proposed" || action.status === "approved") ? <span className="text-xs text-muted-foreground">{ar ? "الموافقة والتنفيذ متاحان لـ Admin فقط" : "Approval and execution are Admin-only"}</span> : null}</div></div>; }) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد إجراءات مقترحة حاليًا." : "No action proposals yet."}</p>}</div></CardContent></Card>
++
+       <Card><CardHeader><CardTitle>{ar ? "ربط مجموعة بعميل" : "Link a group to a client"}</CardTitle><CardDescription>{ar ? "يُستخدم الربط لتحديد سياق CRM للأحدات الواردة." : "The mapping supplies CRM context for inbound events."}</CardDescription></CardHeader><CardContent className="space-y-4">
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>{ar ? "بحث العميل" : "Client search"}</Label><Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={ar ? "اسم العميل أو النشاط" : "Client or business name"} />{clientsQ.data?.length ? <div className="mt-2 max-h-36 overflow-auto rounded border">{clientsQ.data.map((client) => <button type="button" key={client.id} onClick={() => { setClientId(client.id); setClientSearch(client.name || client.businessProfile || String(client.id)); }} className={`block w-full px-3 py-2 text-left text-sm hover:bg-muted ${client.id === clientId ? "bg-muted" : ""}`}>{client.name || client.businessProfile || `#${client.id}`}</button>)}</div> : null}</div><div><Label>{ar ? "معركف مثيل Evolution" : "Evolution instance"}</Label><Input value={instance} onChange={(event) => setInstance(event.target.value)} placeholder="instance-name" /></div></div>
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>Group JID</Label><Input value={groupJid} onChange={(event) => setGroupJid(event.target.value)} placeholder="120363...@g.us" /></div><div><Label>{ar ? "اسم المجموعة" : "Group name"}</Label><Input value={groupName} onChange={(event) => setGroupName(event.target.value)} /></div></div>
+diff --git a/server/services/darwish/chatwoot/darwishActionService.test.ts b/server/services/darwish/chatwoot/darwishActionService.test.ts
+new file mode 100644
+index 0000000..40d87e9
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishActionService.test.ts
+@@ -0,0 +1,46 @@
++import { describe, expect, it } from "vitest";
++import {
++  __deriveDarwishActionSuggestionsForTests,
++  __isDarwishActionExecutableStatusForTests,
++  __normalizeDarwishReplyDraftForTests,
++} from "./darwishActionService";
++
++const baseAlert = {
++  id: 10,
++  severity: "high",
++  title: "تنبيه",
++  summary: "العميل يحتاج متابعة",
++  clientId: 7,
++  groupJid: "120363@test.g.us",
++  groupName: "عميل تجريبي",
++  accountManagerId: 4,
++  leadId: 22,
++};
++
++describe("Darwish Phase 4 human-approved actions", () => {
++  it("proposes a follow-up reminder for response delay", () => {
++    const actions = __deriveDarwishActionSuggestionsForTests({ ...baseAlert, alertType: "response_delay" });
++    expect(actions.map((item) => item.actionType)).toEqual(["follow_up_reminder"]);
++  });
++
++  it("proposes an internal note for repeated complaints", () => {
++    const actions = __deriveDarwishActionSuggestionsForTests({ ...baseAlert, alertType: "repeated_complaint" });
++    expect(actions.map((item) => item.actionType)).toEqual(["internal_note"]);
++  });
++
++  it("proposes note and reminder for critical cases", () => {
++    const actions = __deriveDarwishActionSuggestionsForTests({ ...baseAlert, alertType: "critical_case" });
++    expect(actions.map((item) => item.actionType)).toEqual(["internal_note", "follow_up_reminder"]);
++  });
++
++  it("normalizes a reviewed reply draft without code fences", () => {
++    expect(__normalizeDarwishReplyDraftForTests("```text\nأهلًا بك، جاري مراجعة طلبك.\n```"))
++      .toBe("أهلًا بك، جاري مراجعة طلبك.");
++  });
++
++  it("requires approved status before execution", () => {
++    expect(__isDarwishActionExecutableStatusForTests("proposed")).toBe(false);
++    expect(__isDarwishActionExecutableStatusForTests("approved")).toBe(true);
++    expect(__isDarwishActionExecutableStatusForTests("executed")).toBe(false);
++  });
++});
+diff --git a/server/services/darwish/chatwoot/darwishActionService.ts b/server/services/darwish/chatwoot/darwishActionService.ts
+new file mode 100644
+index 0000000..9b8a923
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishActionService.ts
+@@ -0,0 +1,516 @@
++import { createHash } from "node:crypto";
++import { sql } from "drizzle-orm";
++import { getDb } from "../../../db";
++import { callTaraProviderWithFallback } from "../../tara/taraMultiProviderService";
++import { sendDarwishApprovedChatwootReply } from "./darwishChatwootService";
++
++type DarwishActionType = "internal_note" | "follow_up_reminder" | "customer_reply";
++type DarwishActionStatus = "proposed" | "approved" | "executing" | "execution_uncertain" | "executed" | "rejected";
++
++type SupervisorAlertInput = {
++  id: number;
++  alertType: string;
++  severity: string;
++  title: string;
++  summary: string;
++  clientId: number | null;
++  groupJid: string | null;
++  groupName: string | null;
++  accountManagerId: number | null;
++  leadId?: number | null;
++};
++
++type ActionSuggestion = {
++  actionType: Exclude<DarwishActionType, "customer_reply">;
++  title: string;
++  summary: string;
++  payload: Record<string, unknown>;
++};
++
++function rowsOf(result: any): any[] {
++  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as any[];
++  return Array.isArray(result) ? result : [];
++}
++
++function numberOf(value: unknown) {
++  const n = Number(value);
++  return Number.isFinite(n) ? n : 0;
++}
++
++function parseJsonValue(value: unknown) {
++  if (!value) return {};
++  if (typeof value === "object") return value as Record<string, unknown>;
++  try {
++    const parsed = JSON.parse(String(value));
++    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
++  } catch {
++    return {};
++  }
++}
++
++function parseStringArray(value: unknown): string[] {
++  const parsed = Array.isArray(value) ? value : (() => {
++    try { return JSON.parse(String(value || "[]")); } catch { return []; }
++  })();
++  return Array.isArray(parsed) ? parsed.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 20) : [];
++}
++
++function safeText(value: unknown, max: number) {
++  return String(value ?? "").replace(/\u0000/g, "").trim().slice(0, max);
++}
++
++function proposalKey(sourceType: string, sourceId: number | string, actionType: DarwishActionType) {
++  return createHash("sha256").update(`${sourceType}\0${sourceId}\0${actionType}`).digest("hex");
++}
++
++export function deriveDarwishActionSuggestions(alert: SupervisorAlertInput): ActionSuggestion[] {
++  const base = {
++    clientId: alert.clientId,
++    leadId: alert.leadId ?? null,
++    groupJid: alert.groupJid,
++    groupName: alert.groupName,
++    accountManagerId: alert.accountManagerId,
++    sourceAlertId: alert.id,
++    sourceAlertType: a
