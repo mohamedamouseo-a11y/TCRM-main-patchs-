@@ -1,1 +1,98 @@
-PLACEHOLDER
+diff --git a/client/src/App.tsx b/client/src/App.tsx
+index e7c8c471f..bc1c74c4f 100644
+--- a/client/src/App.tsx
++++ b/client/src/App.tsx
+@@ -63,6 +63,7 @@ import TaraAgentPage from "./pages/TaraAgentPage";
+ import ZaghloulAgentPage from "./pages/ZaghloulAgentPage";
+ import ZaghloulV5Page from "./pages/ZaghloulV5Page";
+ import FelfelPage from "./pages/FelfelPage";
++import DarwishPage from "./pages/DarwishPage";
+ import WAGatewayInbox from "./pages/wa/WAGatewayInbox";
+ import WAGatewayAccounts from "./pages/wa/WAGatewayAccounts";
+ import WAGatewaySettings from "./pages/wa/WAGatewaySettings";
+@@ -161,6 +162,7 @@ function Router() {
+       <Route path="/tara" component={TaraAgentPage} />
+       <Route path="/zaghloul" component={ZaghloulV5Page} />
+       <Route path="/felfel" component={FelfelPage} />
++      <Route path="/darwish" component={DarwishPage} />
+       <Route path="/zaghloul-v5" component={ZaghloulV5Page} />
+       <Route path="/zaghloul-legacy" component={ZaghloulAgentPage} />
+       <Route path="/thrs" component={THRSPage} />
+diff --git a/client/src/components/CRMLayout.tsx b/client/src/components/CRMLayout.tsx
+index c2dbd2f31..6e08bff58 100644
+--- a/client/src/components/CRMLayout.tsx
++++ b/client/src/components/CRMLayout.tsx
+@@ -351,7 +351,7 @@ export default function CRMLayout({ children, title: _title }: { children: React
+         {(() => {
+           const marketingHrefs = ["/meta-campaigns", "/tiktok-campaigns", "/google-ads", "/snapchat-ads", "/linkedin-ads"];
+           const salesHrefs = ["/sales-funnel", "/task-sla", "/leads", "/calendar", "/team-dashboard"];
+-          const aiStaffHrefs = ["/tara", "/zaghloul", "/felfel"];
++          const aiStaffHrefs = ["/tara", "/zaghloul", "/felfel", "/darwish"];
+           const isMarketingActive = marketingHrefs.includes(location);
+           const isSalesActive = salesHrefs.some(h => location === h || location.startsWith(h + "/"));
+           const isAiStaffActive = aiStaffHrefs.some(h => location === h || location.startsWith(h + "/"));
+@@ -541,6 +541,7 @@ export default function CRMLayout({ children, title: _title }: { children: React
+                         { href: "/tara", label: isRTL ? "تارا" : "Tara", icon: <Bot size={15} />, roles: ["Admin", "Moderator"] },
+                         { href: "/zaghloul", label: isRTL ? "زغلول" : "Zaghloul", icon: <Send size={15} />, roles: ["Admin"] },
+                         { href: "/felfel", label: isRTL ? "فلفل" : "Felfel", icon: <Mic2 size={15} />, roles: ["Admin"] },
++                        { href: "/darwish", label: isRTL ? "درويش" : "Darwish", icon: <MessageCircle size={15} />, roles: ["Admin", "Developer"] },
+                       ].filter(sub => sub.roles.includes(role) && (!isModerator || !isModeratorBlockedRoute(sub.href))).map(sub => {
+                         const subActive = location === sub.href || location.startsWith(sub.href + "/");
+                         return (
+@@ -571,6 +572,7 @@ export default function CRMLayout({ children, title: _title }: { children: React
+                         { href: "/tara", icon: <Bot size={15} />, roles: ["Admin", "Moderator"] },
+                         { href: "/zaghloul", icon: <Send size={15} />, roles: ["Admin"] },
+                         { href: "/felfel", icon: <Mic2 size={15} />, roles: ["Admin"] },
++                        { href: "/darwish", icon: <MessageCircle size={15} />, roles: ["Admin", "Developer"] },
+                       ].filter(sub => sub.roles.includes(role) && (!isModerator || !isModeratorBlockedRoute(sub.href))).map(sub => {
+                         const subActive = location === sub.href || location.startsWith(sub.href + "/");
+                         return (
+diff --git a/server/_core/index.ts b/server/_core/index.ts
+index d22ab410e..4207546fd 100644
+--- a/server/_core/index.ts
++++ b/server/_core/index.ts
+@@ -16,6 +16,8 @@ import {
+ import { registerOAuthRoutes } from "./oauth";
+ import { appRouter } from "../routers";
+ import { createContext } from "./context";
++import { registerDarwishPhase1Routes } from "../services/darwish/chatwoot/darwishRoutes";
++import { startDarwishWorker } from "../services/darwish/chatwoot/darwishWorker";
+ import { serveStatic, setupVite } from "./vite";
+ import { startEmailScheduler } from "../emailReports";
+ import { streamLeadsExcel } from "../excelExport";
+@@ -2263,6 +2265,7 @@ async function startServer() {
+     res.send(`<!doctype html><html><head><meta charset=utf-8><title>Unsubscribed</title></head><body style="font-family:Arial,sans-serif;text-align:center;padding:60px;background:#f9fafb"><div style="max-width:440px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 4px 20px rgba(0,0,0,.07)"><h2 style="color:#1a3a5c">Unsubscribed</h2><p style="color:#6b7280">You have been successfully unsubscribed. You will no longer receive emails from this campaign.</p></div></body></html>`);
+   });
+ 
++  registerDarwishPhase1Routes(app);
+   app.use(
+     "/api/trpc",
+     createExpressMiddleware({
+@@ -2288,6 +2291,7 @@ async function startServer() {
+ startServer().then(() => {
+   // Start email scheduler after server is up
+   startEmailScheduler();
++  startDarwishWorker();
+   // Start lead source sync scheduler
+   // Start meeting reminder scheduler
+   startMeetingReminderScheduler();
+diff --git a/server/routers.ts b/server/routers.ts
+index db0899747..2aa92dd66 100644
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -245,6 +245,7 @@ import {
+ } from "./services/googleDriveFileStorage";
+ import { BASE_CURRENCY, getExchangeRate, normalizeCurrency } from "./lib/currency";
+ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
++import { darwishRouter } from "./services/darwish/chatwoot/darwishRouter";
+ import {
+   createTaraLeadFromSocialConversation,
+   createTaraSocialChannel,
+@@ -1907,6 +1908,7 @@ const felfelProcedure = protectedProcedure.use(({ ctx, next }) => {
+ });
+ 
+ export const appRouter = router({
++  darwish: darwishRouter,
+   system: systemRouter,
+ 
+   felfel: router({
