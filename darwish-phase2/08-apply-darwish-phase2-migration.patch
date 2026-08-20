@@ -1,0 +1,27 @@
+diff --git a/services/chatwoot-runtime/apply-darwish-phase2-migration.ts b/services/chatwoot-runtime/apply-darwish-phase2-migration.ts
+new file mode 100644
+index 0000000..a443c07
+--- /dev/null
++++ b/services/chatwoot-runtime/apply-darwish-phase2-migration.ts
+@@ -0,0 +1,21 @@
++import fs from "node:fs/promises";
++import path from "node:path";
++import { sql } from "drizzle-orm";
++import { getDb } from "../../server/db";
++
++const apply = process.argv.includes("--apply");
++const migrationPath = path.resolve(process.cwd(), "services/chatwoot-runtime/20260820_darwish_phase2.sql");
++const migration = await fs.readFile(migrationPath, "utf8");
++const statements = migration.split(/;\s*(?:\n|$)/).map((statement) => statement.trim()).filter(Boolean);
++
++console.log(`DARWISH_PHASE2_STATEMENTS=${statements.length}`);
++if (!apply) {
++  console.log("DRY_RUN_ONLY=YES");
++  for (const statement of statements) console.log(statement.split("\n")[0]);
++  process.exit(0);
++}
++
++const db = await getDb();
++if (!db) throw new Error("Database unavailable");
++for (const statement of statements) await db.execute(sql.raw(statement));
++console.log("DARWISH_PHASE2_MIGRATION=APPLIED");

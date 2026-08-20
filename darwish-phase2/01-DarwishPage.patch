@@ -1,0 +1,50 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+index 5953303..2a3d8de 100644
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
+ import { useLanguage } from "@/contexts/LanguageContext";
+ import { trpc } from "@/lib/trpc";
+ import { toast } from "sonner";
+-import { Bot, CheckCircle2, Link2, Loader2, RefreshCw, Server, Unplug } from "lucide-react";
++import { AlertTriangle, Bot, Brain, CheckCircle2, Link2, Loader2, MessageSquareWarning, RefreshCw, Server, Unplug } from "lucide-react";
+ 
+ export default function DarwishPage() {
+   const { lang, isRTL } = useLanguage();
+@@ -24,6 +24,8 @@ export default function DarwishPage() {
+   const linksQ = trpc.darwish.groupLinks.useQuery(undefined, { refetchInterval: 30_000 });
+   const jobsQ = trpc.darwish.groupJobs.useQuery({ limit: 50 }, { refetchInterval: 30_000 });
+   const mappingCountsQ = trpc.darwish.mappingCounts.useQuery(undefined, { refetchInterval: 30_000 });
++  const intelligenceStatsQ = trpc.darwish.intelligenceStats.useQuery(undefined, { refetchInterval: 30_000 });
++  const intelligenceQ = trpc.darwish.intelligence.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
+   const clientsQ = trpc.darwish.clients.useQuery({ search: clientSearch }, { enabled: clientSearch.trim().length > 1 });
+   const upsertM = trpc.darwish.upsertGroupLink.useMutation({
+     onSuccess: () => { toast.success(ar ? "تم حفظ الربط" : "Mapping saved"); setGroupJid(""); setGroupName(""); setClientId(null); void utils.darwish.groupLinks.invalidate(); },
+@@ -40,8 +42,8 @@ export default function DarwishPage() {
+   return <CRMLayout>
+     <div dir={isRTL ? "rtl" : "ltr"} className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+       <div className="flex flex-wrap items-center justify-between gap-3">
+-        <div><h1 className="text-2xl font-bold">{ar ? "دارويش — ذكاء مجموعات واتساب" : "Darwish — WhatsApp Group Intelligence"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الأولى: ربط المجموعات واستقبال الأحداث دون إرسال ردود." : "Phase 1: group mapping and event intake without outbound replies."}</p></div>
+-        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
++        <div><h1 className="text-2xl font-bold">{ar ? "درويش — ذكاء خدمة العملاء" : "Darwish — Customer Service Intelligence"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الثانية: يستمع للمحادثات، يفهم المشاكل والشكاوى ويحدد الأولوية — بدون ردود أو إجراءات تلقائية." : "Phase 2: listening intelligence, issue/complaint understanding and prioritization — no automatic replies or actions."}</p></div>
++        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
+       </div>
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+@@ -53,6 +55,16 @@ export default function DarwishPage() {
+         <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "مديرو الحسابات" : "Account Managers"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{mappingCountsQ.data?.mappedAccountManagers || 0}</p><p className="text-xs text-muted-foreground">{ar ? "مطابقة Chatwoot" : "mapped to Chatwoot"}</p></CardContent></Card>
+       </div>
+ 
++      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
++        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Brain className="h-4 w-4" />{ar ? "تحليلات درويش" : "Analyses"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.totalAnalyses || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><MessageSquareWarning className="h-4 w-4" />{ar ? "شكاوى" : "Complaints"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.complaints || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="h-4 w-4" />{ar ? "عاجل" : "Urgent"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.urgent || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "سلبي" : "Negative"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.negative || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "تصعيد مطلوب" : "Escalations"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.escalations || 0}</p></CardContent></Card>
++      </div>
++
++      <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "ملخصات وتحذيرات داخلية فقط. درويش لا يرسل ردودًا في المرحلة الثانية." : "Internal summaries and alerts only. Darwish does not send replies in Phase 2."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data.map((item) => <div key={item.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.clientName || item.groupName || item.groupJid}</strong><div className="flex gap-2"><Badge variant={item.sentiment === "negative" ? "destructive" : "secondary"}>{item.sentiment}</Badge><Badge variant={item.urgency === "critical" || item.urgency === "high" ? "destructive" : "secondary"}>{item.urgency}</Badge>{item.complaintDetected ? <Badge>{ar ? "شكوى" : "Complaint"}</Badge> : null}</div></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{item.summary}</p>{item.escalationRequired ? <p className="mt-2 font-medium text-destructive">{ar ? "تصعيد: " : "Escalation: "}{item.escalationReason || "—"}</p> : null}</div>) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد تحليلات بعد." : "No intelligence results yet."}</p>}</div></CardContent></Card>
++
+       <Card><CardHeader><CardTitle>{ar ? "ربط مجموعة بعميل" : "Link a group to a client"}</CardTitle><CardDescription>{ar ? "يُستخدم الربط لتحديد سياق CRM للأحداث الواردة." : "The mapping supplies CRM context for inbound events."}</CardDescription></CardHeader><CardContent className="space-y-4">
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>{ar ? "بحث العميل" : "Client search"}</Label><Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={ar ? "اسم العميل أو النشاط" : "Client or business name"} />{clientsQ.data?.length ? <div className="mt-2 max-h-36 overflow-auto rounded border">{clientsQ.data.map((client) => <button type="button" key={client.id} onClick={() => { setClientId(client.id); setClientSearch(client.name || client.businessProfile || String(client.id)); }} className={`block w-full px-3 py-2 text-left text-sm hover:bg-muted ${client.id === clientId ? "bg-muted" : ""}`}>{client.name || client.businessProfile || `#${client.id}`}</button>)}</div> : null}</div><div><Label>{ar ? "معرّف مثيل Evolution" : "Evolution instance"}</Label><Input value={instance} onChange={(event) => setInstance(event.target.value)} placeholder="instance-name" /></div></div>
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>Group JID</Label><Input value={groupJid} onChange={(event) => setGroupJid(event.target.value)} placeholder="120363...@g.us" /></div><div><Label>{ar ? "اسم المجموعة" : "Group name"}</Label><Input value={groupName} onChange={(event) => setGroupName(event.target.value)} /></div></div>

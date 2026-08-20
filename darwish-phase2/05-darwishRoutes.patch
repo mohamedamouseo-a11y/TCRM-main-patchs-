@@ -1,0 +1,65 @@
+diff --git a/server/services/darwish/chatwoot/darwishRoutes.ts b/server/services/darwish/chatwoot/darwishRoutes.ts
+index 2d19123..9241ff3 100644
+--- a/server/services/darwish/chatwoot/darwishRoutes.ts
++++ b/server/services/darwish/chatwoot/darwishRoutes.ts
+@@ -28,7 +28,8 @@ function extractEvolutionGroupEvent(body: any, request: Request) {
+   const data = getEventData(body);
+   const key = data?.key || data?.message?.key || body?.key || {};
+   const remoteJid = firstString(key.remoteJid, data.remoteJid, body.group_jid);
+-  const groupJid = firstString(data.groupJid, data.group_jid, body.group_jid, remoteJid.endsWith("@g.us") ? remoteJid : "");
++  const nativeGroupJid = firstString(data.groupJid, data.group_jid, body.group_jid, remoteJid.endsWith("@g.us") ? remoteJid : "");
++  const groupJid = nativeGroupJid || (remoteJid ? `direct:${remoteJid}` : "");
+   const instance = firstString(body.instance, data.instance, headerValue(request, "x-evolution-instance"), getDarwishConfig().evolutionInstance);
+   const senderJid = firstString(key.participant, data.participant, data.senderJid, body.sender_jid, remoteJid);
+   const senderPhone = senderJid.includes("@") ? senderJid.split("@")[0] : senderJid;
+@@ -38,12 +39,13 @@ function extractEvolutionGroupEvent(body: any, request: Request) {
+   const groupName = firstString(data.groupMetadata?.subject, data.groupName, data.group_name, body.group_name) || null;
+   const messageTimestamp = firstString(data.messageTimestamp, data.message_timestamp, body.message_timestamp);
+   const eventId = firstString(body.id, body.event_id, data.id, messageId, stableEventId(`evolution:${body.event || "event"}:${groupJid}`, body));
+-  return { eventId, groupJid, groupName, senderJid, senderName: firstString(data.pushName, data.senderName, body.sender_name) || null, senderPhone, participants, messageId: messageId || null, direction, messageTimestamp: messageTimestamp || null, evolutionInstance: instance, payload: body };
++  const conversationName = groupName || (!nativeGroupJid ? firstString(data.pushName, data.senderName, body.sender_name) || null : null);
++  return { eventId, groupJid, groupName: conversationName, senderJid, senderName: firstString(data.pushName, data.senderName, body.sender_name) || null, senderPhone, participants, messageId: messageId || null, direction, messageTimestamp: messageTimestamp || null, evolutionInstance: instance, payload: body };
+ }
+ 
+ export function registerDarwishPhase1Routes(app: Express) {
+   app.get("/api/darwish/health", (_req: Request, res: Response) => {
+-    res.json({ ok: true, phase: 1, service: "darwish" });
++    res.json({ ok: true, phase: 2, service: "darwish", intelligence: true, autoReply: false });
+   });
+ 
+   app.post("/api/darwish/evolution/webhook", async (req: Request, res: Response) => {
+@@ -51,7 +53,7 @@ export function registerDarwishPhase1Routes(app: Express) {
+     if (!isDarwishWebhookAuthorized(secret)) return res.status(401).json({ success: false, error: "Unauthorized" });
+     try {
+       const event = extractEvolutionGroupEvent(req.body || {}, req);
+-      if (!event.groupJid || !event.evolutionInstance) return res.status(202).json({ success: true, accepted: false, reason: "group metadata missing" });
++      if (!event.groupJid || !event.evolutionInstance) return res.status(202).json({ success: true, accepted: false, reason: "conversation metadata missing" });
+       const result = await enqueueDarwishGroupJob(event);
+       return res.status(202).json({ success: true, ...result });
+     } catch (error) {
+@@ -68,16 +70,22 @@ export function registerDarwishPhase1Routes(app: Express) {
+       const conversation = body.conversation || body.data?.conversation || {};
+       const meta = conversation.meta || body.meta || body.data?.meta || {};
+       const customAttributes = conversation.custom_attributes || body.custom_attributes || {};
+-      const groupJid = firstString(customAttributes.group_jid, meta.group_jid, body.group_jid, body.data?.group_jid);
++      const conversationId = firstString(conversation.id, body.conversation_id, body.data?.conversation_id);
++      const groupJid = firstString(customAttributes.group_jid, meta.group_jid, body.group_jid, body.data?.group_jid) || (conversationId ? `chatwoot:conversation:${conversationId}` : "");
+       const evolutionInstance = firstString(customAttributes.evolution_instance, meta.evolution_instance, body.evolution_instance, body.data?.evolution_instance, getDarwishConfig().evolutionInstance);
+-      if (!groupJid || !evolutionInstance) return res.status(202).json({ success: true, accepted: false, reason: "group metadata missing" });
++      if (!groupJid || !evolutionInstance) return res.status(202).json({ success: true, accepted: false, reason: "conversation metadata missing" });
+       const eventId = firstString(body.id, body.event_id, body.data?.id, stableEventId(`chatwoot:${body.event || "event"}:${conversation.id || "conversation"}`, body));
+       const result = await enqueueDarwishGroupJob({
+         eventId,
+         groupJid,
+         groupName: firstString(customAttributes.group_name, meta.group_name, body.group_name, body.data?.group_name) || null,
+         evolutionInstance,
+-        chatwootConversationId: firstString(conversation.id, body.conversation_id, body.data?.conversation_id) || null,
++        chatwootConversationId: conversationId || null,
++        senderJid: firstString(body.sender?.identifier, body.data?.sender?.identifier, conversation.meta?.sender?.identifier) || null,
++        senderName: firstString(body.sender?.name, body.data?.sender?.name, conversation.meta?.sender?.name) || null,
++        senderPhone: firstString(body.sender?.phone_number, body.data?.sender?.phone_number, conversation.meta?.sender?.phone_number) || null,
++        direction: firstString(body.message?.message_type, body.data?.message?.message_type) === "outgoing" ? "outbound" : "inbound",
++        messageId: firstString(body.message?.id, body.data?.message?.id) || null,
+         payload: body,
+       });
+       return res.status(202).json({ success: true, ...result });

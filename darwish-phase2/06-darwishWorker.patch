@@ -1,0 +1,47 @@
+diff --git a/server/services/darwish/chatwoot/darwishWorker.ts b/server/services/darwish/chatwoot/darwishWorker.ts
+index 5370fd8..0140c81 100644
+--- a/server/services/darwish/chatwoot/darwishWorker.ts
++++ b/server/services/darwish/chatwoot/darwishWorker.ts
+@@ -1,5 +1,6 @@
+ import { getDarwishConfig } from "./darwishConfig";
+ import { getDarwishChatwootHealth } from "./darwishChatwootService";
++import { processDarwishIntelligenceBatch } from "./darwishIntelligenceService";
+ 
+ let timer: NodeJS.Timeout | undefined;
+ let running = false;
+@@ -7,7 +8,7 @@ let running = false;
+ export function startDarwishWorker() {
+   const config = getDarwishConfig();
+   if (!config.workerEnabled) {
+-    console.info("[Darwish] Phase 1 worker disabled by configuration");
++    console.info("[Darwish] Phase 2 worker disabled by configuration");
+     return () => undefined;
+   }
+   if (timer) return () => clearInterval(timer);
+@@ -16,11 +17,13 @@ export function startDarwishWorker() {
+     running = true;
+     try {
+       const health = await getDarwishChatwootHealth();
+-      if (!health.enabled || !health.reachable) return;
+-      // Phase 1 deliberately does not send WhatsApp replies or mutate Tara/Zaghloul.
+-      // Jobs are accepted and mapped by the webhook path; processing is reserved for Phase 2.
++      const batch = await processDarwishIntelligenceBatch(5);
++      if (batch.processed || batch.failed) {
++        console.info(`[Darwish] Phase 2 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
++      }
++      // Phase 2 is analysis-only: no WhatsApp replies and no automatic CRM actions.
+     } catch (error) {
+-      console.warn("[Darwish] Phase 1 worker health tick failed", error instanceof Error ? error.message : String(error));
++      console.warn("[Darwish] Phase 2 worker tick failed", error instanceof Error ? error.message : String(error));
+     } finally {
+       running = false;
+     }
+@@ -28,7 +31,7 @@ export function startDarwishWorker() {
+   void tick();
+   timer = setInterval(() => void tick(), config.workerIntervalMs);
+   timer.unref?.();
+-  console.info(`[Darwish] Phase 1 worker started intervalMs=${config.workerIntervalMs}`);
++  console.info(`[Darwish] Phase 2 worker started intervalMs=${config.workerIntervalMs}`);
+   return () => {
+     if (timer) clearInterval(timer);
+     timer = undefined;

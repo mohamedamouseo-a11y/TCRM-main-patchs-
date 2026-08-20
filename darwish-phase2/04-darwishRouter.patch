@@ -1,0 +1,26 @@
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+index b77769a..c41dfb4 100644
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -15,6 +15,11 @@ import {
+   upsertDarwishClientMapping,
+   upsertDarwishGroupLink,
+ } from "./darwishMappingService";
++import {
++  analyzeDarwishJob,
++  getDarwishIntelligenceStats,
++  listDarwishIntelligence,
++} from "./darwishIntelligenceService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   const role = String(ctx.user.role || "");
+@@ -35,6 +40,9 @@ export const darwishRouter = router({
+   mappingCounts: darwishProcedure.query(() => getDarwishMappingCounts()),
+   groupLinks: darwishProcedure.query(() => listDarwishGroupLinks()),
+   groupJobs: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishGroupJobs(input?.limit || 50)),
++  intelligenceStats: darwishProcedure.query(() => getDarwishIntelligenceStats()),
++  intelligence: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishIntelligence(input?.limit || 50)),
++  analyzeJob: darwishProcedure.input(z.object({ id: z.number().int().positive(), force: z.boolean().default(false) })).mutation(({ input }) => analyzeDarwishJob(input.id, input.force)),
+   clients: darwishProcedure.input(z.object({ search: z.string().trim().max(120).default("") }).optional()).query(async ({ input }) => {
+     const db = await getDb();
+     if (!db) return [];

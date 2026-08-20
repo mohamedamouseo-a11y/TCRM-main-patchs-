@@ -1,0 +1,37 @@
+diff --git a/server/services/darwish/chatwoot/darwishIntelligenceService.test.ts b/server/services/darwish/chatwoot/darwishIntelligenceService.test.ts
+new file mode 100644
+index 0000000..3a03da7
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishIntelligenceService.test.ts
+@@ -0,0 +1,31 @@
++import { describe, expect, it } from "vitest";
++import { __extractDarwishMessageTextForTests, __parseDarwishProviderJsonForTests } from "./darwishIntelligenceService";
++
++describe("Darwish Phase 2 intelligence", () => {
++  it("extracts Evolution text messages", () => {
++    expect(__extractDarwishMessageTextForTests({ data: { message: { conversation: "العميل عنده مشكلة في التسليم" } } })).toBe("العميل عنده مشكلة في التسليم");
++  });
++
++  it("extracts Chatwoot message content", () => {
++    expect(__extractDarwishMessageTextForTests({ message: { content: "invoice issue" } })).toBe("invoice issue");
++  });
++
++  it("validates structured intelligence and rejects extra enum values", () => {
++    const result = __parseDarwishProviderJsonForTests(JSON.stringify({
++      summary: "العميل يشتكي من تأخر التسليم",
++      sentiment: "negative",
++      urgency: "high",
++      complaintDetected: true,
++      issueCategories: ["delivery"],
++      issues: [{ title: "تأخر التسليم", severity: "high", evidence: "ذكر أن الطلب متأخر" }],
++      customerNeeds: ["موعد تسليم واضح"],
++      risks: ["تصعيد العميل"],
++      recommendedActions: ["مراجعة حالة الطلب والتواصل مع العميل"],
++      escalationRequired: true,
++      escalationReason: "تأخر مؤثر على العميل",
++    }));
++    expect(result.sentiment).toBe("negative");
++    expect(result.urgency).toBe("high");
++    expect(result.complaintDetected).toBe(true);
++  });
++});
