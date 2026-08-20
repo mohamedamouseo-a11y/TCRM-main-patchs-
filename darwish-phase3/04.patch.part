@@ -1,0 +1,110 @@
+y",
++      severity: input.oldestPendingMinutes != null && input.oldestPendingMinutes >= 480 ? "high" : "medium",
++      title: "تأخر في استجابة إدارة الحساب",
++      summary: `متوسط الرد ${input.avgResponseMinutes == null ? "غير متاح" : `${Math.round(input.avgResponseMinutes)} دقيقة`}، والرسائل المنتظرة ${input.pendingCustomerMessages}.`,
++    });
++  }
++  return alerts;
++}
++
++function calculateResponseStats(rows: any[]) {
++  const pendingByScope = new Map<string, number[]>();
++  const responseDurations = new Map<string, number[]>();
++  const now = Date.now();
++  for (const row of rows) {
++    const key = scopeKey(row.clientId ? Number(row.clientId) : null, String(row.groupJid || ""), String(row.evolutionInstance || ""));
++    const at = toMillis(row.messageTimestamp) ?? toMillis(row.receivedAt);
++    if (at == null) continue;
++    if (String(row.direction) === "outbound") {
++      const queue = pendingByScope.get(key) || [];
++      if (queue.length) {
++        const started = queue.shift()!;
++        const minutes = Math.max(0, (at - started) / 60000);
++        const durations = responseDurations.get(key) || [];
++        durations.push(minutes);
++        responseDurations.set(key, durations);
++        pendingByScope.set(key, queue);
++      }
++    } else {
++      const queue = pendingByScope.get(key) || [];
++      queue.push(at);
++      pendingByScope.set(key, queue);
++    }
++  }
++  const result = new Map<string, { avgResponseMinutes: number | null; pendingCustomerMessages: number; oldestPendingMinutes: number | null }>();
++  const keys = new Set([...pendingByScope.keys(), ...responseDurations.keys()]);
++  for (const key of keys) {
++    const queue = pendingByScope.get(key) || [];
++    const durations = responseDurations.get(key) || [];
++    const avg = durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : null;
++    const oldest = queue.length ? Math.max(0, (now - Math.min(...queue)) / 60000) : null;
++    result.set(key, { avgResponseMinutes: avg, pendingCustomerMessages: queue.length, oldestPendingMinutes: oldest });
++  }
++  return result;
++}
++
++function qualityScore(avgRiskScore: number, highRiskRate: number, avgResponseMinutes: number | null) {
++  const responsePenalty = avgResponseMinutes == null ? 0 : avgResponseMinutes >= 240 ? 30 : avgResponseMinutes >= 120 ? 20 : avgResponseMinutes >= 60 ? 10 : 0;
++  return Math.max(0, Math.min(100, Math.round(100 - (avgRiskScore * 0.45) - (highRiskRate * 25) - responsePenalty)));
++}
++
++export async function refreshDarwishSupervisor(maxScopes = 100) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const safeLimit = Math.max(1, Math.min(500, Math.floor(maxScopes)));
++  const intelligenceRows = rowsOf(await db.execute(sql`
++    SELECT i.client_id AS clientId, i.group_jid AS groupJid, i.group_name AS groupName,
++           i.evolution_instance AS evolutionInstance, c.accountManagerId AS accountManagerId,
++           i.complaint_detected AS complaintDetected, i.urgency, i.sentiment,
++           i.escalation_required AS escalationRequired, i.issue_categories AS issueCategories,
++           i.generated_at AS generatedAt
++    FROM darwish_intelligence i
++    LEFT JOIN clients c ON c.id = i.client_id
++    WHERE i.generated_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
++    ORDER BY i.generated_at DESC, i.id DESC
++    LIMIT 5000
++  `));
++  const jobRows = rowsOf(await db.execute(sql`
++    SELECT client_id AS clientId, group_jid AS groupJid, evolution_instance AS evolutionInstance,
++           direction, message_timestamp AS messageTimestamp, received_at AS receivedAt
++    FROM darwish_group_jobs
++    WHERE received_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
++    ORDER BY COALESCE(message_timestamp, received_at) ASC, id ASC
++    LIMIT 10000
++  `));
++  const responseStats = calculateResponseStats(jobRows);
++  const scopes = new Map<string, any>();
++  for (const row of intelligenceRows) {
++    const clientId = row.clientId ? Number(row.clientId) : null;
++    const groupJid = String(row.groupJid || "");
++    const evolutionInstance = String(row.evolutionInstance || "");
++    if (!groupJid || !evolutionInstance) continue;
++    const key = scopeKey(clientId, groupJid, evolutionInstance);
++    const current = scopes.get(key) || {
++      scopeKey: key,
++      clientId,
++      groupJid,
++      groupName: row.groupName ? String(row.groupName) : null,
++      evolutionInstance,
++      accountManagerId: row.accountManagerId ? Number(row.accountManagerId) : null,
++      complaintCount: 0,
++      urgentCount: 0,
++      negativeCount: 0,
++      escalationCount: 0,
++      categoryCounts: new Map<string, number>(),
++      lastAnalysisAt: row.generatedAt || null,
++    };
++    if (numberOf(row.complaintDetected) === 1) current.complaintCount += 1;
++    if (["high", "critical"].includes(String(row.urgency))) current.urgentCount += 1;
++    if (String(row.sentiment) === "negative") current.negativeCount += 1;
++    if (numberOf(row.escalationRequired) === 1) current.escalationCount += 1;
++    for (const category of parseStringArray(row.issueCategories)) {
++      current.categoryCounts.set(category, (current.categoryCounts.get(category) || 0) + 1);
++    }
++    scopes.set(key, current);
++  }
++
++  const prepared = [...scopes.values()].map((scope) => {
++    const repeatedIssueCategories = [...scope.categoryCounts.entries()]
++      .filter(([, count]) => count >= 2)
++   

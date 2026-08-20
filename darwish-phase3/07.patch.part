@@ -1,0 +1,109 @@
+wait getDarwishChatwootHealth();
+       const batch = await processDarwishIntelligenceBatch(5);
+       if (batch.processed || batch.failed) {
+-        console.info(`[Darwish] Phase 2 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
++        console.info(`[Darwish] Phase 3 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
+       }
+-      // Phase 2 is analysis-only: no WhatsApp replies and no automatic CRM actions.
++      supervisorTick += 1;
++      if (batch.processed > 0 || supervisorTick >= 10) {
++        const supervisor = await refreshDarwishSupervisor(100);
++        supervisorTick = 0;
++        if (supervisor.refreshed || supervisor.activeAlerts) {
++          console.info(`[Darwish] Phase 3 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
++        }
++      }
++      // Phase 3 remains observation-only: internal alerts/scores, no WhatsApp replies and no automatic CRM actions.
+     } catch (error) {
+-      console.warn("[Darwish] Phase 2 worker tick failed", error instanceof Error ? error.message : String(error));
++      console.warn("[Darwish] Phase 3 worker tick failed", error instanceof Error ? error.message : String(error));
+     } finally {
+       running = false;
+     }
+@@ -31,7 +41,7 @@ export function startDarwishWorker() {
+   void tick();
+   timer = setInterval(() => void tick(), config.workerIntervalMs);
+   timer.unref?.();
+-  console.info(`[Darwish] Phase 2 worker started intervalMs=${config.workerIntervalMs}`);
++  console.info(`[Darwish] Phase 3 worker started intervalMs=${config.workerIntervalMs}`);
+   return () => {
+     if (timer) clearInterval(timer);
+     timer = undefined;
+diff --git a/services/chatwoot-runtime/apply-darwish-phase3-migration.ts b/services/chatwoot-runtime/apply-darwish-phase3-migration.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..079eb140dbfeb1f87586f86cd8e4d8b00195bf47
+--- /dev/null
++++ b/services/chatwoot-runtime/apply-darwish-phase3-migration.ts
+@@ -0,0 +1,72 @@
++import { sql } from "drizzle-orm";
++import { getDb } from "../../server/db";
++
++const apply = process.argv.includes("--apply");
++const statements = [
++  `CREATE TABLE IF NOT EXISTS darwish_supervisor_snapshots (
++    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++    scope_key VARCHAR(64) NOT NULL,
++    client_id INT NULL,
++    group_jid VARCHAR(255) NOT NULL,
++    group_name VARCHAR(255) NULL,
++    evolution_instance VARCHAR(160) NOT NULL,
++    account_manager_id INT NULL,
++    risk_score INT NOT NULL DEFAULT 0,
++    risk_level VARCHAR(16) NOT NULL DEFAULT 'low',
++    complaint_count_30d INT NOT NULL DEFAULT 0,
++    urgent_count_30d INT NOT NULL DEFAULT 0,
++    negative_count_30d INT NOT NULL DEFAULT 0,
++    escalation_count_30d INT NOT NULL DEFAULT 0,
++    repeated_issue_categories JSON NULL,
++    avg_response_minutes DECIMAL(12,2) NULL,
++    pending_customer_messages INT NOT NULL DEFAULT 0,
++    oldest_pending_minutes DECIMAL(12,2) NULL,
++    open_alert_count INT NOT NULL DEFAULT 0,
++    last_analysis_at DATETIME NULL,
++    calculated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_darwish_supervisor_scope (scope_key),
++    KEY idx_darwish_supervisor_risk (risk_level, risk_score),
++    KEY idx_darwish_supervisor_client (client_id),
++    KEY idx_darwish_supervisor_am (account_manager_id),
++    KEY idx_darwish_supervisor_calculated (calculated_at)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++  `CREATE TABLE IF NOT EXISTS darwish_supervisor_alerts (
++    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++    alert_key VARCHAR(64) NOT NULL,
++    scope_key VARCHAR(64) NOT NULL,
++    client_id INT NULL,
++    group_jid VARCHAR(255) NOT NULL,
++    group_name VARCHAR(255) NULL,
++    account_manager_id INT NULL,
++    alert_type VARCHAR(32) NOT NULL,
++    severity VARCHAR(16) NOT NULL,
++    title VARCHAR(500) NOT NULL,
++    summary TEXT NOT NULL,
++    active TINYINT(1) NOT NULL DEFAULT 1,
++    first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_darwish_supervisor_alert (alert_key),
++    KEY idx_darwish_supervisor_alert_active (active, severity),
++    KEY idx_darwish_supervisor_alert_client (client_id),
++    KEY idx_darwish_supervisor_alert_am (account_manager_id),
++    KEY idx_darwish_supervisor_alert_seen (last_seen_at)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++];
++
++console.log(`DARWISH_PHASE3_STATEMENTS=${statements.length}`);
++if (!apply) {
++  console.log("DRY_RUN_ONLY=YES");
++  for (const statement of statements) console.log(statement.split("\n")[0]);
++  process.exit(0);
++}
++
++const db = await getDb();
++if (!db) throw new Error("Database unavailable");
++for (const statement of statements) await db.execute(sql.raw(statement));
++console.log("DARWISH_PHASE3_MIGRATION=APPLIED");

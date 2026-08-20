@@ -1,0 +1,114 @@
+== null ? null : numberOf(row.avgResponseMinutes),
++    pendingCustomerMessages: numberOf(row.pendingCustomerMessages),
++    lastCalculatedAt: row.lastCalculatedAt || null,
++  };
++}
++
++export async function listDarwishSupervisorAlerts(limit = 50) {
++  const db = await getDb();
++  if (!db) return [];
++  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
++  return rowsOf(await db.execute(sql`
++    SELECT a.id, a.alert_type AS alertType, a.severity, a.title, a.summary,
++           a.client_id AS clientId, c.leadName AS clientName, a.group_jid AS groupJid,
++           a.group_name AS groupName, a.account_manager_id AS accountManagerId,
++           a.first_seen_at AS firstSeenAt, a.last_seen_at AS lastSeenAt
++    FROM darwish_supervisor_alerts a
++    LEFT JOIN clients c ON c.id = a.client_id
++    WHERE a.active = 1
++    ORDER BY FIELD(a.severity, 'critical','high','medium','low'), a.last_seen_at DESC, a.id DESC
++    LIMIT ${safeLimit}
++  `));
++}
++
++export async function listDarwishAccountManagerPerformance(limit = 50) {
++  const db = await getDb();
++  if (!db) return [];
++  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
++  const rows = rowsOf(await db.execute(sql`
++    SELECT account_manager_id AS accountManagerId,
++           COUNT(*) AS clientsMonitored,
++           ROUND(AVG(risk_score), 1) AS avgRiskScore,
++           SUM(risk_level IN ('high','critical')) AS highRiskClients,
++           SUM(open_alert_count) AS activeAlerts,
++           ROUND(AVG(avg_response_minutes), 1) AS avgResponseMinutes
++    FROM darwish_supervisor_snapshots
++    WHERE account_manager_id IS NOT NULL
++    GROUP BY account_manager_id
++    ORDER BY highRiskClients DESC, avgRiskScore DESC
++    LIMIT ${safeLimit}
++  `));
++  return rows.map((row) => {
++    const clientsMonitored = numberOf(row.clientsMonitored);
++    const highRiskClients = numberOf(row.highRiskClients);
++    const avgRiskScore = numberOf(row.avgRiskScore);
++    const avgResponseMinutes = row.avgResponseMinutes == null ? null : numberOf(row.avgResponseMinutes);
++    return {
++      accountManagerId: numberOf(row.accountManagerId),
++      clientsMonitored,
++      avgRiskScore,
++      highRiskClients,
++      activeAlerts: numberOf(row.activeAlerts),
++      avgResponseMinutes,
++      serviceQualityScore: qualityScore(avgRiskScore, clientsMonitored ? highRiskClients / clientsMonitored : 0, avgResponseMinutes),
++    };
++  });
++}
++
++export async function getDarwishSupervisorDigest(period: "daily" | "weekly" = "daily") {
++  const db = await getDb();
++  if (!db) return { period, analyses: 0, complaints: 0, urgent: 0, negative: 0, escalations: 0, topIssueCategories: [], generatedAt: new Date().toISOString() };
++  const digestQuery = period === "weekly"
++    ? sql`SELECT complaint_detected AS complaintDetected, urgency, sentiment,
++                 escalation_required AS escalationRequired, issue_categories AS issueCategories
++          FROM darwish_intelligence
++          WHERE generated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
++          ORDER BY generated_at DESC LIMIT 5000`
++    : sql`SELECT complaint_detected AS complaintDetected, urgency, sentiment,
++                 escalation_required AS escalationRequired, issue_categories AS issueCategories
++          FROM darwish_intelligence
++          WHERE generated_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
++          ORDER BY generated_at DESC LIMIT 5000`;
++  const rows = rowsOf(await db.execute(digestQuery));
++  const categoryCounts = new Map<string, number>();
++  let complaints = 0;
++  let urgent = 0;
++  let negative = 0;
++  let escalations = 0;
++  for (const row of rows) {
++    if (numberOf(row.complaintDetected) === 1) complaints += 1;
++    if (["high", "critical"].includes(String(row.urgency))) urgent += 1;
++    if (String(row.sentiment) === "negative") negative += 1;
++    if (numberOf(row.escalationRequired) === 1) escalations += 1;
++    for (const category of parseStringArray(row.issueCategories)) categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
++  }
++  const topIssueCategories = [...categoryCounts.entries()]
++    .sort((a, b) => b[1] - a[1])
++    .slice(0, 10)
++    .map(([category, count]) => ({ category, count }));
++  return { period, analyses: rows.length, complaints, urgent, negative, escalations, topIssueCategories, generatedAt: new Date().toISOString() };
++}
+diff --git a/server/services/darwish/chatwoot/darwishWorker.ts b/server/services/darwish/chatwoot/darwishWorker.ts
+index 0140c81863b0e30d81b6156f93f6dd6d36d1cc80..4dec8d0a45d410ff5dba02b3a17c8acd54ad7471 100644
+--- a/server/services/darwish/chatwoot/darwishWorker.ts
++++ b/server/services/darwish/chatwoot/darwishWorker.ts
+@@ -1,14 +1,16 @@
+ import { getDarwishConfig } from "./darwishConfig";
+ import { getDarwishChatwootHealth } from "./darwishChatwootService";
+ import { processDarwishIntelligenceBatch } from "./darwishIntelligenceService";
++import { refreshDarwishSupervisor } from "./darwishSupervisorService";
+ 
+ let timer: NodeJS.Timeout | undefined;
+ let running = false;
++let supervisorTick = 0;
+ 
+ export function startDarwishWorker() {
+   const config = getDarwishConfig();
+   if (!config.workerEnabled) {
+-    console.info("[Darwish] Phase 2 worker disabled by configuration");
++    console.info("[Darwish] Phase 3 worker disabled by configuration");
+     return () => undefined;
+   }
+   if (timer) return () => clearInterval(timer);
+@@ -19,11 +21,19 @@ export function startDarwishWorker() {
+       const health = a

@@ -1,0 +1,93 @@
+   .sort((a, b) => b[1] - a[1])
++      .slice(0, 10)
++      .map(([category]) => category);
++    const response = responseStats.get(scope.scopeKey) || { avgResponseMinutes: null, pendingCustomerMessages: 0, oldestPendingMinutes: null };
++    const risk = calculateDarwishSupervisorRisk({
++      complaintCount: scope.complaintCount,
++      urgentCount: scope.urgentCount,
++      negativeCount: scope.negativeCount,
++      escalationCount: scope.escalationCount,
++      repeatedIssueCategories,
++      ...response,
++    });
++    const alerts = deriveDarwishSupervisorAlerts({
++      complaintCount: scope.complaintCount,
++      urgentCount: scope.urgentCount,
++      negativeCount: scope.negativeCount,
++      escalationCount: scope.escalationCount,
++      repeatedIssueCategories,
++      ...response,
++      riskScore: risk.score,
++    });
++    return { ...scope, repeatedIssueCategories, ...response, ...risk, alerts };
++  }).sort((a, b) => b.score - a.score).slice(0, safeLimit);
++
++  for (const item of prepared) {
++    await db.execute(sql`
++      INSERT INTO darwish_supervisor_snapshots (
++        scope_key, client_id, group_jid, group_name, evolution_instance, account_manager_id,
++        risk_score, risk_level, complaint_count_30d, urgent_count_30d, negative_count_30d,
++        escalation_count_30d, repeated_issue_categories, avg_response_minutes,
++        pending_customer_messages, oldest_pending_minutes, open_alert_count,
++        last_analysis_at, calculated_at
++      ) VALUES (
++        ${item.scopeKey}, ${item.clientId}, ${item.groupJid}, ${item.groupName}, ${item.evolutionInstance}, ${item.accountManagerId},
++        ${item.score}, ${item.level}, ${item.complaintCount}, ${item.urgentCount}, ${item.negativeCount},
++        ${item.escalationCount}, ${JSON.stringify(item.repeatedIssueCategories)}, ${item.avgResponseMinutes},
++        ${item.pendingCustomerMessages}, ${item.oldestPendingMinutes}, ${item.alerts.length},
++        ${item.lastAnalysisAt ? new Date(item.lastAnalysisAt) : null}, CURRENT_TIMESTAMP
++      )
++      ON DUPLICATE KEY UPDATE
++        client_id = VALUES(client_id), group_name = VALUES(group_name), account_manager_id = VALUES(account_manager_id),
++        risk_score = VALUES(risk_score), risk_level = VALUES(risk_level), complaint_count_30d = VALUES(complaint_count_30d),
++        urgent_count_30d = VALUES(urgent_count_30d), negative_count_30d = VALUES(negative_count_30d),
++        escalation_count_30d = VALUES(escalation_count_30d), repeated_issue_categories = VALUES(repeated_issue_categories),
++        avg_response_minutes = VALUES(avg_response_minutes), pending_customer_messages = VALUES(pending_customer_messages),
++        oldest_pending_minutes = VALUES(oldest_pending_minutes), open_alert_count = VALUES(open_alert_count),
++        last_analysis_at = VALUES(last_analysis_at), calculated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
++    `);
++    await db.execute(sql`UPDATE darwish_supervisor_alerts SET active = 0, updated_at = CURRENT_TIMESTAMP WHERE scope_key = ${item.scopeKey} AND active = 1`);
++    for (const alert of item.alerts) {
++      const alertKey = createHash("sha256").update(`${item.scopeKey}\0${alert.type}`).digest("hex");
++      await db.execute(sql`
++        INSERT INTO darwish_supervisor_alerts (
++          alert_key, scope_key, client_id, group_jid, group_name, account_manager_id,
++          alert_type, severity, title, summary, active, first_seen_at, last_seen_at
++        ) VALUES (
++          ${alertKey}, ${item.scopeKey}, ${item.clientId}, ${item.groupJid}, ${item.groupName}, ${item.accountManagerId},
++          ${alert.type}, ${alert.severity}, ${alert.title}, ${alert.summary}, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
++        )
++        ON DUPLICATE KEY UPDATE
++          client_id = VALUES(client_id), group_name = VALUES(group_name), account_manager_id = VALUES(account_manager_id),
++          severity = VALUES(severity), title = VALUES(title), summary = VALUES(summary), active = 1,
++          last_seen_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
++      `);
++    }
++  }
++  return { refreshed: prepared.length, activeAlerts: prepared.reduce((sum, item) => sum + item.alerts.length, 0) };
++}
++
++export async function getDarwishSupervisorOverview() {
++  const db = await getDb();
++  if (!db) return { monitoredScopes: 0, highRiskClients: 0, activeAlerts: 0, criticalAlerts: 0, avgRiskScore: 0, avgResponseMinutes: null, pendingCustomerMessages: 0, lastCalculatedAt: null };
++  const row = rowsOf(await db.execute(sql`
++    SELECT COUNT(*) AS monitoredScopes,
++           SUM(risk_level IN ('high','critical')) AS highRiskClients,
++           ROUND(AVG(risk_score), 1) AS avgRiskScore,
++           ROUND(AVG(avg_response_minutes), 1) AS avgResponseMinutes,
++           SUM(pending_customer_messages) AS pendingCustomerMessages,
++           MAX(calculated_at) AS lastCalculatedAt
++    FROM darwish_supervisor_snapshots
++  `))[0] || {};
++  const alertRow = rowsOf(await db.execute(sql`
++    SELECT SUM(active = 1) AS activeAlerts,
++           SUM(active = 1 AND severity = 'critical') AS criticalAlerts
++    FROM darwish_supervisor_alerts
++  `))[0] || {};
++  return {
++    monitoredScopes: numberOf(row.monitoredScopes),
++    highRiskClients: numberOf(row.highRiskClients),
++    activeAlerts: numberOf(alertRow.activeAlerts),
++    criticalAlerts: numberOf(alertRow.criticalAlerts),
++    avgRiskScore: numberOf(row.avgRiskScore),
++    avgResponseMinutes: row.avgResponseMinutes 

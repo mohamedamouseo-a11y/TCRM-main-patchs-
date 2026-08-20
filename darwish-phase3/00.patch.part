@@ -1,0 +1,33 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+index 2a3d8ded75e8db71efa50f51c8f4d8af64b74ad6..3df91e5db311805ff69859aaad06dbdda4143e5d 100644
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -26,6 +26,10 @@ export default function DarwishPage() {
+   const mappingCountsQ = trpc.darwish.mappingCounts.useQuery(undefined, { refetchInterval: 30_000 });
+   const intelligenceStatsQ = trpc.darwish.intelligenceStats.useQuery(undefined, { refetchInterval: 30_000 });
+   const intelligenceQ = trpc.darwish.intelligence.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
++  const supervisorQ = trpc.darwish.supervisorOverview.useQuery(undefined, { refetchInterval: 30_000 });
++  const alertsQ = trpc.darwish.supervisorAlerts.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
++  const accountManagersQ = trpc.darwish.supervisorAccountManagers.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
++  const digestQ = trpc.darwish.supervisorDigest.useQuery({ period: "daily" }, { refetchInterval: 60_000 });
+   const clientsQ = trpc.darwish.clients.useQuery({ search: clientSearch }, { enabled: clientSearch.trim().length > 1 });
+   const upsertM = trpc.darwish.upsertGroupLink.useMutation({
+     onSuccess: () => { toast.success(ar ? "تم حفظ الربط" : "Mapping saved"); setGroupJid(""); setGroupName(""); setClientId(null); void utils.darwish.groupLinks.invalidate(); },
+@@ -42,8 +46,8 @@ export default function DarwishPage() {
+   return <CRMLayout>
+     <div dir={isRTL ? "rtl" : "ltr"} className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+       <div className="flex flex-wrap items-center justify-between gap-3">
+-        <div><h1 className="text-2xl font-bold">{ar ? "درويش — ذكاء خدمة العملاء" : "Darwish — Customer Service Intelligence"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الثانية: يستمع للمحادثات، يفهم المشاكل والشكاوى ويحدد الأولوية — بدون ردود أو إجراءات تلقائية." : "Phase 2: listening intelligence, issue/complaint understanding and prioritization — no automatic replies or actions."}</p></div>
+-        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
++        <div><h1 className="text-2xl font-bold">{ar ? "درويش — مشرف خدمة العملاء" : "Darwish — Customer Service Supervisor"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الثالثة: مخاطر العملاء، الشكاوى المتكررة، زمن الاستجابة، التنبيهات وأداء مديري الحسابات — بدون ردود أو إجراءات تلقائية." : "Phase 3: customer risk, repeated complaints, response time, alerts and Account Manager performance — no automatic replies or actions."}</p></div>
++        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
+       </div>
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+@@ -65,6 +69,22 @@ export default function DarwishPage() {
+ 
+       <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "ملخصات وتحذيرات داخلية فقط. درويش لا يرسل ردودًا في المرحلة الثانية." : "Internal summaries and alerts only. Darwish does not send replies in Phase 2."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data.map((item) => <div key={item.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.clientName || item.groupName || item.groupJid}</strong><div className="flex gap-2"><Badge variant={item.sentiment === "negative" ? "destructive" : "secondary"}>{item.sentiment}</Badge><Badge variant={item.urgency === "critical" || item.urgency === "high" ? "destructive" : "secondary"}>{item.urgency}</Badge>{item.complaintDetected ? <Badge>{ar ? "شكوى" : "Complaint"}</Badge> : null}</div></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{item.summary}</p>{item.escalationRequired ? <p className="mt-2 font-medium text-destructive">{ar ? "تصعيد: " : "Escalation: "}{item.escalationReason || "—"}</p> : null}</div>) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد تحليلات بعد." : "No intelligence results yet."}</p>}</div></CardContent></Card>
+ 
++      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "حالات تحت المراقبة" : "Monitored"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{supervisorQ.data?.monitoredScopes || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle cl

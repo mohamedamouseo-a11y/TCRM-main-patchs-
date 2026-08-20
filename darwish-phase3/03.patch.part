@@ -1,0 +1,125 @@
+e);
++  });
++
++  it("does not create churn alert below threshold", () => {
++    const alerts = deriveDarwishSupervisorAlerts({ complaintCount: 0, urgentCount: 0, negativeCount: 0, escalationCount: 0, repeatedIssueCategories: [], avgResponseMinutes: 20, pendingCustomerMessages: 0, oldestPendingMinutes: null, riskScore: 10 });
++    expect(alerts.some((alert) => alert.type === "churn_risk")).toBe(false);
++  });
++});
+diff --git a/server/services/darwish/chatwoot/darwishSupervisorService.ts b/server/services/darwish/chatwoot/darwishSupervisorService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..21f96ed5da18346da11630dadc8a3477dd5c8b4e
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishSupervisorService.ts
+@@ -0,0 +1,401 @@
++import { createHash } from "node:crypto";
++import { sql } from "drizzle-orm";
++import { getDb } from "../../../db";
++
++const WINDOW_DAYS = 30;
++const RESPONSE_BREACH_MINUTES = 120;
++const PENDING_BREACH_MINUTES = 240;
++
++type RiskInput = {
++  complaintCount: number;
++  urgentCount: number;
++  negativeCount: number;
++  escalationCount: number;
++  repeatedIssueCategories: string[];
++  avgResponseMinutes: number | null;
++  pendingCustomerMessages: number;
++  oldestPendingMinutes: number | null;
++};
++
++type SupervisorAlert = {
++  type: "critical_case" | "churn_risk" | "repeated_complaint" | "response_delay";
++  severity: "medium" | "high" | "critical";
++  title: string;
++  summary: string;
++};
++
++function rowsOf(result: any): any[] {
++  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as any[];
++  return Array.isArray(result) ? result : [];
++}
++
++function numberOf(value: unknown) {
++  const n = Number(value);
++  return Number.isFinite(n) ? n : 0;
++}
++
++function parseStringArray(value: unknown): string[] {
++  if (!value) return [];
++  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
++  try {
++    const parsed = JSON.parse(String(value));
++    return Array.isArray(parsed) ? parsed.map(String).map((item) => item.trim()).filter(Boolean) : [];
++  } catch {
++    return [];
++  }
++}
++
++function toMillis(value: unknown) {
++  if (!value) return null;
++  const ms = new Date(String(value)).getTime();
++  return Number.isFinite(ms) ? ms : null;
++}
++
++function scopeKey(clientId: number | null, groupJid: string, evolutionInstance: string) {
++  return createHash("sha256")
++    .update(`${clientId || 0}\0${groupJid}\0${evolutionInstance}`)
++    .digest("hex");
++}
++
++export function calculateDarwishSupervisorRisk(input: RiskInput) {
++  const complaintPoints = Math.min(24, Math.max(0, input.complaintCount) * 8);
++  const urgentPoints = Math.min(24, Math.max(0, input.urgentCount) * 12);
++  const negativePoints = Math.min(15, Math.max(0, input.negativeCount) * 5);
++  const escalationPoints = Math.min(30, Math.max(0, input.escalationCount) * 15);
++  const repeatedIssuePoints = Math.min(10, input.repeatedIssueCategories.length * 5);
++  const responsePoints = input.avgResponseMinutes == null
++    ? 0
++    : input.avgResponseMinutes >= 240 ? 20
++      : input.avgResponseMinutes >= RESPONSE_BREACH_MINUTES ? 12
++        : input.avgResponseMinutes >= 60 ? 6 : 0;
++  const pendingPoints = input.pendingCustomerMessages <= 0
++    ? 0
++    : input.oldestPendingMinutes != null && input.oldestPendingMinutes >= PENDING_BREACH_MINUTES ? 10 : 5;
++  const score = Math.min(100, complaintPoints + urgentPoints + negativePoints + escalationPoints + repeatedIssuePoints + responsePoints + pendingPoints);
++  const level = score >= 80 ? "critical" : score >= 60 ? "high" : score >= 35 ? "medium" : "low";
++  return { score, level } as const;
++}
++
++export function deriveDarwishSupervisorAlerts(input: RiskInput & { riskScore: number }): SupervisorAlert[] {
++  const alerts: SupervisorAlert[] = [];
++  if (input.escalationCount > 0 && input.urgentCount > 0) {
++    alerts.push({
++      type: "critical_case",
++      severity: input.riskScore >= 80 ? "critical" : "high",
++      title: "حالة خدمة عملاء تحتاج متابعة عاجلة",
++      summary: `تم رصد ${input.urgentCount} حالة عاجلة و${input.escalationCount} إشارة تصعيد خلال آخر ${WINDOW_DAYS} يومًا.`,
++    });
++  }
++  if (input.riskScore >= 70) {
++    alerts.push({
++      type: "churn_risk",
++      severity: input.riskScore >= 85 ? "critical" : "high",
++      title: "مخاطر فقدان العميل مرتفعة",
++      summary: `درجة مخاطر درويش الحالية ${input.riskScore}/100 بناءً على الشكاوى والعجلة والسلبية والتصعيد وزمن الاستجابة.`,
++    });
++  }
++  if (input.complaintCount >= 2 || input.repeatedIssueCategories.length > 0) {
++    alerts.push({
++      type: "repeated_complaint",
++      severity: input.complaintCount >= 4 ? "high" : "medium",
++      title: "شكوى أو مشكلة متكررة",
++      summary: input.repeatedIssueCategories.length
++        ? `الموضوعات المتكررة: ${input.repeatedIssueCategories.slice(0, 5).join("، ")}.`
++        : `تم رصد ${input.complaintCount} شكاوى خلال آخر ${WINDOW_DAYS} يومًا.`,
++    });
++  }
++  const responseDelayed = (input.avgResponseMinutes != null && input.avgResponseMinutes >= RESPONSE_BREACH_MINUTES)
++    || (input.oldestPendingMinutes != null && input.oldestPendingMinutes >= PENDING_BREACH_MINUTES);
++  if (responseDelayed) {
++    alerts.push({
++      type: "response_dela

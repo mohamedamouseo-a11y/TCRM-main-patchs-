@@ -1,0 +1,58 @@
+ ? "بحث العميل" : "Client search"}</Label><Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={ar ? "اسم العميل أو النشاط" : "Client or business name"} />{clientsQ.data?.length ? <div className="mt-2 max-h-36 overflow-auto rounded border">{clientsQ.data.map((client) => <button type="button" key={client.id} onClick={() => { setClientId(client.id); setClientSearch(client.name || client.businessProfile || String(client.id)); }} className={`block w-full px-3 py-2 text-left text-sm hover:bg-muted ${client.id === clientId ? "bg-muted" : ""}`}>{client.name || client.businessProfile || `#${client.id}`}</button>)}</div> : null}</div><div><Label>{ar ? "معرّف مثيل Evolution" : "Evolution instance"}</Label><Input value={instance} onChange={(event) => setInstance(event.target.value)} placeholder="instance-name" /></div></div>
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>Group JID</Label><Input value={groupJid} onChange={(event) => setGroupJid(event.target.value)} placeholder="120363...@g.us" /></div><div><Label>{ar ? "اسم المجموعة" : "Group name"}</Label><Input value={groupName} onChange={(event) => setGroupName(event.target.value)} /></div></div>
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+index c41dfb4ff2110c9fc7a56945e5f410a01b859d0b..61a2947fcc62c1e6e806bd1ea9805bd68b9da480 100644
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -20,6 +20,13 @@ import {
+   getDarwishIntelligenceStats,
+   listDarwishIntelligence,
+ } from "./darwishIntelligenceService";
++import {
++  getDarwishSupervisorDigest,
++  getDarwishSupervisorOverview,
++  listDarwishAccountManagerPerformance,
++  listDarwishSupervisorAlerts,
++  refreshDarwishSupervisor,
++} from "./darwishSupervisorService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   const role = String(ctx.user.role || "");
+@@ -43,6 +50,11 @@ export const darwishRouter = router({
+   intelligenceStats: darwishProcedure.query(() => getDarwishIntelligenceStats()),
+   intelligence: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishIntelligence(input?.limit || 50)),
+   analyzeJob: darwishProcedure.input(z.object({ id: z.number().int().positive(), force: z.boolean().default(false) })).mutation(({ input }) => analyzeDarwishJob(input.id, input.force)),
++  supervisorOverview: darwishProcedure.query(() => getDarwishSupervisorOverview()),
++  supervisorAlerts: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishSupervisorAlerts(input?.limit || 50)),
++  supervisorAccountManagers: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishAccountManagerPerformance(input?.limit || 50)),
++  supervisorDigest: darwishProcedure.input(z.object({ period: z.enum(["daily", "weekly"]).default("daily") })).query(({ input }) => getDarwishSupervisorDigest(input.period)),
++  refreshSupervisor: darwishProcedure.input(z.object({ maxScopes: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => refreshDarwishSupervisor(input?.maxScopes || 100)),
+   clients: darwishProcedure.input(z.object({ search: z.string().trim().max(120).default("") }).optional()).query(async ({ input }) => {
+     const db = await getDb();
+     if (!db) return [];
+diff --git a/server/services/darwish/chatwoot/darwishSupervisorService.test.ts b/server/services/darwish/chatwoot/darwishSupervisorService.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4cd036d6534e0821f9155ecd2792fe85cd99d299
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishSupervisorService.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from "vitest";
++import { calculateDarwishSupervisorRisk, deriveDarwishSupervisorAlerts } from "./darwishSupervisorService";
++
++describe("Darwish Phase 3 supervisor", () => {
++  it("keeps healthy conversations low risk", () => {
++    const result = calculateDarwishSupervisorRisk({ complaintCount: 0, urgentCount: 0, negativeCount: 0, escalationCount: 0, repeatedIssueCategories: [], avgResponseMinutes: 18, pendingCustomerMessages: 0, oldestPendingMinutes: null });
++    expect(result.level).toBe("low");
++    expect(result.score).toBeLessThan(20);
++  });
++
++  it("raises churn risk for repeated urgent complaints and escalation", () => {
++    const result = calculateDarwishSupervisorRisk({ complaintCount: 3, urgentCount: 2, negativeCount: 3, escalationCount: 2, repeatedIssueCategories: ["delivery"], avgResponseMinutes: 180, pendingCustomerMessages: 1, oldestPendingMinutes: 300 });
++    expect(result.score).toBeGreaterThanOrEqual(80);
++    expect(result.level).toBe("critical");
++  });
++
++  it("creates repeated complaint and response-delay alerts", () => {
++    const alerts = deriveDarwishSupervisorAlerts({ complaintCount: 2, urgentCount: 0, negativeCount: 1, escalationCount: 0, repeatedIssueCategories: ["billing"], avgResponseMinutes: 150, pendingCustomerMessages: 1, oldestPendingMinutes: 250, riskScore: 60 });
++    expect(alerts.some((alert) => alert.type === "repeated_complaint")).toBe(true);
++    expect(alerts.some((alert) => alert.type === "response_delay")).toBe(tru
