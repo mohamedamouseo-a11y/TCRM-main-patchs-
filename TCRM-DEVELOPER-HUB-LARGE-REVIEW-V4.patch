@@ -1,0 +1,15 @@
+diff --git a/server/routes/developerHub.ts b/server/routes/developerHub.ts
+--- a/server/routes/developerHub.ts
++++ b/server/routes/developerHub.ts
+@@ -126,9 +126,9 @@ const GIT_COMMAND_TIMEOUT_MS = 120_000;
+ const CONTROLLED_PUSH_CHECK_TIMEOUT_MS = 5 * 60_000;
+ const CONTROLLED_PUSH_BUILD_TIMEOUT_MS = 12 * 60_000;
+ const GITHUB_API_TIMEOUT_MS = 15_000;
+-const MAX_PREVIEW_FILES = 25000;
++const MAX_PREVIEW_FILES = 40000;
+ const MAX_SECRET_SCAN_BYTES = 5 * 1024 * 1024;
+-const MAX_COMMIT_SCAN_OBJECTS = 25000;
++const MAX_COMMIT_SCAN_OBJECTS = 40000;
+ const MAX_COMMIT_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
+ const MAX_CLEANUP_REF_COUNT = 250;
+ const MAX_CLEANUP_RETAINED_COMMITS = 5000;
