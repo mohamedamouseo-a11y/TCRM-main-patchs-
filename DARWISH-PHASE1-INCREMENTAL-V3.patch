@@ -1,0 +1,89 @@
+diff --git a/client/src/components/CRMLayout.tsx b/client/src/components/CRMLayout.tsx
+index 6e08bff..6f60030 100644
+--- a/client/src/components/CRMLayout.tsx
++++ b/client/src/components/CRMLayout.tsx
+@@ -541,7 +541,7 @@ export default function CRMLayout({ children, title: _title }: { children: React
+                         { href: "/tara", label: isRTL ? "تارا" : "Tara", icon: <Bot size={15} />, roles: ["Admin", "Moderator"] },
+                         { href: "/zaghloul", label: isRTL ? "زغلول" : "Zaghloul", icon: <Send size={15} />, roles: ["Admin"] },
+                         { href: "/felfel", label: isRTL ? "فلفل" : "Felfel", icon: <Mic2 size={15} />, roles: ["Admin"] },
+-                        { href: "/darwish", label: isRTL ? "دارويش" : "Darwish", icon: <MessageCircle size={15} />, roles: ["Admin", "Developer"] },
++                        { href: "/darwish", label: isRTL ? "درويش" : "Darwish", icon: <MessageCircle size={15} />, roles: ["Admin", "Developer"] },
+                       ].filter(sub => sub.roles.includes(role) && (!isModerator || !isModeratorBlockedRoute(sub.href))).map(sub => {
+                         const subActive = location === sub.href || location.startsWith(sub.href + "/");
+                         return (
+diff --git a/server/services/darwish/chatwoot/darwishConfig.ts b/server/services/darwish/chatwoot/darwishConfig.ts
+index d7ae9d1..f8aef08 100644
+--- a/server/services/darwish/chatwoot/darwishConfig.ts
++++ b/server/services/darwish/chatwoot/darwishConfig.ts
+@@ -1,3 +1,5 @@
++import { timingSafeEqual } from "node:crypto";
++
+ const asBool = (value: string | undefined, fallback: boolean) => {
+   if (value == null || value === "") return fallback;
+   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+@@ -50,5 +52,8 @@ export function getDarwishConfigStatus() {
+ 
+ export function isDarwishWebhookAuthorized(receivedSecret: string | undefined) {
+   const configured = getDarwishConfig().webhookSecret;
+-  return Boolean(configured && receivedSecret && receivedSecret === configured);
++  if (!configured || !receivedSecret) return false;
++  const expected = Buffer.from(configured);
++  const received = Buffer.from(receivedSecret);
++  return expected.length === received.length && timingSafeEqual(expected, received);
+ }
+diff --git a/server/services/darwish/chatwoot/darwishRoutes.ts b/server/services/darwish/chatwoot/darwishRoutes.ts
+index d829b32..2d19123 100644
+--- a/server/services/darwish/chatwoot/darwishRoutes.ts
++++ b/server/services/darwish/chatwoot/darwishRoutes.ts
+@@ -1,3 +1,4 @@
++import { createHash } from "node:crypto";
+ import type { Express, Request, Response } from "express";
+ import { enqueueDarwishGroupJob } from "./darwishMappingService";
+ import { getDarwishConfig, isDarwishWebhookAuthorized } from "./darwishConfig";
+@@ -15,6 +16,10 @@ function firstString(...values: unknown[]) {
+   return "";
+ }
+ 
++function stableEventId(source: string, body: unknown) {
++  return `${source}:${createHash("sha256").update(JSON.stringify(body ?? {})).digest("hex")}`;
++}
++
+ function getEventData(body: any) {
+   return body?.data || body?.payload || body || {};
+ }
+@@ -32,7 +37,7 @@ function extractEvolutionGroupEvent(body: any, request: Request) {
+   const participants = data.groupMetadata?.participants || data.participants || body.participants || [];
+   const groupName = firstString(data.groupMetadata?.subject, data.groupName, data.group_name, body.group_name) || null;
+   const messageTimestamp = firstString(data.messageTimestamp, data.message_timestamp, body.message_timestamp);
+-  const eventId = firstString(body.id, body.event_id, data.id, messageId, `${body.event || "evolution"}:${groupJid}:${Date.now()}`);
++  const eventId = firstString(body.id, body.event_id, data.id, messageId, stableEventId(`evolution:${body.event || "event"}:${groupJid}`, body));
+   return { eventId, groupJid, groupName, senderJid, senderName: firstString(data.pushName, data.senderName, body.sender_name) || null, senderPhone, participants, messageId: messageId || null, direction, messageTimestamp: messageTimestamp || null, evolutionInstance: instance, payload: body };
+ }
+ 
+@@ -42,7 +47,7 @@ export function registerDarwishPhase1Routes(app: Express) {
+   });
+ 
+   app.post("/api/darwish/evolution/webhook", async (req: Request, res: Response) => {
+-    const secret = headerValue(req, "x-darwish-webhook-secret") || String(req.query.secret || "");
++    const secret = headerValue(req, "x-darwish-webhook-secret");
+     if (!isDarwishWebhookAuthorized(secret)) return res.status(401).json({ success: false, error: "Unauthorized" });
+     try {
+       const event = extractEvolutionGroupEvent(req.body || {}, req);
+@@ -56,7 +61,7 @@ export function registerDarwishPhase1Routes(app: Express) {
+   });
+ 
+   app.post("/api/darwish/chatwoot/webhook", async (req: Request, res: Response) => {
+-    const secret = headerValue(req, "x-darwish-webhook-secret") || String(req.query.secret || "");
++    const secret = headerValue(req, "x-darwish-webhook-secret");
+     if (!isDarwishWebhookAuthorized(secret)) return res.status(401).json({ success: false, error: "Unauthorized" });
+     try {
+       const body: any = req.body || {};
+@@ -66,7 +71,7 @@ export function registerDarwishPhase1Routes(app: Express) {
+       const groupJid = firstString(customAttributes.group_jid, meta.group_jid, body.group_jid, body.data?.group_jid);
+       const evolutionInstance = firstString(customAttributes.evolution_instance, meta.evolution_instance, body.evolution_instance, body.data?.evolution_instance, getDarwishConfig().evolutionInstance);
+       if (!groupJid || !evolutionInstance) return res.status(202).json({ success: true, accepted: false, reason: "group metadata missing" });
+-      const eventId = firstString(body.id, body.event_id, body.data?.id, `${body.event || "chatwoot"}:${conversation.id || "conversation"}:${body.created_at || Date.now()}`);
++      const eventId = firstString(body.id, body.event_id, body.data?.id, stableEventId(`chatwoot:${body.event || "event"}:${conversation.id || "conversation"}`, body));
+       const result = await enqueueDarwishGroupJob({
+         eventId,
+         groupJid,
