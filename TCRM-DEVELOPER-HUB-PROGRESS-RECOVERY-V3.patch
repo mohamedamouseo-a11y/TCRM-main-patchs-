@@ -1,0 +1,183 @@
+diff --git a/client/src/components/DeveloperHubTab.tsx b/client/src/components/DeveloperHubTab.tsx
+index eccfc44..7ff9024 100644
+--- a/client/src/components/DeveloperHubTab.tsx
++++ b/client/src/components/DeveloperHubTab.tsx
+@@ -344,6 +344,7 @@ export default function DeveloperHubTab() {
+       }
+       const result = await response.json().catch(() => ({ error: "Failed" }));
+       if (!response.ok) throw new Error(result.error || "Failed to recover operation status");
++      if (activeOperationRef.current?.operationId !== operation.operationId) return;
+       const recovered = result.operation as RecoverableGitHubOperation;
+       await applyRecoveredOperation(recovered);
+       if (recovered.status === "running" && activeOperationRef.current?.operationId === operation.operationId) {
+@@ -586,6 +587,9 @@ export default function DeveloperHubTab() {
+         const result = await response.json().catch(() => ({ error: "Failed" }));
+         throw new Error(result.error || "Failed to review synchronization");
+       }
++      if (activeOperationRef.current?.operationId === operation.operationId) {
++        operationPollTimerRef.current = window.setTimeout(() => void pollOperation(operation), 1_500);
++      }
+       const reader = response.body?.getReader();
+       if (!reader) throw new Error("Review streaming response is unavailable");
+       const decoder = new TextDecoder();
+diff --git a/server/routes/developerHub.ts b/server/routes/developerHub.ts
+index 1f481ca..f5ba81f 100644
+--- a/server/routes/developerHub.ts
++++ b/server/routes/developerHub.ts
+@@ -1551,7 +1551,11 @@ async function listGitHubBranches(token: string, repoInput: string) {
+   return Array.from(new Set(branches)).sort((left, right) => left.localeCompare(right));
+ }
+ 
+-async function scanCommitRange(range: string, env: NodeJS.ProcessEnv) {
++async function scanCommitRange(
++  range: string,
++  env: NodeJS.ProcessEnv,
++  reportProgress?: (scanned: number, total: number) => void,
++) {
+   const { stdout: commitListRaw } = await execGit(["rev-list", "--reverse", range], {
+     env,
+     maxBuffer: 4 * 1024 * 1024,
+@@ -1559,29 +1563,39 @@ async function scanCommitRange(range: string, env: NodeJS.ProcessEnv) {
+   const commits = commitListRaw.split(/\r?\n/).filter(Boolean);
+   const blocked: Array<{ path: string; reason: string }> = [];
+   const committedPaths = new Set<string>();
+-  let scannedObjects = 0;
++  const entries: Array<{ commitSha: string; status: string; path: string }> = [];
+   let totalBytes = 0;
++
+   for (const commitSha of commits) {
+     const raw = await execGitBuffer([
+       "diff-tree", "--root", "-m", "--no-commit-id", "--name-status", "-r", "-z", "--no-renames", commitSha,
+     ], 20 * 1024 * 1024, env);
+     for (const entry of parseGitNameStatusZ(raw.toString("utf8"))) {
+       committedPaths.add(entry.path);
+-      scannedObjects += 1;
+-      if (scannedObjects > MAX_COMMIT_SCAN_OBJECTS) {
++      entries.push({ commitSha, status: entry.status, path: entry.path });
++      if (entries.length > MAX_COMMIT_SCAN_OBJECTS) {
+         blocked.push({ path: "Git commit history", reason: "commit range exceeds the safe review object limit" });
+-        return { blocked, committedPaths, scannedObjects, totalBytes };
+-      }
+-      const result = await inspectCommitPath(commitSha, entry.status, entry.path, env);
+-      totalBytes += result.size;
+-      if (result.reason) blocked.push({ path: result.path, reason: result.reason });
+-      if (totalBytes > MAX_COMMIT_SCAN_TOTAL_BYTES) {
+-        blocked.push({ path: "Git commit history", reason: "committed blob data exceeds the safe review size limit" });
+-        return { blocked, committedPaths, scannedObjects, totalBytes };
++        return { blocked, committedPaths, scannedObjects: entries.length, totalBytes };
+       }
+     }
+   }
+-  return { blocked, committedPaths, scannedObjects, totalBytes };
++
++  if (entries.length === 0) reportProgress?.(0, 0);
++  for (let index = 0; index < entries.length; index += 1) {
++    const entry = entries[index]!;
++    const result = await inspectCommitPath(entry.commitSha, entry.status, entry.path, env);
++    totalBytes += result.size;
++    if (result.reason) blocked.push({ path: result.path, reason: result.reason });
++    const scannedObjects = index + 1;
++    if (scannedObjects % 50 === 0 || scannedObjects === entries.length) {
++      reportProgress?.(scannedObjects, entries.length);
++    }
++    if (totalBytes > MAX_COMMIT_SCAN_TOTAL_BYTES) {
++      blocked.push({ path: "Git commit history", reason: "committed blob data exceeds the safe review size limit" });
++      return { blocked, committedPaths, scannedObjects, totalBytes };
++    }
++  }
++  return { blocked, committedPaths, scannedObjects: entries.length, totalBytes };
+ }
+ 
+ async function createVirtualCandidateCommit(candidateTree: string, headSha: string, env: NodeJS.ProcessEnv) {
+@@ -1966,10 +1980,13 @@ async function getGitHistoryCleanupPreview(
+   }
+ }
+ 
++type AdvancedSyncProgressReporter = (percent: number, step: string, stepAr: string) => void;
++
+ async function getAdvancedSyncPreview(
+   action: GitHubSyncAction,
+   state: DeveloperHubState,
+   token: string,
++  reportProgress?: AdvancedSyncProgressReporter,
+ ): Promise<AdvancedSyncPreview> {
+   if (action === "cleanup") return await getGitHistoryCleanupPreview(state, token);
+   if (!state.githubRepo || !state.githubBranch || !state.githubVerifiedAt) {
+@@ -1980,6 +1997,7 @@ async function getAdvancedSyncPreview(
+     await assertSafeRepositoryGitConfiguration(REPO_DIR);
+     await validateGitBranch(state.githubBranch, auth.gitEnv);
+     await configureSafeOrigin(state.githubRepo, auth.gitEnv);
++    reportProgress?.(80, "Read local and selected GitHub branches", "قراءة الفرع المحلي وفرع GitHub المختار");
+ 
+     const currentBranch = await execGit(["symbolic-ref", "--quiet", "--short", "HEAD"], { env: auth.gitEnv })
+       .then(({ stdout }) => stdout.trim())
+@@ -1996,6 +2014,7 @@ async function getAdvancedSyncPreview(
+     } else {
+       await execGit(["update-ref", "-d", trackingRef], { env: auth.gitEnv }).catch(() => undefined);
+     }
++    reportProgress?.(82, "GitHub branch fetched; inspect local changes", "تم جلب فرع GitHub؛ فحص التغييرات المحلية");
+ 
+     const { stdout: statusRaw } = await execGit([
+       "status", "--porcelain=v1", "-z", "--untracked-files=all",
+@@ -2008,10 +2027,16 @@ async function getAdvancedSyncPreview(
+       .catch(() => "UNBORN");
+     const candidateTree = await createCandidateTreeSha(auth.gitEnv);
+     const blocked: Array<{ path: string; reason: string }> = [];
++    reportProgress?.(84, "Inspect candidate tree security", "فحص أمان شجرة التغييرات المرشحة");
+     blocked.push(...await inspectCandidateTreeObjectModes(candidateTree, auth.gitEnv));
+-    for (const entry of workingEntries) {
++    for (let index = 0; index < workingEntries.length; index += 1) {
++      const entry = workingEntries[index]!;
+       const reason = await inspectChangedFile(entry);
+       if (reason) blocked.push({ path: entry.path, reason });
++      if ((index + 1) % 100 === 0 || index + 1 === workingEntries.length) {
++        const ratio = workingEntries.length ? (index + 1) / workingEntries.length : 1;
++        reportProgress?.(84 + ratio * 2, `Inspect local changes (${index + 1}/${workingEntries.length})`, `فحص التغييرات المحلية (${index + 1}/${workingEntries.length})`);
++      }
+     }
+ 
+     let localAhead = 0;
+@@ -2032,19 +2057,28 @@ async function getAdvancedSyncPreview(
+     const localRange = /^[a-f0-9]{40,64}$/i.test(headSha)
+       ? remoteExists ? `${trackingRef}..HEAD` : "HEAD"
+       : "";
++    reportProgress?.(87, "Scan local commit history", "فحص تاريخ الـ commits المحلي");
+     const localHistory = localRange
+-      ? await scanCommitRange(localRange, auth.gitEnv)
++      ? await scanCommitRange(localRange, auth.gitEnv, (scanned, total) => {
++          const ratio = total ? scanned / total : 1;
++          reportProgress?.(87 + ratio * 2, `Scan local commit history (${scanned}/${total})`, `فحص تاريخ الـ commits المحلي (${scanned}/${total})`);
++        })
+       : { blocked: [], committedPaths: new Set<string>(), scannedObjects: 0, totalBytes: 0 };
+     blocked.push(...localHistory.blocked);
+ 
+     const remoteRange = remoteExists
+       ? /^[a-f0-9]{40,64}$/i.test(headSha) ? `HEAD..${trackingRef}` : trackingRef
+       : "";
++    reportProgress?.(89, "Scan selected GitHub branch history", "فحص تاريخ فرع GitHub المختار");
+     const remoteHistory = remoteRange
+-      ? await scanCommitRange(remoteRange, auth.gitEnv)
++      ? await scanCommitRange(remoteRange, auth.gitEnv, (scanned, total) => {
++          const ratio = total ? scanned / total : 1;
++          reportProgress?.(89 + ratio * 2, `Scan GitHub history (${scanned}/${total})`, `فحص تاريخ GitHub (${scanned}/${total})`);
++        })
+       : { blocked: [], committedPaths: new Set<string>(), scannedObjects: 0, totalBytes: 0 };
+     blocked.push(...remoteHistory.blocked);
+ 
++    reportProgress?.(91, "Compare reviewed local and GitHub changes", "مقارنة التغييرات المحلية وتغييرات GitHub بعد المراجعة");
+     const remoteEntries = await readRemoteChangedEntries(headSha, remoteHead, trackingRef, auth.gitEnv);
+     let safeMergeAvailable = false;
+     let mergeTree = "";
+@@ -2720,7 +2754,11 @@ developerHubRouter.post("/developer-hub/github-sync-preview", async (req, res) => {
+       stepAr: "فحص حالة المشروع وGitHub",
+     };
+     wantsStream ? sendSseEvent(res, progressEvent) : queueDeveloperHubOperationEvent(res, progressEvent);
+-    let preview: any = await getAdvancedSyncPreview(action, state, token);
++    const reportPreviewProgress: AdvancedSyncProgressReporter = (percent, step, stepAr) => {
++      const event = { type: "progress", percent, step, stepAr };
++      wantsStream ? sendSseEvent(res, event) : queueDeveloperHubOperationEvent(res, event);
++    };
++    let preview: any = await getAdvancedSyncPreview(action, state, token, reportPreviewProgress);
+     if (action === "push" && controlledChecks) {
+       const unexpected = pushMode === "auto" ? getUnexpectedAutoPushPaths(preview.files || []) : [];
+       const blocked = [...(preview.blocked || []), ...unexpected.map((filePath) => ({
