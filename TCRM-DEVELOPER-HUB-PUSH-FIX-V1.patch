@@ -1,0 +1,179 @@
+diff --git a/server/routes/developerHub.ts b/server/routes/developerHub.ts
+index 1f481ca..db3f61d 100644
+--- a/server/routes/developerHub.ts
++++ b/server/routes/developerHub.ts
+@@ -15,6 +15,8 @@ import {
+   decodeTextForSecretScan,
+   getBlockedGitObjectModeReason,
+   getBlockedGitPathReason,
++  getTrustedVendoredSymlinkReason,
++  isTrustedVendoredSourcePath,
+   getRemovableGitCleanupPath,
+   getSecretScanSizeBlockReason,
+   createDeveloperHubReviewStatusInput,
+@@ -124,10 +126,10 @@ const GIT_COMMAND_TIMEOUT_MS = 120_000;
+ const CONTROLLED_PUSH_CHECK_TIMEOUT_MS = 5 * 60_000;
+ const CONTROLLED_PUSH_BUILD_TIMEOUT_MS = 12 * 60_000;
+ const GITHUB_API_TIMEOUT_MS = 15_000;
+-const MAX_PREVIEW_FILES = 5000;
++const MAX_PREVIEW_FILES = 25000;
+ const MAX_SECRET_SCAN_BYTES = 5 * 1024 * 1024;
+-const MAX_COMMIT_SCAN_OBJECTS = 5000;
+-const MAX_COMMIT_SCAN_TOTAL_BYTES = 100 * 1024 * 1024;
++const MAX_COMMIT_SCAN_OBJECTS = 25000;
++const MAX_COMMIT_SCAN_TOTAL_BYTES = 512 * 1024 * 1024;
+ const MAX_CLEANUP_REF_COUNT = 250;
+ const MAX_CLEANUP_RETAINED_COMMITS = 5000;
+ 
+@@ -1223,7 +1225,11 @@ async function inspectChangedFile(entry: GitChangeEntry) {
+   }
+   try {
+     const stat = await fs.lstat(absolutePath);
+-    if (stat.isSymbolicLink()) return "symbolic links cannot be pushed from Developer Hub";
++    if (stat.isSymbolicLink()) {
++      if (!isTrustedVendoredSourcePath(entry.path)) return "symbolic links cannot be pushed from Developer Hub";
++      const target = await fs.readlink(absolutePath);
++      return getTrustedVendoredSymlinkReason(entry.path, target);
++    }
+     if (!stat.isFile()) return null;
+     const sizeReason = getSecretScanSizeBlockReason(stat.size, MAX_SECRET_SCAN_BYTES);
+     if (sizeReason) return sizeReason;
+@@ -1318,6 +1324,11 @@ async function inspectCommitPath(commitSha: string, status: string, filePath: st
+   const modeReason = getBlockedGitObjectModeReason(treeEntry);
+   if (modeReason) return { path: filePath, reason: modeReason, size: 0 };
+ 
++  if (treeEntry.mode === "120000") {
++    const target = (await execGitBuffer(["cat-file", "blob", treeEntry.objectId], 16 * 1024, env)).toString("utf8");
++    return { path: filePath, reason: getTrustedVendoredSymlinkReason(filePath, target), size: Buffer.byteLength(target) };
++  }
++
+   const { stdout: sizeRaw } = await execGit(["cat-file", "-s", treeEntry.objectId], { env });
+   const size = Number(sizeRaw.trim()) || 0;
+   const sizeReason = getSecretScanSizeBlockReason(size, MAX_SECRET_SCAN_BYTES);
+diff --git a/server/services/developerHubControlledPush.ts b/server/services/developerHubControlledPush.ts
+index 5ca2892..da0f7af 100644
+--- a/server/services/developerHubControlledPush.ts
++++ b/server/services/developerHubControlledPush.ts
+@@ -17,8 +17,9 @@ const SOURCE_ROOTS = new Set([
+   "public",
+   "assets",
+   "static",
++  "services",
+ ]);
+-const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|sh|sql|json|md|mdx|txt|rst|toml|ini|ya?ml|css|scss|sass|less|html|xml|vue|svelte|graphql|gql|svg|png|jpe?g|gif|webp|avif|ico)$/i;
++const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|rb|erb|rake|ru|gemspec|go|rs|java|kt|swift|php|cs|scala|sh|sql|json|md|mdx|txt|rst|toml|ini|lock|ya?ml|css|scss|sass|less|html|xml|vue|svelte|graphql|gql|svg|png|jpe?g|gif|webp|avif|ico)$/i;
+ const ROOT_ALLOWLIST = new Set([
+   ".gitignore",
+   "package.json",
+@@ -43,4 +44,10 @@ const SAFE_UNTRACKED_BASENAMES = new Set([
+   "changelog",
+   "makefile",
+   "procfile",
++  "gemfile",
++  "gemfile.lock",
++  "rakefile",
++  "guardfile",
++  ".ruby-version",
++  ".tool-versions",
+ ]);
+diff --git a/server/services/developerHubGitHubAdvancedSync.ts b/server/services/developerHubGitHubAdvancedSync.ts
+index 115ec4a..2b92d2b 100644
+--- a/server/services/developerHubGitHubAdvancedSync.ts
++++ b/server/services/developerHubGitHubAdvancedSync.ts
+@@ -38,11 +38,11 @@ export function decideGitHubSyncPlan(input: GitHubSyncPlanInput): GitHubSyncPlan
+   if (input.action === "cleanup") {
+     throw new Error("Git history cleanup uses the dedicated reviewed cleanup plan.");
+   }
+-  if (!input.branchMatches) {
++  if (!input.branchMatches && input.action === "pull") {
+     return {
+       syncState: "branch_mismatch",
+       expectedAction: "blocked",
+-      blockedReason: "The selected GitHub branch must match the current local branch.",
++      blockedReason: "Pull requires the selected GitHub branch to match the current local branch.",
+     };
+   }
+ 
+diff --git a/server/services/developerHubGitHubSecurity.ts b/server/services/developerHubGitHubSecurity.ts
+index 90a4d53..796872c 100644
+--- a/server/services/developerHubGitHubSecurity.ts
++++ b/server/services/developerHubGitHubSecurity.ts
+@@ -100,7 +100,9 @@ export function parseGitLsTreeEntryZ(raw: string): GitTreeEntry | null {
+ }
+ 
+ export function getBlockedGitObjectModeReason(entry: GitTreeEntry): string | null {
+-  if (entry.mode === "120000") return "symbolic links are not allowed in committed history";
++  if (entry.mode === "120000") {
++    return isTrustedVendoredSourcePath(entry.path) ? null : "symbolic links are not allowed in committed history";
++  }
+   if (entry.mode === "160000" || entry.type === "commit") return "Git submodules are not allowed";
+   if (entry.type !== "blob" || !["100644", "100755"].includes(entry.mode)) {
+     return "unsupported Git object type or file mode";
+@@ -223,9 +225,10 @@ const TRUSTED_SOURCE_ROOTS = new Set([
+   "test",
+   "drizzle",
+   "migrations",
++  "services",
+ ]);
+ 
+-const TRUSTED_SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|sh|sql|json|md|ya?ml|css|scss|sass|less|html|vue|svelte|graphql|gql)$/i;
++const TRUSTED_SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]sx?|py|rb|erb|rake|ru|gemspec|go|rs|java|kt|swift|php|cs|scala|sh|sql|json|md|mdx|txt|rst|toml|ini|ya?ml|css|scss|sass|less|html|xml|vue|svelte|graphql|gql)$/i;
+ 
+ function isTrustedBackupFeatureSegment(segment: string) {
+   return /^(?:backup|backups|backup[-_]center)$/i.test(segment);
+@@ -235,6 +238,31 @@ function isBackupFeatureSourceName(base: string) {
+   return /(?:^|[._-])backup(?:[._-]|$)/i.test(base);
+ }
+ 
++function isTrustedSourceFilePath(filePath: string) {
++  const normalized = String(filePath || "").replace(/\\/g, "/").replace(/^\.\//, "");
++  const segments = normalized.toLowerCase().split("/").filter(Boolean);
++  if (segments.length < 2 || !TRUSTED_SOURCE_ROOTS.has(segments[0])) return false;
++  return TRUSTED_SOURCE_EXTENSIONS.test(path.posix.basename(normalized));
++}
++
++export function isTrustedVendoredSourcePath(filePath: string) {
++  const normalized = String(filePath || "").replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+/g, "/");
++  return normalized === "services/chatwoot" || normalized.startsWith("services/chatwoot/");
++}
++
++export function getTrustedVendoredSymlinkReason(filePath: string, target: string): string | null {
++  if (!isTrustedVendoredSourcePath(filePath)) return "symbolic links are not allowed outside trusted vendored source";
++  const rawTarget = String(target || "").trim().replace(/\\/g, "/");
++  if (!rawTarget || rawTarget.includes("\0") || rawTarget.startsWith("/") || /^[A-Za-z]:\//.test(rawTarget)) {
++    return "vendored symbolic link target must be a relative repository path";
++  }
++  const normalizedPath = String(filePath || "").replace(/\\/g, "/").replace(/^\.\//, "");
++  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(normalizedPath), rawTarget));
++  return resolved === "services/chatwoot" || resolved.startsWith("services/chatwoot/")
++    ? null
++    : "vendored symbolic link target escapes services/chatwoot";
++}
++
+ function isGeneratedPatchPackageRoot(segment: string) {
+   return /^(?:tcrm|ttcrm|tas|tcrmmm)?[a-z0-9._-]*(?:corrective|cumulative|settings|sync)[a-z0-9._-]*patch(?:[._-].*)?$/i.test(segment)
+     || /^tcrm-github-[a-z0-9._-]*patch(?:[._-].*)?$/i.test(segment);
+@@ -305,6 +333,7 @@ export function getBlockedGitPathReason(filePath: string): string | null {
+   const base = path.posix.basename(lower);
+   const segments = lower.split("/").filter(Boolean);
+   const directorySegments = segments.slice(0, -1);
++  const trustedSource = isTrustedSourceFilePath(normalized);
+ 
+   if (segments.length > 1 && isGeneratedPatchPackageRoot(segments[0])) {
+     return "generated patch package directory";
+@@ -319,13 +348,13 @@ export function getBlockedGitPathReason(filePath: string): string | null {
+     return "blocked runtime, backup, or credential directory";
+   }
+   if (BLOCKED_EXACT_NAMES.has(base)) return "blocked credential or runtime file";
+-  if (/(?:credentials?|secrets?)/i.test(base) && !TRUSTED_SOURCE_EXTENSIONS.test(base)) {
++  if (/(?:credentials?|secrets?)/i.test(base) && !trustedSource) {
+     return "blocked credential or secret file";
+   }
+   if (base.startsWith(".env.") && !base.endsWith(".example")) return "environment secrets file";
+   if (base.endsWith(".env") && !base.endsWith(".example.env")) return "environment secrets file";
+   if (/\.(pem|key|p12|pfx|ppk|jks|keystore|sqlite|sqlite3|db|dump|sql|zip|7z|rar|tar|tgz|gz)$/i.test(base)) {
+-    return "blocked secret, database, or archive file";
++    if (!(base.endsWith(".sql") && trustedSource)) return "blocked secret, database, or archive file";
+   }
+   if (/\.(?:backup|bak|orig|rej)(?:[._-].*)?$/i.test(base)
+     || /(?:^|[._-])(?:bak|orig|original)(?:[._-]|$)/i.test(base)) {
