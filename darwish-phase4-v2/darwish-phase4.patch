@@ -1,0 +1,775 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+index 3df91e5..3a95bb0 100644
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -30,7 +30,31 @@ export default function DarwishPage() {
+   const alertsQ = trpc.darwish.supervisorAlerts.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
+   const accountManagersQ = trpc.darwish.supervisorAccountManagers.useQuery({ limit: 30 }, { refetchInterval: 30_000 });
+   const digestQ = trpc.darwish.supervisorDigest.useQuery({ period: "daily" }, { refetchInterval: 60_000 });
++  const actionStatsQ = trpc.darwish.actionStats.useQuery(undefined, { refetchInterval: 30_000 });
++  const actionsQ = trpc.darwish.actions.useQuery({ limit: 50, status: "all" }, { refetchInterval: 30_000 });
++  const actionCapabilitiesQ = trpc.darwish.actionCapabilities.useQuery();
+   const clientsQ = trpc.darwish.clients.useQuery({ search: clientSearch }, { enabled: clientSearch.trim().length > 1 });
++  const refreshActionData = () => { void utils.darwish.actionStats.invalidate(); void utils.darwish.actions.invalidate(); };
++  const refreshActionsM = trpc.darwish.refreshActions.useMutation({
++    onSuccess: (result) => { toast.success(ar ? `تم تحديث المقترحات: ${result.created}` : `Action proposals refreshed: ${result.created}`); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const draftReplyM = trpc.darwish.draftReply.useMutation({
++    onSuccess: () => { toast.success(ar ? "تم إنشاء مسودة رد للمراجعة" : "Reply draft created for review"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const approveActionM = trpc.darwish.approveAction.useMutation({
++    onSuccess: () => { toast.success(ar ? "تمت الموافقة — لم يتم التنفيذ بعد" : "Approved — not executed yet"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const rejectActionM = trpc.darwish.rejectAction.useMutation({
++    onSuccess: () => { toast.success(ar ? "تم رفض الإجراء" : "Action rejected"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
++  const executeActionM = trpc.darwish.executeAction.useMutation({
++    onSuccess: () => { toast.success(ar ? "تم تنفيذ الإجراء المعتمد" : "Approved action executed"); refreshActionData(); },
++    onError: (error) => toast.error(error.message),
++  });
+   const upsertM = trpc.darwish.upsertGroupLink.useMutation({
+     onSuccess: () => { toast.success(ar ? "تم حفظ الربط" : "Mapping saved"); setGroupJid(""); setGroupName(""); setClientId(null); void utils.darwish.groupLinks.invalidate(); },
+     onError: (error) => toast.error(error.message),
+@@ -46,8 +70,8 @@ export default function DarwishPage() {
+   return <CRMLayout>
+     <div dir={isRTL ? "rtl" : "ltr"} className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+       <div className="flex flex-wrap items-center justify-between gap-3">
+-        <div><h1 className="text-2xl font-bold">{ar ? "درويش — مشرف خدمة العملاء" : "Darwish — Customer Service Supervisor"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الثالثة: مخاطر العملاء، الشكاوى المتكررة، زمن الاستجابة، التنبيهات وأداء مديري الحسابات — بدون ردود أو إجراءات تلقائية." : "Phase 3: customer risk, repeated complaints, response time, alerts and Account Manager performance — no automatic replies or actions."}</p></div>
+-        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
++        <div><h1 className="text-2xl font-bold">{ar ? "درويش — إجراءات بموافقة بشرية" : "Darwish — Human-Approved Actions"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الرابعة: يقترح درويش إجراءات داخلية ومسودات ردود، لكن لا يعتمد أو ينفذ أي شيء تلقائيًا." : "Phase 4: Darwish proposes internal actions and reply drafts, but never approves or executes anything automatically."}</p></div>
++        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); void actionStatsQ.refetch(); void actionsQ.refetch(); void actionCapabilitiesQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
+       </div>
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+@@ -67,7 +91,7 @@ export default function DarwishPage() {
+         <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "تصعيد مطلوب" : "Escalations"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.escalations || 0}</p></CardContent></Card>
+       </div>
+ 
+-      <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "ملخصات وتحذيرات داخلية فقط. درويش لا يرسل ردودًا في المرحلة الثانية." : "Internal summaries and alerts only. Darwish does not send replies in Phase 2."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data.map((item) => <div key={item.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.clientName || item.groupName || item.groupJid}</strong><div className="flex gap-2"><Badge variant={item.sentiment === "negative" ? "destructive" : "secondary"}>{item.sentiment}</Badge><Badge variant={item.urgency === "critical" || item.urgency === "high" ? "destructive" : "secondary"}>{item.urgency}</Badge>{item.complaintDetected ? <Badge>{ar ? "شكوى" : "Complaint"}</Badge> : null}</div></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{item.summary}</p>{item.escalationRequired ? <p className="mt-2 font-medium text-destructive">{ar ? "تصعيد: " : "Escalation: "}{item.escalationReason || "—"}</p> : null}</div>) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد تحليلات بعد." : "No intelligence results yet."}</p>}</div></CardContent></Card>
++      <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "يمكن إنشاء مسودة رد للمراجعة البشرية. إنشاء المسودة لا يرسل أي رسالة." : "A reply draft can be generated for human review. Drafting never sends a message."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data.map((item) => <div key={item.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.clientName || item.groupName || item.groupJid}</strong><div className="flex gap-2"><Badge variant={item.sentiment === "negative" ? "destructive" : "secondary"}>{item.sentiment}</Badge><Badge variant={item.urgency === "critical" || item.urgency === "high" ? "destructive" : "secondary"}>{item.urgency}</Badge>{item.complaintDetected ? <Badge>{ar ? "شكوى" : "Complaint"}</Badge> : null}</div></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{item.summary}</p>{item.escalationRequired ? <p className="mt-2 font-medium text-destructive">{ar ? "تصعيد: " : "Escalation: "}{item.escalationReason || "—"}</p> : null}<Button className="mt-2" size="sm" variant="outline" disabled={draftReplyM.isPending} onClick={() => draftReplyM.mutate({ intelligenceId: item.id })}>{ar ? "اقترح مسودة رد" : "Draft reply"}</Button></div>) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد تحليلات بعد." : "No intelligence results yet."}</p>}</div></CardContent></Card>
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+         <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "حالات تحت المراقبة" : "Monitored"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{supervisorQ.data?.monitoredScopes || 0}</p></CardContent></Card>
+@@ -85,6 +109,16 @@ export default function DarwishPage() {
+ 
+       <Card><CardHeader><CardTitle>{ar ? "ملخص الإدارة اليومي" : "Daily management digest"}</CardTitle></CardHeader><CardContent><div className="grid gap-3 md:grid-cols-5 text-sm"><div><strong>{digestQ.data?.analyses || 0}</strong><div className="text-muted-foreground">{ar ? "تحليل" : "analyses"}</div></div><div><strong>{digestQ.data?.complaints || 0}</strong><div className="text-muted-foreground">{ar ? "شكوى" : "complaints"}</div></div><div><strong>{digestQ.data?.urgent || 0}</strong><div className="text-muted-foreground">{ar ? "عاجل" : "urgent"}</div></div><div><strong>{digestQ.data?.escalations || 0}</strong><div className="text-muted-foreground">{ar ? "تصعيد" : "escalations"}</div></div><div><strong>{digestQ.data?.negative || 0}</strong><div className="text-muted-foreground">{ar ? "سلبي" : "negative"}</div></div></div>{digestQ.data?.topIssueCategories?.length ? <div className="mt-4 flex flex-wrap gap-2">{digestQ.data.topIssueCategories.map((item) => <Badge key={item.category} variant="secondary">{item.category} · {item.count}</Badge>)}</div> : null}</CardContent></Card>
+ 
++      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "مقترحات معلقة" : "Proposed"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{actionStatsQ.data?.proposed || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "معتمدة" : "Approved"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{actionStatsQ.data?.approved || 0}</p><p className="text-xs text-muted-foreground">{ar ? `غير مؤكدة: ${actionStatsQ.data?.uncertain || 0}` : `uncertain: ${actionStatsQ.data?.uncertain || 0}`}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "منفذة" : "Executed"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{actionStatsQ.data?.executed || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "مرفوضة" : "Rejected"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{actionStatsQ.data?.rejected || 0}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "مسودات رد" : "Reply drafts"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{actionStatsQ.data?.replyQueue || 0}</p><p className="text-xs text-muted-foreground">{actionCapabilitiesQ.data?.approvedOutboundEnabled ? (ar ? "الإرسال المعتمد مفعّل" : "approved outbound enabled") : (ar ? "الإرسال المعتمد مقفول" : "approved outbound disabled")}</p></CardContent></Card>
++      </div>
++
++      <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle>{ar ? "طابور الإجراءات البشرية" : "Human action queue"}</CardTitle><CardDescription>{ar ? "الاقتراح لا ينفذ شيئًا. الموافقة خطوة مستقلة، والتنفيذ يحتاج ضغطة بشرية ثانية من Admin." : "A proposal changes nothing. Approval is separate, and execution requires a second explicit Admin action."}</CardDescription></div><Button size="sm" variant="outline" disabled={refreshActionsM.isPending} onClick={() => refreshActionsM.mutate({ limit: 100 })}>{ar ? "تحديث المقترحات" : "Refresh proposals"}</Button></div></CardHeader><CardContent><div className="space-y-3">{actionsQ.data?.length ? actionsQ.data.map((action) => { const replyText = action.actionType === "customer_reply" ? String((action.payload as any)?.content || "") : ""; const canApprove = Boolean(actionCapabilitiesQ.data?.canApprove); return <div key={action.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><div><strong>{action.title}</strong><div className="text-muted-foreground">{action.clientName || action.groupName || action.groupJid || "—"} · {action.actionType}</div></div><div className="flex gap-2"><Badge variant={action.riskLevel === "critical" || action.riskLevel === "high" ? "destructive" : "secondary"}>{action.riskLevel || "—"}</Badge><Badge variant="outline">{action.status}</Badge></div></div><p className="mt-2 text-muted-foreground">{action.summary}</p>{replyText ? <div className="mt-2 whitespace-pre-wrap rounded bg-muted p-3">{replyText}</div> : null}{action.lastError ? <p className="mt-2 text-destructive">{action.lastError}</p> : null}{action.status === "execution_uncertain" ? <p className="mt-2 font-medium text-destructive">{ar ? "حالة تنفيذ غير مؤكدة: يلزم التحقق يدويًا قبل أي إعادة محاولة." : "Execution is uncertain: manually verify before any retry."}</p> : null}<div className="mt-3 flex flex-wrap gap-2">{action.status === "proposed" ? <><Button size="sm" disabled={!canApprove || approveActionM.isPending} onClick={() => approveActionM.mutate({ id: action.id })}>{ar ? "موافقة" : "Approve"}</Button><Button size="sm" variant="outline" disabled={!canApprove || rejectActionM.isPending} onClick={() => rejectActionM.mutate({ id: action.id })}>{ar ? "رفض" : "Reject"}</Button></> : null}{action.status === "approved" ? <Button size="sm" disabled={!canApprove || executeActionM.isPending} onClick={() => executeActionM.mutate({ id: action.id })}>{ar ? "تنفيذ الإجراء المعتمد" : "Execute approved action"}</Button> : null}</div></div>; }) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد إجراءات مقترحة حاليًا." : "No proposed actions yet."}</p>}</div></CardContent></Card>
++
+       <Card><CardHeader><CardTitle>{ar ? "ربط مجموعة بعميل" : "Link a group to a client"}</CardTitle><CardDescription>{ar ? "يُستخدم الربط لتحديد سياق CRM للأحداث الواردة." : "The mapping supplies CRM context for inbound events."}</CardDescription></CardHeader><CardContent className="space-y-4">
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>{ar ? "بحث العميل" : "Client search"}</Label><Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder={ar ? "اسم العميل أو النشاط" : "Client or business name"} />{clientsQ.data?.length ? <div className="mt-2 max-h-36 overflow-auto rounded border">{clientsQ.data.map((client) => <button type="button" key={client.id} onClick={() => { setClientId(client.id); setClientSearch(client.name || client.businessProfile || String(client.id)); }} className={`block w-full px-3 py-2 text-left text-sm hover:bg-muted ${client.id === clientId ? "bg-muted" : ""}`}>{client.name || client.businessProfile || `#${client.id}`}</button>)}</div> : null}</div><div><Label>{ar ? "معرّف مثيل Evolution" : "Evolution instance"}</Label><Input value={instance} onChange={(event) => setInstance(event.target.value)} placeholder="instance-name" /></div></div>
+         <div className="grid gap-4 md:grid-cols-2"><div><Label>Group JID</Label><Input value={groupJid} onChange={(event) => setGroupJid(event.target.value)} placeholder="120363...@g.us" /></div><div><Label>{ar ? "اسم المجموعة" : "Group name"}</Label><Input value={groupName} onChange={(event) => setGroupName(event.target.value)} /></div></div>
+diff --git a/server/services/darwish/chatwoot/darwishActionService.test.ts b/server/services/darwish/chatwoot/darwishActionService.test.ts
+new file mode 100644
+index 0000000..40d87e9
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishActionService.test.ts
+@@ -0,0 +1,46 @@
++import { describe, expect, it } from "vitest";
++import {
++  __deriveDarwishActionSuggestionsForTests,
++  __isDarwishActionExecutableStatusForTests,
++  __normalizeDarwishReplyDraftForTests,
++} from "./darwishActionService";
++
++const baseAlert = {
++  id: 10,
++  severity: "high",
++  title: "تنبيه",
++  summary: "العميل يحتاج متابعة",
++  clientId: 15,
++  clientName: "Client",
++  groupJid: "120@g.us",
++  groupName: "Client Group",
++  accountManagerId: 22,
++  alertType: "critical_case",
++};
++
++describe("Darwish Phase 4 human-approved actions", () => {
++  it("proposes an internal note and follow-up for a critical case", () => {
++    const suggestions = __deriveDarwishActionSuggestionsForTests(baseAlert);
++    expect(suggestions.map((item) => item.actionType)).toContain("internal_note");
++    expect(suggestions.map((item) => item.actionType)).toContain("follow_up_reminder");
++  });
++
++  it("proposes follow-up only for response delay", () => {
++    const suggestions = __deriveDarwishActionSuggestionsForTests({ ...baseAlert, alertType: "response_delay" });
++    expect(suggestions.map((item) => item.actionType)).toEqual(["follow_up_reminder"]);
++  });
++
++  it("proposes an internal note for repeated complaints", () => {
++    const suggestions = __deriveDarwishActionSuggestionsForTests({ ...baseAlert, alertType: "repeated_complaint" });
++    expect(suggestions.map((item) => item.actionType)).toEqual(["internal_note"]);
++  });
++
++  it("treats only approved actions as executable", () => {
++    expect(__isDarwishActionExecutableStatusForTests("approved")).toBe(true);
++    expect(__isDarwishActionExecutableStatusForTests("proposed")).toBe(false);
++    expect(__isDarwishActionExecutableStatusForTests("execution_uncertain")).toBe(false);
++  });
++
++  it("normalizes fenced reply drafts without sending them", () => {
++    expect(__normalizeDarwishReplyDraftForTests("```json\n{\"reply\":\"أهلًا، نتابع المشكلة الآن\"}\n```"))
++      .toBe("أهلًا، نتابع المشكلة الآن");
++  });
++});
+diff --git a/server/services/darwish/chatwoot/darwishActionService.ts b/server/services/darwish/chatwoot/darwishActionService.ts
+new file mode 100644
+index 0000000..e554bc7
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishActionService.ts
+@@ -0,0 +1,516 @@
++import { createHash } from "node:crypto";
++import { sql } from "drizzle-orm";
++import { getDb } from "../../../db";
++import { callTaraProviderWithFallback } from "../../tara/taraMultiProviderService";
++import { sendDarwishApprovedChatwootReply } from "./darwishChatwootService";
++
++type ActionType = "internal_note" | "follow_up_reminder" | "customer_reply";
++type ProposalStatus = "proposed" | "approved" | "executing" | "execution_uncertain" | "executed" | "rejected";
++
++type SupervisorAlertInput = {
++  id: number;
++  alertType: string;
++  severity: string;
++  title: string;
++  summary: string;
++  clientId: number | null;
++  clientName?: string | null;
++  groupJid: string;
++  groupName?: string | null;
++  accountManagerId: number | null;
++};
++
++type ActionSuggestion = {
++  actionType: ActionType;
++  title: string;
++  summary: string;
++  payload: Record<string, unknown>;
++};
++
++function rowsOf(result: any): any[] {
++  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as any[];
++  return Array.isArray(result) ? result : [];
++}
++
++function numberOf(value: unknown) {
++  const n = Number(value);
++  return Number.isFinite(n) ? n : 0;
++}
++
++function parseJson(value: unknown): Record<string, any> {
++  if (!value) return {};
++  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, any>;
++  try {
++    const parsed = JSON.parse(String(value));
++    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
++  } catch {
++    return {};
++  }
++}
++
++function safeText(value: unknown, max = 2000) {
++  return String(value ?? "").replace(/\u0000/g, "").trim().slice(0, max);
++}
++
++function actionKey(sourceType: string, sourceId: number, actionType: ActionType) {
++  return createHash("sha256").update(`${sourceType}\0${sourceId}\0${actionType}`).digest("hex");
++}
++
++export function deriveDarwishActionSuggestions(alert: SupervisorAlertInput): ActionSuggestion[] {
++  const context = {
++    supervisorAlertId: alert.id,
++    alertType: alert.alertType,
++    severity: alert.severity,
++    alertTitle: alert.title,
++    alertSummary: alert.summary,
++  };
++  if (alert.alertType === "response_delay") {
++    return [{
++      actionType: "follow_up_reminder",
++      title: "متابعة استجابة العميل",
++      summary: "اقتراح تذكير داخلي لمدير الحساب لمراجعة المحادثة المتأخرة.",
++      payload: { ...context, reminderMinutes: 30 },
++    }];
++  }
++  if (alert.alertType === "repeated_complaint") {
++    return [{
++      actionType: "internal_note",
++      title: "توثيق الشكوى المتكررة",
++      summary: "اقتراح إضافة ملاحظة داخلية على العميل لتجميع سياق الشكوى المتكررة.",
++      payload: { ...context, note: `درويش: ${safeText(alert.title, 300)} — ${safeText(alert.summary, 1200)}` },
++    }];
++  }
++  if (alert.alertType === "critical_case" || alert.alertType === "churn_risk") {
++    return [
++      {
++        actionType: "internal_note",
++        title: alert.alertType === "churn_risk" ? "توثيق مخاطر فقدان العميل" : "توثيق الحالة الحرجة",
++        summary: "اقتراح ملاحظة داخلية تحفظ ملخص الخطر للمراجعة البشرية.",
++        payload: { ...context, note: `درويش: ${safeText(alert.title, 300)} — ${safeText(alert.summary, 1200)}` },
++      },
++      {
++        actionType: "follow_up_reminder",
++        title: "متابعة عاجلة مع العميل",
++        summary: "اقتراح تذكير داخلي لمدير الحساب لمراجعة الحالة. لا يتم إرسال أي رسالة للعميل.",
++        payload: { ...context, reminderMinutes: alert.severity === "critical" ? 15 : 30 },
++      },
++    ];
++  }
++  return [];
++}
++
++async function recordActionEvent(db: any, proposalId: number, eventType: string, actorUserId?: number | null, metadata?: unknown) {
++  await db.execute(sql`
++    INSERT INTO darwish_action_events (proposal_id, event_type, actor_user_id, metadata)
++    VALUES (${proposalId}, ${safeText(eventType, 32)}, ${actorUserId || null}, ${metadata == null ? null : JSON.stringify(metadata)})
++  `);
++}
++
++export async function refreshDarwishActionProposals(limit = 100) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
++  const alerts = rowsOf(await db.execute(sql`
++    SELECT a.id, a.alert_type AS alertType, a.severity, a.title, a.summary,
++           a.client_id AS clientId, c.leadName AS clientName, a.group_jid AS groupJid,
++           a.group_name AS groupName, a.account_manager_id AS accountManagerId
++    FROM darwish_supervisor_alerts a
++    LEFT JOIN clients c ON c.id = a.client_id
++    WHERE a.active = 1
++    ORDER BY FIELD(a.severity, 'critical','high','medium','low'), a.last_seen_at DESC, a.id DESC
++    LIMIT ${safeLimit}
++  `));
++  let created = 0;
++  let existing = 0;
++  for (const raw of alerts) {
++    const alert: SupervisorAlertInput = {
++      id: numberOf(raw.id),
++      alertType: safeText(raw.alertType, 32),
++      severity: safeText(raw.severity, 16),
++      title: safeText(raw.title, 500),
++      summary: safeText(raw.summary, 4000),
++      clientId: raw.clientId == null ? null : numberOf(raw.clientId),
++      clientName: raw.clientName ? safeText(raw.clientName, 255) : null,
++      groupJid: safeText(raw.groupJid, 255),
++      groupName: raw.groupName ? safeText(raw.groupName, 255) : null,
++      accountManagerId: raw.accountManagerId == null ? null : numberOf(raw.accountManagerId),
++    };
++    for (const suggestion of deriveDarwishActionSuggestions(alert)) {
++      const key = actionKey("supervisor_alert", alert.id, suggestion.actionType);
++      const result: any = await db.execute(sql`
++        INSERT INTO darwish_action_proposals (
++          proposal_key, source_type, source_id, client_id, group_jid, group_name, account_manager_id,
++          action_type, title, summary, payload, risk_level, status
++        ) VALUES (
++          ${key}, 'supervisor_alert', ${alert.id}, ${alert.clientId}, ${alert.groupJid || null}, ${alert.groupName}, ${alert.accountManagerId},
++          ${suggestion.actionType}, ${suggestion.title}, ${suggestion.summary}, ${JSON.stringify(suggestion.payload)}, ${alert.severity}, 'proposed'
++        )
++        ON DUPLICATE KEY UPDATE
++          title = IF(status = 'proposed', VALUES(title), title),
++          summary = IF(status = 'proposed', VALUES(summary), summary),
++          payload = IF(status = 'proposed', VALUES(payload), payload),
++          risk_level = IF(status = 'proposed', VALUES(risk_level), risk_level),
++          updated_at = CURRENT_TIMESTAMP
++      `);
++      const meta = Array.isArray(result) ? result[0] : result;
++      if (Number(meta?.affectedRows || 0) === 1) {
++        created += 1;
++        const insertedId = Number(meta?.insertId || 0);
++        if (insertedId) await recordActionEvent(db, insertedId, "proposed", null, { source: "darwish_worker", automaticExecution: false });
++      } else existing += 1;
++    }
++  }
++  return { alertsReviewed: alerts.length, created, existing };
++}
++
++export async function listDarwishActionProposals(limit = 50, status = "all") {
++  const db = await getDb();
++  if (!db) return [];
++  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
++  const allowedStatuses = new Set(["proposed", "approved", "executing", "execution_uncertain", "executed", "rejected"]);
++  const filterStatus = allowedStatuses.has(status) ? status : "all";
++  const filter = filterStatus === "all" ? sql`` : sql`WHERE p.status = ${filterStatus}`;
++  return rowsOf(await db.execute(sql`
++    SELECT p.id, p.source_type AS sourceType, p.source_id AS sourceId, p.client_id AS clientId,
++           c.leadName AS clientName, p.group_jid AS groupJid, p.group_name AS groupName,
++           p.account_manager_id AS accountManagerId, p.chatwoot_conversation_id AS chatwootConversationId,
++           p.action_type AS actionType, p.title, p.summary, p.payload, p.risk_level AS riskLevel,
++           p.status, p.reviewed_by AS reviewedBy, p.reviewed_at AS reviewedAt,
++           p.executed_at AS executedAt, p.execution_result AS executionResult,
++           p.last_error AS lastError, p.created_at AS createdAt, p.updated_at AS updatedAt
++    FROM darwish_action_proposals p
++    LEFT JOIN clients c ON c.id = p.client_id
++    ${filter}
++    ORDER BY FIELD(p.status, 'proposed','approved','execution_uncertain','executing','executed','rejected'), p.updated_at DESC, p.id DESC
++    LIMIT ${safeLimit}
++  `)).map((row) => ({ ...row, payload: parseJson(row.payload), executionResult: parseJson(row.executionResult) }));
++}
++
++export async function getDarwishActionStats() {
++  const db = await getDb();
++  if (!db) return { proposed: 0, approved: 0, executing: 0, uncertain: 0, executed: 0, rejected: 0, replyQueue: 0 };
++  const row = rowsOf(await db.execute(sql`
++    SELECT SUM(status = 'proposed') AS proposed,
++           SUM(status = 'approved') AS approved,
++           SUM(status = 'executing') AS executing,
++           SUM(status = 'execution_uncertain') AS uncertain,
++           SUM(status = 'executed') AS executed,
++           SUM(status = 'rejected') AS rejected,
++           SUM(action_type = 'customer_reply' AND status IN ('proposed','approved','execution_uncertain')) AS replyQueue
++    FROM darwish_action_proposals
++  `))[0] || {};
++  return {
++    proposed: numberOf(row.proposed), approved: numberOf(row.approved), executing: numberOf(row.executing),
++    uncertain: numberOf(row.uncertain), executed: numberOf(row.executed), rejected: numberOf(row.rejected), replyQueue: numberOf(row.replyQueue),
++  };
++}
++
++export function normalizeDarwishReplyDraft(raw: string) {
++  const cleaned = safeText(raw, 8000).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
++  try {
++    const parsed = JSON.parse(cleaned);
++    const reply = safeText(parsed?.reply || parsed?.message || parsed?.content, 4000);
++    if (reply) return reply;
++  } catch {
++    // Providers may return plain text. Drafting is internal-only and does not transmit anything.
++  }
++  return cleaned.slice(0, 4000);
++}
++
++export async function draftDarwishReplyFromIntelligence(intelligenceId: number, actorUserId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const row = rowsOf(await db.execute(sql`
++    SELECT i.id, i.client_id AS clientId, i.group_jid AS groupJid, i.group_name AS groupName,
++           i.summary, i.sentiment, i.urgency, i.complaint_detected AS complaintDetected,
++           i.customer_needs AS customerNeeds, i.risks, i.recommended_actions AS recommendedActions,
++           i.escalation_required AS escalationRequired, i.escalation_reason AS escalationReason,
++           c.accountManagerId AS accountManagerId, c.leadName AS clientName
++    FROM darwish_intelligence i
++    LEFT JOIN clients c ON c.id = i.client_id
++    WHERE i.id = ${intelligenceId} LIMIT 1
++  `))[0];
++  if (!row) throw new Error("Darwish intelligence result not found");
++  const context = {
++    summary: safeText(row.summary, 4000), sentiment: safeText(row.sentiment, 32), urgency: safeText(row.urgency, 32),
++    complaintDetected: Boolean(numberOf(row.complaintDetected)), customerNeeds: parseJson(row.customerNeeds), risks: parseJson(row.risks),
++    recommendedActions: parseJson(row.recommendedActions), escalationRequired: Boolean(numberOf(row.escalationRequired)),
++    escalationReason: safeText(row.escalationReason, 1000),
++  };
++  const provider = await callTaraProviderWithFallback([
++    { role: "system", content: "أنت درويش مساعد خدمة عملاء داخلي. اكتب مسودة رد عربية مهنية ومختصرة بناءً على التحليل. لا تدّعِ تنفيذ أي إجراء ولا تعد العميل بشيء غير مؤكد. أعد JSON فقط بالشكل {\"reply\":\"...\"}. هذه مسودة للمراجعة البشرية ولن يتم إرسالها تلقائيًا." },
++    { role: "user", content: JSON.stringify(context) },
++  ], { temperature: 0.2, maxTokens: 700 });
++  const reply = normalizeDarwishReplyDraft(provider.content || "");
++  if (!reply) throw new Error("Darwish reply draft provider returned empty content");
++  const key = actionKey("intelligence", numberOf(row.id), "customer_reply");
++  await db.execute(sql`
++    INSERT INTO darwish_action_proposals (
++      proposal_key, source_type, source_id, client_id, group_jid, group_name, account_manager_id,
++      action_type, title, summary, payload, risk_level, status
++    ) VALUES (
++      ${key}, 'intelligence', ${numberOf(row.id)}, ${row.clientId == null ? null : numberOf(row.clientId)}, ${safeText(row.groupJid, 255) || null}, ${row.groupName ? safeText(row.groupName, 255) : null},
++      ${row.accountManagerId == null ? null : numberOf(row.accountManagerId)}, 'customer_reply', 'مسودة رد للعميل', 'مسودة أنشأها درويش للمراجعة البشرية فقط.',
++      ${JSON.stringify({ content: reply, provider: provider.provider || null, model: provider.model || null })}, ${safeText(row.urgency, 16)}, 'proposed'
++    )
++    ON DUPLICATE KEY UPDATE
++      title = IF(status = 'proposed', VALUES(title), title),
++      summary = IF(status = 'proposed', VALUES(summary), summary),
++      payload = IF(status = 'proposed', VALUES(payload), payload),
++      risk_level = IF(status = 'proposed', VALUES(risk_level), risk_level),
++      updated_at = CURRENT_TIMESTAMP
++  `);
++  const proposal = rowsOf(await db.execute(sql`SELECT id FROM darwish_action_proposals WHERE proposal_key = ${key} LIMIT 1`))[0];
++  if (proposal?.id) await recordActionEvent(db, numberOf(proposal.id), "draft_refreshed", actorUserId, { provider: provider.provider || null, noSend: true });
++  return loadProposal(numberOf(proposal?.id));
++}
++
++async function loadProposal(id: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const row = rowsOf(await db.execute(sql`
++    SELECT id, source_type AS sourceType, source_id AS sourceId, client_id AS clientId,
++           group_jid AS groupJid, group_name AS groupName, account_manager_id AS accountManagerId,
++           chatwoot_conversation_id AS chatwootConversationId, action_type AS actionType, title, summary,
++           payload, risk_level AS riskLevel, status, reviewed_by AS reviewedBy, reviewed_at AS reviewedAt,
++           executed_at AS executedAt, execution_result AS executionResult, last_error AS lastError
++    FROM darwish_action_proposals WHERE id = ${id} LIMIT 1
++  `))[0];
++  return row ? { ...row, payload: parseJson(row.payload), executionResult: parseJson(row.executionResult) } : null;
++}
++
++export async function approveDarwishAction(id: number, actorUserId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const result: any = await db.execute(sql`
++    UPDATE darwish_action_proposals
++    SET status = 'approved', reviewed_by = ${actorUserId}, reviewed_at = CURRENT_TIMESTAMP,
++        rejection_reason = NULL, last_error = NULL, updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${id} AND status = 'proposed'
++  `);
++  const meta = Array.isArray(result) ? result[0] : result;
++  if (Number(meta?.affectedRows || 0) !== 1) throw new Error("Action is not awaiting approval");
++  await recordActionEvent(db, id, "approved", actorUserId, { executionTriggered: false });
++  return loadProposal(id);
++}
++
++export async function rejectDarwishAction(id: number, actorUserId: number, reason?: string) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const result: any = await db.execute(sql`
++    UPDATE darwish_action_proposals
++    SET status = 'rejected', reviewed_by = ${actorUserId}, reviewed_at = CURRENT_TIMESTAMP,
++        rejection_reason = ${safeText(reason, 1000) || null}, updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${id} AND status IN ('proposed','approved')
++  `);
++  const meta = Array.isArray(result) ? result[0] : result;
++  if (Number(meta?.affectedRows || 0) !== 1) throw new Error("Action cannot be rejected in its current state");
++  await recordActionEvent(db, id, "rejected", actorUserId, { reason: safeText(reason, 1000) || null });
++  return loadProposal(id);
++}
++
++async function executeInternalNote(db: any, proposal: any, actorUserId: number) {
++  if (!proposal.clientId) throw new Error("Internal note action requires a TCRM client");
++  const payload = parseJson(proposal.payload);
++  const marker = `[Darwish Action #${proposal.id}]`;
++  const note = `${marker}\n${safeText(payload.note || proposal.summary, 5000)}`;
++  const existing = rowsOf(await db.execute(sql`
++    SELECT id FROM client_notes WHERE clientId = ${proposal.clientId} AND note LIKE ${`${marker}%`} LIMIT 1
++  `))[0];
++  if (existing?.id) return { kind: "internal_note", noteId: numberOf(existing.id), idempotent: true };
++  const result: any = await db.execute(sql`
++    INSERT INTO client_notes (clientId, note, createdBy, createdAt, updatedAt)
++    VALUES (${proposal.clientId}, ${note}, ${actorUserId}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
++  `);
++  const meta = Array.isArray(result) ? result[0] : result;
++  return { kind: "internal_note", noteId: Number(meta?.insertId || 0), idempotent: false };
++}
++
++async function executeFollowUpReminder(db: any, proposal: any) {
++  const userId = numberOf(proposal.accountManagerId);
++  if (!userId) throw new Error("Follow-up reminder requires an Account Manager");
++  const payload = parseJson(proposal.payload);
++  const minutes = Math.max(5, Math.min(1440, numberOf(payload.reminderMinutes) || 30));
++  const existing = rowsOf(await db.execute(sql`
++    SELECT id FROM in_app_notifications
++    WHERE userId = ${userId} AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.darwishActionProposalId')) = ${String(proposal.id)}
++    LIMIT 1
++  `))[0];
++  if (existing?.id) return { kind: "follow_up_reminder", notificationId: numberOf(existing.id), idempotent: true };
++  const result: any = await db.execute(sql`
++    INSERT INTO in_app_notifications (userId, type, title, titleAr, body, bodyAr, isRead, link, metadata, createdAt)
++    VALUES (
++      ${userId}, 'follow_up_reminder', 'Darwish customer follow-up', 'متابعة عميل من درويش',
++      ${`Review the customer service case within ${minutes} minutes.`}, ${`راجع حالة خدمة العميل خلال ${minutes} دقيقة.`},
++      0, '/darwish', ${JSON.stringify({ darwishActionProposalId: proposal.id, clientId: proposal.clientId || null, minutes })}, CURRENT_TIMESTAMP
++    )
++  `);
++  const meta = Array.isArray(result) ? result[0] : result;
++  return { kind: "follow_up_reminder", notificationId: Number(meta?.insertId || 0), idempotent: false };
++}
++
++async function executeCustomerReply(proposal: any) {
++  const payload = parseJson(proposal.payload);
++  const content = safeText(payload.content, 4000);
++  const conversationId = safeText(proposal.chatwootConversationId || payload.chatwootConversationId, 128);
++  if (!conversationId) throw new Error("Approved customer reply has no Chatwoot conversation id");
++  if (!content) throw new Error("Approved customer reply is empty");
++  const body = await sendDarwishApprovedChatwootReply(conversationId, content);
++  return { kind: "customer_reply", chatwootConversationId: conversationId, response: body };
++}
++
++export async function executeDarwishApprovedAction(id: number, actorUserId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const existing = await loadProposal(id);
++  if (!existing) throw new Error("Darwish action proposal not found");
++  if (existing.status === "executed") return existing;
++  if (existing.status === "execution_uncertain") throw new Error("Action execution is uncertain; manually verify before retrying");
++  if (existing.status !== "approved") throw new Error("Action must be explicitly approved before execution");
++  const claim: any = await db.execute(sql`
++    UPDATE darwish_action_proposals
++    SET status = 'executing', last_error = NULL, updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${id} AND status = 'approved'
++  `);
++  const claimMeta = Array.isArray(claim) ? claim[0] : claim;
++  if (Number(claimMeta?.affectedRows || 0) !== 1) throw new Error("Action execution could not be claimed");
++  const claimed = await loadProposal(id);
++  if (!claimed) throw new Error("Darwish action disappeared after claim");
++  await recordActionEvent(db, id, "execution_started", actorUserId);
++  try {
++    let result: Record<string, unknown>;
++    if (claimed.actionType === "internal_note") result = await executeInternalNote(db, claimed, actorUserId);
++    else if (claimed.actionType === "follow_up_reminder") result = await executeFollowUpReminder(db, claimed);
++    else if (claimed.actionType === "customer_reply") result = await executeCustomerReply(claimed);
++    else throw new Error(`Unsupported Darwish action type: ${claimed.actionType}`);
++    await db.execute(sql`
++      UPDATE darwish_action_proposals
++      SET status = 'executed', executed_at = CURRENT_TIMESTAMP, execution_result = ${JSON.stringify(result)},
++          last_error = NULL, updated_at = CURRENT_TIMESTAMP
++      WHERE id = ${id} AND status = 'executing'
++    `);
++    await recordActionEvent(db, id, "executed", actorUserId, result);
++    return loadProposal(id);
++  } catch (error) {
++    const message = safeText(error instanceof Error ? error.message : String(error), 2000);
++    const uncertain = claimed.actionType === "customer_reply";
++    await db.execute(sql`
++      UPDATE darwish_action_proposals
++      SET status = ${uncertain ? "execution_uncertain" : "approved"}, last_error = ${message}, updated_at = CURRENT_TIMESTAMP
++      WHERE id = ${id} AND status = 'executing'
++    `);
++    await recordActionEvent(db, id, uncertain ? "execution_uncertain" : "execution_failed", actorUserId, { error: message });
++    throw error;
++  }
++}
++
++export function __deriveDarwishActionSuggestionsForTests(alert: SupervisorAlertInput) {
++  return deriveDarwishActionSuggestions(alert);
++}
++export function __normalizeDarwishReplyDraftForTests(raw: string) { return normalizeDarwishReplyDraft(raw); }
++export function __isDarwishActionExecutableStatusForTests(status: string) { return status === "approved"; }
+diff --git a/server/services/darwish/chatwoot/darwishChatwootService.ts b/server/services/darwish/chatwoot/darwishChatwootService.ts
+index a9fa56e..d49599e 100644
+--- a/server/services/darwish/chatwoot/darwishChatwootService.ts
++++ b/server/services/darwish/chatwoot/darwishChatwootService.ts
+@@ -67,3 +67,23 @@ export async function getDarwishIntegrationHealth() {
+   const [chatwoot, evolution] = await Promise.all([getDarwishChatwootHealth(), getDarwishEvolutionHealth()]);
+   return { chatwoot, evolution, whatsapp: evolution };
+ }
++
++export async function sendDarwishApprovedChatwootReply(conversationId: string, content: string) {
++  const config = getDarwishConfig();
++  if (!config.approvedOutboundEnabled) {
++    throw new Error("DARWISH_APPROVED_OUTBOUND_ENABLED is false; approved customer replies are blocked");
++  }
++  if (!config.enabled) throw new Error("Darwish Chatwoot integration is disabled");
++  if (!config.chatwootApiToken || !config.chatwootAccountId) {
++    throw new Error("Darwish Chatwoot account/token is not configured");
++  }
++  const safeConversationId = String(conversationId || "").trim();
++  const safeContent = String(content || "").replace(/\u0000/g, "").trim().slice(0, 4000);
++  if (!/^\d+$/.test(safeConversationId)) throw new Error("Invalid Chatwoot conversation id");
++  if (!safeContent) throw new Error("Approved Chatwoot reply is empty");
++  return request(`/api/v1/accounts/${encodeURIComponent(config.chatwootAccountId)}/conversations/${encodeURIComponent(safeConversationId)}/messages`, {
++    method: "POST",
++    headers: { "Content-Type": "application/json" },
++    body: JSON.stringify({ content: safeContent, message_type: "outgoing", private: false }),
++  });
++}
+diff --git a/server/services/darwish/chatwoot/darwishConfig.ts b/server/services/darwish/chatwoot/darwishConfig.ts
+index f8aef08..f870685 100644
+--- a/server/services/darwish/chatwoot/darwishConfig.ts
++++ b/server/services/darwish/chatwoot/darwishConfig.ts
+@@ -16,6 +16,7 @@ export function getDarwishConfig() {
+     enabled: asBool(process.env.DARWISH_ENABLED, true) && asBool(process.env.DARWISH_CHATWOOT_ENABLED, false),
+     workerEnabled: asBool(process.env.DARWISH_WORKER_ENABLED, true),
+     workerIntervalMs: asPositiveInt(process.env.DARWISH_WORKER_INTERVAL_MS, 30000, 300000),
++    approvedOutboundEnabled: asBool(process.env.DARWISH_APPROVED_OUTBOUND_ENABLED, false),
+     chatwootUrl: String(process.env.DARWISH_CHATWOOT_BASE_URL || process.env.CHATWOOT_URL || "http://127.0.0.1:3308").replace(/\/$/, ""),
+     chatwootAccountId: String(process.env.DARWISH_CHATWOOT_ACCOUNT_ID || process.env.CHATWOOT_ACCOUNT_ID || "").trim(),
+     chatwootInboxId: String(process.env.DARWISH_CHATWOOT_INBOX_ID || process.env.CHATWOOT_DARWISH_INBOX_ID || "").trim(),
+@@ -33,6 +34,7 @@ export function getDarwishConfigStatus() {
+     enabled: config.enabled,
+     workerEnabled: config.workerEnabled,
+     workerIntervalMs: config.workerIntervalMs,
++    actions: { approvedOutboundEnabled: config.approvedOutboundEnabled },
+     chatwoot: {
+       url: config.chatwootUrl,
+       urlConfigured: Boolean(config.chatwootUrl),
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+index 61a2947..4778997 100644
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -27,6 +27,15 @@ import {
+   listDarwishSupervisorAlerts,
+   refreshDarwishSupervisor,
+ } from "./darwishSupervisorService";
++import {
++  approveDarwishAction,
++  draftDarwishReplyFromIntelligence,
++  executeDarwishApprovedAction,
++  getDarwishActionStats,
++  listDarwishActionProposals,
++  refreshDarwishActionProposals,
++  rejectDarwishAction,
++} from "./darwishActionService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   const role = String(ctx.user.role || "");
+@@ -36,6 +45,14 @@ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   return next();
+ });
+ 
++const darwishApproverProcedure = protectedProcedure.use(({ ctx, next }) => {
++  const role = String(ctx.user.role || "");
++  if (role !== "Admin") {
++    throw new TRPCError({ code: "FORBIDDEN", message: "Darwish action approval/execution requires Admin role" });
++  }
++  return next();
++});
++
+ export const darwishRouter = router({
+   health: darwishProcedure.query(async () => ({
+     config: getDarwishConfigStatus(),
+@@ -55,6 +72,20 @@ export const darwishRouter = router({
+   supervisorAccountManagers: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishAccountManagerPerformance(input?.limit || 50)),
+   supervisorDigest: darwishProcedure.input(z.object({ period: z.enum(["daily", "weekly"]).default("daily") })).query(({ input }) => getDarwishSupervisorDigest(input.period)),
+   refreshSupervisor: darwishProcedure.input(z.object({ maxScopes: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => refreshDarwishSupervisor(input?.maxScopes || 100)),
++  actionCapabilities: darwishProcedure.query(({ ctx }) => {
++    const config = getDarwishConfigStatus();
++    return { canApprove: String(ctx.user.role || "") === "Admin", approvedOutboundEnabled: Boolean(config.actions?.approvedOutboundEnabled) };
++  }),
++  actionStats: darwishProcedure.query(() => getDarwishActionStats()),
++  actions: darwishProcedure.input(z.object({
++    limit: z.number().int().min(1).max(200).default(50),
++    status: z.enum(["all", "proposed", "approved", "executing", "execution_uncertain", "executed", "rejected"]).default("all"),
++  }).optional()).query(({ input }) => listDarwishActionProposals(input?.limit || 50, input?.status || "all")),
++  refreshActions: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => refreshDarwishActionProposals(input?.limit || 100)),
++  draftReply: darwishProcedure.input(z.object({ intelligenceId: z.number().int().positive() })).mutation(({ input, ctx }) => draftDarwishReplyFromIntelligence(input.intelligenceId, Number(ctx.user.id))),
++  approveAction: darwishApproverProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input, ctx }) => approveDarwishAction(input.id, Number(ctx.user.id))),
++  rejectAction: darwishApproverProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(1000).optional() })).mutation(({ input, ctx }) => rejectDarwishAction(input.id, Number(ctx.user.id), input.reason)),
++  executeAction: darwishApproverProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input, ctx }) => executeDarwishApprovedAction(input.id, Number(ctx.user.id))),
+   clients: darwishProcedure.input(z.object({ search: z.string().trim().max(120).default("") }).optional()).query(async ({ input }) => {
+     const db = await getDb();
+     if (!db) return [];
+diff --git a/server/services/darwish/chatwoot/darwishWorker.ts b/server/services/darwish/chatwoot/darwishWorker.ts
+index 4dec8d0..d415c0e 100644
+--- a/server/services/darwish/chatwoot/darwishWorker.ts
++++ b/server/services/darwish/chatwoot/darwishWorker.ts
+@@ -2,6 +2,7 @@ import { getDarwishConfig } from "./darwishConfig";
+ import { getDarwishChatwootHealth } from "./darwishChatwootService";
+ import { processDarwishIntelligenceBatch } from "./darwishIntelligenceService";
+ import { refreshDarwishSupervisor } from "./darwishSupervisorService";
++import { refreshDarwishActionProposals } from "./darwishActionService";
+ 
+ let timer: NodeJS.Timeout | undefined;
+ let running = false;
+@@ -10,7 +11,7 @@ let supervisorTick = 0;
+ export function startDarwishWorker() {
+   const config = getDarwishConfig();
+   if (!config.workerEnabled) {
+-    console.info("[Darwish] Phase 3 worker disabled by configuration");
++    console.info("[Darwish] Phase 4 worker disabled by configuration");
+     return () => undefined;
+   }
+   if (timer) return () => clearInterval(timer);
+@@ -21,19 +22,23 @@ export function startDarwishWorker() {
+       const health = await getDarwishChatwootHealth();
+       const batch = await processDarwishIntelligenceBatch(5);
+       if (batch.processed || batch.failed) {
+-        console.info(`[Darwish] Phase 3 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
++        console.info(`[Darwish] Phase 4 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
+       }
+       supervisorTick += 1;
+       if (batch.processed > 0 || supervisorTick >= 10) {
+         const supervisor = await refreshDarwishSupervisor(100);
+         supervisorTick = 0;
+         if (supervisor.refreshed || supervisor.activeAlerts) {
+-          console.info(`[Darwish] Phase 3 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
++          console.info(`[Darwish] Phase 4 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
++        }
++        const actions = await refreshDarwishActionProposals(100);
++        if (actions.created) {
++          console.info(`[Darwish] Phase 4 action proposals created=${actions.created} existing=${actions.existing}`);
+         }
+       }
+-      // Phase 3 remains observation-only: internal alerts/scores, no WhatsApp replies and no automatic CRM actions.
++      // Phase 4 may create proposals automatically, but never approves or executes them. Human approval is mandatory.
+     } catch (error) {
+-      console.warn("[Darwish] Phase 3 worker tick failed", error instanceof Error ? error.message : String(error));
++      console.warn("[Darwish] Phase 4 worker tick failed", error instanceof Error ? error.message : String(error));
+     } finally {
+       running = false;
+     }
+@@ -41,7 +46,7 @@ export function startDarwishWorker() {
+   void tick();
+   timer = setInterval(() => void tick(), config.workerIntervalMs);
+   timer.unref?.();
+-  console.info(`[Darwish] Phase 3 worker started intervalMs=${config.workerIntervalMs}`);
++  console.info(`[Darwish] Phase 4 worker started intervalMs=${config.workerIntervalMs}`);
+   return () => {
+     if (timer) clearInterval(timer);
+     timer = undefined;
+diff --git a/services/chatwoot-runtime/apply-darwish-phase4-migration.ts b/services/chatwoot-runtime/apply-darwish-phase4-migration.ts
+new file mode 100644
+index 0000000..44c0879
+--- /dev/null
++++ b/services/chatwoot-runtime/apply-darwish-phase4-migration.ts
+@@ -0,0 +1,63 @@
++import { sql } from "drizzle-orm";
++import { getDb } from "../../server/db";
++
++const apply = process.argv.includes("--apply");
++const statements = [
++  `CREATE TABLE IF NOT EXISTS darwish_action_proposals (
++    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++    proposal_key VARCHAR(64) NOT NULL,
++    source_type VARCHAR(32) NOT NULL,
++    source_id BIGINT NULL,
++    client_id INT NULL,
++    group_jid VARCHAR(255) NULL,
++    group_name VARCHAR(255) NULL,
++    account_manager_id INT NULL,
++    chatwoot_conversation_id VARCHAR(128) NULL,
++    action_type VARCHAR(32) NOT NULL,
++    title VARCHAR(500) NOT NULL,
++    summary TEXT NOT NULL,
++    payload JSON NULL,
++    risk_level VARCHAR(16) NULL,
++    status VARCHAR(16) NOT NULL DEFAULT 'proposed',
++    reviewed_by INT NULL,
++    reviewed_at DATETIME NULL,
++    rejection_reason TEXT NULL,
++    executed_at DATETIME NULL,
++    execution_result JSON NULL,
++    last_error TEXT NULL,
++    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_darwish_action_proposal_key (proposal_key),
++    KEY idx_darwish_action_status (status, created_at),
++    KEY idx_darwish_action_type (action_type, status),
++    KEY idx_darwish_action_client (client_id),
++    KEY idx_darwish_action_am (account_manager_id),
++    KEY idx_darwish_action_source (source_type, source_id)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++  `CREATE TABLE IF NOT EXISTS darwish_action_events (
++    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++    proposal_id BIGINT UNSIGNED NOT NULL,
++    event_type VARCHAR(32) NOT NULL,
++    actor_user_id INT NULL,
++    metadata JSON NULL,
++    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    KEY idx_darwish_action_event_proposal (proposal_id, created_at),
++    KEY idx_darwish_action_event_actor (actor_user_id, created_at),
++    KEY idx_darwish_action_event_type (event_type, created_at)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++];
++
++console.log(`DARWISH_PHASE4_STATEMENTS=${statements.length}`);
++if (!apply) {
++  console.log("DRY_RUN_ONLY=YES");
++  for (const statement of statements) console.log(statement.split("\n")[0]);
++  process.exit(0);
++}
++
++const db = await getDb();
++if (!db) throw new Error("Database unavailable");
++for (const statement of statements) await db.execute(sql.raw(statement));
++console.log("DARWISH_PHASE4_MIGRATION=APPLIED");
++process.exit(0);
