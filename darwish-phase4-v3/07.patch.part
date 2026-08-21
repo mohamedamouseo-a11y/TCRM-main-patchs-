@@ -1,0 +1,136 @@
+input?.status || "all")),
++  refreshActions: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => refreshDarwishActionProposals(input?.limit || 100)),
++  draftReply: darwishProcedure.input(z.object({ intelligenceId: z.number().int().positive() })).mutation(({ input, ctx }) => draftDarwishReplyFromIntelligence(input.intelligenceId, Number(ctx.user.id))),
++  approveAction: darwishApproverProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input, ctx }) => approveDarwishAction(input.id, Number(ctx.user.id))),
++  rejectAction: darwishApproverProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(1000).optional() })).mutation(({ input, ctx }) => rejectDarwishAction(input.id, Number(ctx.user.id), input.reason)),
++  executeAction: darwishApproverProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ input, ctx }) => executeDarwishApprovedAction(input.id, Number(ctx.user.id))),
+   clients: darwishProcedure.input(z.object({ search: z.string().trim().max(120).default("") }).optional()).query(async ({ input }) => {
+     const db = await getDb();
+     if (!db) return [];
+diff --git a/server/services/darwish/chatwoot/darwishWorker.ts b/server/services/darwish/chatwoot/darwishWorker.ts
+index 4dec8d0..d415c0e 100644
+--- a/server/services/darwish/chatwoot/darwishWorker.ts
++++ b/server/services/darwish/chatwoot/darwishWorker.ts
+@@ -2,6 +2,7 @@ import { getDarwishConfig } from "./darwishConfig";
+ import { getDarwishChatwootHealth } from "./darwishChatwootService";
+ import { processDarwishIntelligenceBatch } from "./darwishIntelligenceService";
+ import { refreshDarwishSupervisor } from "./darwishSupervisorService";
++import { refreshDarwishActionProposals } from "./darwishActionService";
+ 
+ let timer: NodeJS.Timeout | undefined;
+ let running = false;
+@@ -10,7 +11,7 @@ let supervisorTick = 0;
+ export function startDarwishWorker() {
+   const config = getDarwishConfig();
+   if (!config.workerEnabled) {
+-    console.info("[Darwish] Phase 3 worker disabled by configuration");
++    console.info("[Darwish] Phase 4 worker disabled by configuration");
+     return () => undefined;
+   }
+   if (timer) return () => clearInterval(timer);
+@@ -21,19 +22,23 @@ export function startDarwishWorker() {
+       const health = await getDarwishChatwootHealth();
+       const batch = await processDarwishIntelligenceBatch(5);
+       if (batch.processed || batch.failed) {
+-        console.info(`[Darwish] Phase 3 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
++        console.info(`[Darwish] Phase 4 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
+       }
+       supervisorTick += 1;
+       if (batch.processed > 0 || supervisorTick >= 10) {
+         const supervisor = await refreshDarwishSupervisor(100);
+         supervisorTick = 0;
+         if (supervisor.refreshed || supervisor.activeAlerts) {
+-          console.info(`[Darwish] Phase 3 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
++          console.info(`[Darwish] Phase 4 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
++        }
++        const actions = await refreshDarwishActionProposals(100);
++        if (actions.created) {
++          console.info(`[Darwish] Phase 4 action proposals created=${actions.created} existing=${actions.existing}`);
+         }
+       }
+-      // Phase 3 remains observation-only: internal alerts/scores, no WhatsApp replies and no automatic CRM actions.
++      // Phase 4 may create proposals automatically, but never approves or executes them. Human approval is mandatory.
+     } catch (error) {
+-      console.warn("[Darwish] Phase 3 worker tick failed", error instanceof Error ? error.message : String(error));
++      console.warn("[Darwish] Phase 4 worker tick failed", error instanceof Error ? error.message : String(error));
+     } finally {
+       running = false;
+     }
+@@ -41,7 +46,7 @@ export function startDarwishWorker() {
+   void tick();
+   timer = setInterval(() => void tick(), config.workerIntervalMs);
+   timer.unref?.();
+-  console.info(`[Darwish] Phase 3 worker started intervalMs=${config.workerIntervalMs}`);
++  console.info(`[Darwish] Phase 4 worker started intervalMs=${config.workerIntervalMs}`);
+   return () => {
+     if (timer) clearInterval(timer);
+     timer = undefined;
+diff --git a/services/chatwoot-runtime/apply-darwish-phase4-migration.ts b/services/chatwoot-runtime/apply-darwish-phase4-migration.ts
+new file mode 100644
+index 0000000..44c0879
+--- /dev/null
++++ b/services/chatwoot-runtime/apply-darwish-phase4-migration.ts
+@@ -0,0 +1,63 @@
++import { sql } from "drizzle-orm";
++import { getDb } from "../../server/db";
++
++const apply = process.argv.includes("--apply");
++const statements = [
++  `CREATE TABLE IF NOT EXISTS darwish_action_proposals (
++    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++    proposal_key VARCHAR(64) NOT NULL,
++    source_type VARCHAR(32) NOT NULL,
++    source_id BIGINT NULL,
++    client_id INT NULL,
++    group_jid VARCHAR(255) NULL,
++    group_name VARCHAR(255) NULL,
++    account_manager_id INT NULL,
++    chatwoot_conversation_id VARCHAR(128) NULL,
++    action_type VARCHAR(32) NOT NULL,
++    title VARCHAR(500) NOT NULL,
++    summary TEXT NOT NULL,
++    payload JSON NULL,
++    risk_level VARCHAR(16) NULL,
++    status VARCHAR(16) NOT NULL DEFAULT 'proposed',
++    reviewed_by INT NULL,
++    reviewed_at DATETIME NULL,
++    rejection_reason TEXT NULL,
++    executed_at DATETIME NULL,
++    execution_result JSON NULL,
++    last_error TEXT NULL,
++    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_darwish_action_proposal_key (proposal_key),
++    KEY idx_darwish_action_status (status, created_at),
++    KEY idx_darwish_action_type (action_type, status),
++    KEY idx_darwish_action_client (client_id),
++    KEY idx_darwish_action_am (account_manager_id),
++    KEY idx_darwish_action_source (source_type, source_id)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++  `CREATE TABLE IF NOT EXISTS darwish_action_events (
++    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++    proposal_id BIGINT UNSIGNED NOT NULL,
++    event_type VARCHAR(32) NOT NULL,
++    actor_user_id INT NULL,
++    metadata JSON NULL,
++    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    KEY idx_darwish_action_event_proposal (proposal_id, created_at),
++    KEY idx_darwish_action_event_actor (actor_user_id, created_at),
++    KEY idx_darwish_action_event_type (event_type, created_at)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
++];
++
++console.log(`DARWISH_PHASE4_STATEMENTS=${statements.length}`);
++if (!apply) {
++  console.log("DRY_RUN_ONLY=YES");
++  for (const statement of statements) console.log(statement.split("\n")[0]);
++  process.exit(0);
++}
++
++const db = await getDb();
++if (!db) throw new Error("Database unavailable");
++for (const statement of statements) await db.execute(sql.raw(statement));
++console.log("DARWISH_PHASE4_MIGRATION=APPLIED");
++process.exit(0);

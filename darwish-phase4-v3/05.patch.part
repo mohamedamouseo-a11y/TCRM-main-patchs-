@@ -1,0 +1,133 @@
+row.uncertain),
++    executed: numberOf(row.executed),
++    rejected: numberOf(row.rejected),
++    replyQueue: numberOf(row.replyQueue),
++  };
++}
++
++export async function approveDarwishAction(id: number, actorUserId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const before = await loadProposal(id);
++  if (before.status === "approved" || before.status === "executed") return before;
++  if (before.status !== "proposed") throw new Error(`Darwish action cannot be approved from status ${before.status}`);
++  await db.execute(sql`
++    UPDATE darwish_action_proposals
++    SET status = 'approved', reviewed_by = ${actorUserId}, reviewed_at = CURRENT_TIMESTAMP,
++        rejection_reason = NULL, last_error = NULL, updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${id} AND status = 'proposed'
++  `);
++  const after = await loadProposal(id);
++  if (after.status !== "approved") throw new Error("Darwish action approval was not applied atomically");
++  await recordActionEvent(db, id, "approved", actorUserId);
++  return after;
++}
++
++export async function rejectDarwishAction(id: number, actorUserId: number, reason?: string) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const before = await loadProposal(id);
++  if (before.status === "rejected") return before;
++  if (!(["proposed", "approved"] as string[]).includes(String(before.status))) {
++    throw new Error(`Darwish action cannot be rejected from status ${before.status}`);
++  }
++  const rejectionReason = safeText(reason || "Rejected by human reviewer", 1000);
++  await db.execute(sql`
++    UPDATE darwish_action_proposals
++    SET status = 'rejected', reviewed_by = ${actorUserId}, reviewed_at = CURRENT_TIMESTAMP,
++        rejection_reason = ${rejectionReason}, updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${id} AND status IN ('proposed','approved')
++  `);
++  const after = await loadProposal(id);
++  if (after.status !== "rejected") throw new Error("Darwish action rejection was not applied atomically");
++  await recordActionEvent(db, id, "rejected", actorUserId, { reason: rejectionReason });
++  return after;
++}
++
++async function executeInternalNote(db: any, proposal: any, actorUserId: number) {
++  const clientId = numberOf(proposal.clientId || (proposal.payload as any)?.clientId);
++  if (!clientId) throw new Error("Internal-note action requires a mapped TCRM client");
++  const client = rowsOf(await db.execute(sql`SELECT leadId FROM clients WHERE id = ${clientId} AND deletedAt IS NULL LIMIT 1`))[0];
++  const leadId = numberOf(client?.leadId || (proposal.payload as any)?.leadId);
++  if (!leadId) throw new Error("Internal-note action requires a client with a leadId");
++  const marker = `[Darwish Action #${proposal.id}]`;
++  const existing = rowsOf(await db.execute(sql`
++    SELECT id FROM internal_notes WHERE leadId = ${leadId} AND content LIKE ${`%${marker}%`} ORDER BY id DESC LIMIT 1
++  `))[0];
++  if (existing?.id) return { actionType: "internal_note", clientId, leadId, noteId: numberOf(existing.id), deduplicated: true };
++  const baseContent = safeText((proposal.payload as any)?.content || `${proposal.title}\n${proposal.summary}`, 9500);
++  if (!baseContent) throw new Error("Internal-note action has empty content");
++  const content = `${baseContent}\n\n${marker}`;
++  await db.execute(sql`
++    INSERT INTO internal_notes (leadId, userId, content, createdAt, updatedAt)
++    VALUES (${leadId}, ${actorUserId}, ${content}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
++  `);
++  const inserted = rowsOf(await db.execute(sql`
++    SELECT id FROM internal_notes WHERE leadId = ${leadId} AND content LIKE ${`%${marker}%`} ORDER BY id DESC LIMIT 1
++  `))[0];
++  return { actionType: "internal_note", clientId, leadId, noteId: inserted?.id ? numberOf(inserted.id) : null, deduplicated: false };
++}
++
++async function executeFollowUpReminder(db: any, proposal: any) {
++  let targetUserId = numberOf(proposal.accountManagerId || (proposal.payload as any)?.accountManagerId);
++  const clientId = numberOf(proposal.clientId || (proposal.payload as any)?.clientId);
++  if (!targetUserId && clientId) {
++    const client = rowsOf(await db.execute(sql`SELECT accountManagerId FROM clients WHERE id = ${clientId} AND deletedAt IS NULL LIMIT 1`))[0];
++    targetUserId = numberOf(client?.accountManagerId);
++  }
++  if (!targetUserId) throw new Error("Follow-up reminder requires an assigned Account Manager");
++  const existing = rowsOf(await db.execute(sql`
++    SELECT id FROM in_app_notifications
++    WHERE type = 'follow_up_reminder'
++      AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.darwishActionProposalId')) = ${String(proposal.id)}
++    ORDER BY id DESC LIMIT 1
++  `))[0];
++  if (existing?.id) return { actionType: "follow_up_reminder", targetUserId, clientId: clientId || null, notificationId: numberOf(existing.id), deduplicated: true };
++  const title = safeText((proposal.payload as any)?.title || proposal.title, 500);
++  const body = safeText((proposal.payload as any)?.body || proposal.summary, 5000);
++  await db.execute(sql`
++    INSERT INTO in_app_notifications (
++      userId, type, title, titleAr, body, bodyAr, isRead, metadata, createdAt
++    ) VALUES (
++      ${targetUserId}, 'follow_up_reminder', ${title}, ${title}, ${body}, ${body}, 0,
++      ${JSON.stringify({ darwishActionProposalId: proposal.id, clientId: clientId || null, groupJid: proposal.groupJid || null })},
++      CURRENT_TIMESTAMP
++    )
++  `);
++  const inserted = rowsOf(await db.execute(sql`
++    SELECT id FROM in_app_notifications
++    WHERE type = 'follow_up_reminder'
++      AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.darwishActionProposalId')) = ${String(proposal.id)}
++    ORDER BY id DESC LIMIT 1
++  `))[0];
++  return { actionType: "follow_up_reminder", targetUserId, clientId: clientId || null, notificationId: inserted?.id ? numberOf(inserted.id) : null, deduplicated: false };
++}
++
++async function executeCustomerReply(proposal: any) {
++  const conversationId = safeText(proposal.chatwootConversationId, 128);
++  const content = normalizeDarwishReplyDraft(String((proposal.payload as any)?.content || ""));
++  if (!conversationId) throw new Error("Customer-reply action requires a Chatwoot conversation id");
++  const result: any = await sendDarwishApprovedChatwootReply(conversationId, content);
++  return {
++    actionType: "customer_reply",
++    conversationId,
++    chatwootMessageId: result?.id ?? result?.payload?.id ?? null,
++  };
++}
++
++export async function executeDarwishApprovedAction(id: number, actorUserId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const before = await loadProposal(id);
++  if (before.status === "executed") return before;
++  if (before.status !== "approved") throw new Error("Darwish action must be human-approved before execution");
++  await db.execute(sql`
++    UPDATE darwish_action_proposals SET status = 'executing', last_error = NULL, updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${id} AND status = 'approved'
++  `);
++  const claimed = await loadProposal(id);
++  if (claimed.status !== "executing") throw new Error("Darwish action execution lock could not be acquired");
++  await recordActionEvent(db, id, "execution_started", actorUserId);
++  try {
++    let result: Record<string, unknown>;
++    if (claimed.actionType === "internal_note") result = await e

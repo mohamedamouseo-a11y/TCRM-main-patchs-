@@ -1,0 +1,6 @@
+Darwish Phase 4 canonical byte-exact patch set.
+Baseline TCRM commit: 2af753d62f94ec583ae5681fe40fff0ed2ad8394
+Concatenate 00.patch.part through 07.patch.part in lexical order.
+Expected total size: 59264 bytes
+Expected SHA256: 52c8d48e99d8543985df2fc3a6b9c68788c6eb7ce51056de4a0078fe75f9cfb6
+All eight Git blob SHAs were precomputed from the local canonical patch before publishing.

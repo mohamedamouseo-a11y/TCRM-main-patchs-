@@ -1,0 +1,155 @@
+lert.alertType,
++  };
++  if (alert.alertType === "response_delay") {
++    return [{
++      actionType: "follow_up_reminder",
++      title: "متابعة عاجلة مع العميل",
++      summary: alert.summary,
++      payload: { ...base, title: "درويش: متابعة عميل متأخرة", body: `${alert.title}\n${alert.summary}` },
++    }];
++  }
++  if (alert.alertType === "repeated_complaint") {
++    return [{
++      actionType: "internal_note",
++      title: "توثيق شكوى متكررة",
++      summary: alert.summary,
++      payload: { ...base, content: `[درويش] ${alert.title}\n${alert.summary}` },
++    }];
++  }
++  if (alert.alertType === "critical_case") {
++    return [
++      {
++        actionType: "internal_note",
++        title: "توثيق حالة خدمة عملاء حرجة",
++        summary: alert.summary,
++        payload: { ...base, content: `[درويش] ${alert.title}\n${alert.summary}` },
++      },
++      {
++        actionType: "follow_up_reminder",
++        title: "متابعة حالة حرجة",
++        summary: alert.summary,
++        payload: { ...base, title: "درويش: حالة حرجة تحتاج متابعة", body: `${alert.title}\n${alert.summary}` },
++      },
++    ];
++  }
++  if (alert.alertType === "churn_risk") {
++    return [{
++      actionType: "internal_note",
++      title: "توثيق مخاطر فقدان العميل",
++      summary: alert.summary,
++      payload: { ...base, content: `[درويش] ${alert.title}\n${alert.summary}` },
++    }];
++  }
++  return [];
++}
++
++export function normalizeDarwishReplyDraft(raw: string) {
++  let text = safeText(raw, 5000)
++    .replace(/^```(?:text|markdown)?\s*/i, "")
++    .replace(/\s*```$/i, "")
++    .trim();
++  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
++    text = text.slice(1, -1).trim();
++  }
++  text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim().slice(0, 4000);
++  if (!text) throw new Error("Darwish reply draft is empty");
++  return text;
++}
++
++async function recordActionEvent(db: any, proposalId: number, eventType: string, actorUserId: number | null, metadata?: Record<string, unknown>) {
++  await db.execute(sql`
++    INSERT INTO darwish_action_events (proposal_id, event_type, actor_user_id, metadata, created_at)
++    VALUES (${proposalId}, ${eventType}, ${actorUserId}, ${metadata ? JSON.stringify(metadata) : null}, CURRENT_TIMESTAMP)
++  `);
++}
++
++async function loadProposal(id: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const row = rowsOf(await db.execute(sql`
++    SELECT p.id, p.proposal_key AS proposalKey, p.source_type AS sourceType, p.source_id AS sourceId,
++           p.client_id AS clientId, c.leadName AS clientName, p.group_jid AS groupJid, p.group_name AS groupName,
++           p.account_manager_id AS accountManagerId, p.chatwoot_conversation_id AS chatwootConversationId,
++           p.action_type AS actionType, p.title, p.summary, p.payload, p.risk_level AS riskLevel,
++           p.status, p.reviewed_by AS reviewedBy, p.reviewed_at AS reviewedAt,
++           p.rejection_reason AS rejectionReason, p.executed_at AS executedAt,
++           p.execution_result AS executionResult, p.last_error AS lastError,
++           p.created_at AS createdAt, p.updated_at AS updatedAt
++    FROM darwish_action_proposals p
++    LEFT JOIN clients c ON c.id = p.client_id
++    WHERE p.id = ${id} LIMIT 1
++  `))[0];
++  if (!row) throw new Error("Darwish action proposal not found");
++  return { ...row, payload: parseJsonValue(row.payload), executionResult: parseJsonValue(row.executionResult) };
++}
++
++export async function refreshDarwishActionProposals(limit = 100) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
++  const alerts = rowsOf(await db.execute(sql`
++    SELECT a.id, a.alert_type AS alertType, a.severity, a.title, a.summary,
++           a.client_id AS clientId, a.group_jid AS groupJid, a.group_name AS groupName,
++           a.account_manager_id AS accountManagerId, c.leadId AS leadId
++    FROM darwish_supervisor_alerts a
++    LEFT JOIN clients c ON c.id = a.client_id
++    WHERE a.active = 1
++    ORDER BY FIELD(a.severity, 'critical','high','medium','low'), a.last_seen_at DESC, a.id DESC
++    LIMIT ${safeLimit}
++  `));
++  let created = 0;
++  let existing = 0;
++  for (const raw of alerts) {
++    const alert: SupervisorAlertInput = {
++      id: numberOf(raw.id),
++      alertType: safeText(raw.alertType, 64),
++      severity: safeText(raw.severity, 16),
++      title: safeText(raw.title, 500),
++      summary: safeText(raw.summary, 6000),
++      clientId: raw.clientId == null ? null : numberOf(raw.clientId),
++      groupJid: raw.groupJid == null ? null : safeText(raw.groupJid, 255),
++      groupName: raw.groupName == null ? null : safeText(raw.groupName, 255),
++      accountManagerId: raw.accountManagerId == null ? null : numberOf(raw.accountManagerId),
++      leadId: raw.leadId == null ? null : numberOf(raw.leadId),
++    };
++    for (const suggestion of deriveDarwishActionSuggestions(alert)) {
++      const key = proposalKey("supervisor_alert", alert.id, suggestion.actionType);
++      const found = rowsOf(await db.execute(sql`SELECT id FROM darwish_action_proposals WHERE proposal_key = ${key} LIMIT 1`))[0];
++      if (found) {
++        existing += 1;
++        continue;
++      }
++      await db.execute(sql`
++        INSERT INTO darwish_action_proposals (
++          proposal_key, source_type, source_id, client_id, group_jid, group_name,
++          account_manager_id, action_type, title, summary, payload, risk_level, status,
++          created_at, updated_at
++        ) VALUES (
++          ${key}, 'supervisor_alert', ${alert.id}, ${alert.clientId}, ${alert.groupJid}, ${alert.groupName},
++          ${alert.accountManagerId}, ${suggestion.actionType}, ${suggestion.title}, ${suggestion.summary},
++          ${JSON.stringify(suggestion.payload)}, ${alert.severity || "medium"}, 'proposed',
++          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
++        )
++      `);
++      const inserted = rowsOf(await db.execute(sql`SELECT id FROM darwish_action_proposals WHERE proposal_key = ${key} LIMIT 1`))[0];
++      if (inserted?.id) {
++        created += 1;
++        await recordActionEvent(db, numberOf(inserted.id), "proposed", null, { source: "supervisor_alert", sourceId: alert.id });
++      }
++    }
++  }
++  return { scannedAlerts: alerts.length, created, existing };
++}
++
++export async function draftDarwishReplyFromIntelligence(intelligenceId: number, actorUserId: number) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const row = rowsOf(await db.execute(sql`
++    SELECT i.id, i.client_id AS clientId, c.leadName AS clientName, c.accountManagerId AS accountManagerId,
++           i.group_jid AS groupJid, i.group_name AS groupName,
++           i.chatwoot_conversation_id AS chatwootConversationId,
++           i.summary, i.sentiment, i.urgency, i.complaint_detected AS complaintDetected,
++           i.customer_needs AS customerNeeds, i.recommended_actions AS recommendedActions,
++           i.escalation_required AS escalationRequired, i.escalation_reason AS escalationReason
++    FROM darwish_intelligence i
++    LEFT JOIN clients c ON c.id = i.c
