@@ -1,0 +1,92 @@
+diff --git a/drizzle/migrations/20260822_darwish_phase_b3_historical_provenance.sql b/drizzle/migrations/20260822_darwish_phase_b3_historical_provenance.sql
+new file mode 100644
+index 0000000..2d47b8d
+--- /dev/null
++++ b/drizzle/migrations/20260822_darwish_phase_b3_historical_provenance.sql
+@@ -0,0 +1,12 @@
++ALTER TABLE darwish_message_facts
++  ADD COLUMN source_row_id BIGINT UNSIGNED NULL AFTER source_event_id,
++  ADD COLUMN message_type VARCHAR(128) NULL AFTER message_id,
++  ADD COLUMN is_group BOOLEAN NOT NULL DEFAULT FALSE AFTER message_type,
++  ADD COLUMN sender_identifier VARCHAR(255) NULL AFTER is_group,
++  ADD COLUMN sender_role VARCHAR(32) NOT NULL DEFAULT 'unknown' AFTER sender_identifier,
++  ADD COLUMN account_manager_id INT UNSIGNED NULL AFTER client_id,
++  ADD KEY idx_darwish_fact_source_row (source, source_row_id),
++  ADD KEY idx_darwish_fact_message_type (message_type),
++  ADD KEY idx_darwish_fact_group (is_group),
++  ADD KEY idx_darwish_fact_sender (sender_identifier),
++  ADD KEY idx_darwish_fact_manager (account_manager_id);
+diff --git a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts
+index 843790f..9fe7705 100644
+--- a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts
++++ b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts
+@@ -4,6 +4,7 @@ import {
+   buildDarwishHistoricalDedupeSeed,
+   classifyDarwishHistoricalDuplicate,
+   classifyDarwishHistoricalMessageType,
++  isDarwishHistoricalTargetSchemaReady,
+ } from "./darwishHistoricalBackfillService";
+ 
+ describe("Darwish Phase B2 historical backfill dry-run", () => {
+@@ -69,4 +70,19 @@ describe("Darwish Phase B2 historical backfill dry-run", () => {
+     expect(text.analysisEligible).toBe(true);
+     expect(text.classification).toBe("conversation_event");
+   });
++  it("keeps the historical write gate closed until every provenance field is persisted", () => {
++    const ready = {
++      messageTypePersisted: true,
++      groupClassificationPersisted: true,
++      senderIdentityPersisted: true,
++      senderRolePersisted: true,
++      accountManagerPersisted: true,
++      sourceRowIdPersisted: true,
++    };
++    expect(isDarwishHistoricalTargetSchemaReady(ready)).toBe(true);
++    expect(isDarwishHistoricalTargetSchemaReady({ ...ready, senderRolePersisted: false })).toBe(false);
++    expect(isDarwishHistoricalTargetSchemaReady({ ...ready, accountManagerPersisted: false })).toBe(false);
++    expect(isDarwishHistoricalTargetSchemaReady({ ...ready, sourceRowIdPersisted: false })).toBe(false);
++  });
++
+ });
+diff --git a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts
+index 5506c26..dc82b26 100644
+--- a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts
++++ b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts
+@@ -23,6 +23,26 @@ export type DarwishHistoricalDuplicateDisposition =
+   | "exact_duplicate"
+   | "conflict";
+ 
++export type DarwishHistoricalTargetSchema = {
++  messageTypePersisted: boolean;
++  groupClassificationPersisted: boolean;
++  senderIdentityPersisted: boolean;
++  senderRolePersisted: boolean;
++  accountManagerPersisted: boolean;
++  sourceRowIdPersisted: boolean;
++};
++
++export function isDarwishHistoricalTargetSchemaReady(schema: DarwishHistoricalTargetSchema) {
++  return (
++    schema.messageTypePersisted &&
++    schema.groupClassificationPersisted &&
++    schema.senderIdentityPersisted &&
++    schema.senderRolePersisted &&
++    schema.accountManagerPersisted &&
++    schema.sourceRowIdPersisted
++  );
++}
++
+ export function buildDarwishHistoricalDedupeSeed(input: {
+   source?: string | null;
+   sessionId?: string | number | null;
+@@ -306,9 +326,7 @@ export async function getDarwishHistoricalBackfillDryRun(conflictSampleLimit = 1
+   };
+ 
+   const targetSchemaReadyForHistoricalWrite =
+-    targetSchema.messageTypePersisted &&
+-    targetSchema.groupClassificationPersisted &&
+-    targetSchema.senderIdentityPersisted;
++    isDarwishHistoricalTargetSchemaReady(targetSchema);
+ 
+   return {
+     success: true,
