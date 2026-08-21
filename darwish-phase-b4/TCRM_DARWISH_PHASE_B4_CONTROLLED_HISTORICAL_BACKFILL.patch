@@ -1,0 +1,517 @@
+diff --git a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts
+index 9fe7705..f6c5071 100644
+--- a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts
++++ b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.test.ts
+@@ -86,3 +86,40 @@ describe("Darwish Phase B2 historical backfill dry-run", () => {
+ 
+ });
++
++describe("Darwish Phase B4 controlled historical backfill safety", () => {
++  it("requires the exact explicit write confirmation and bounds the batch size", async () => {
++    const module = await import("./darwishHistoricalBackfillService");
++    expect(() => module.normalizeDarwishHistoricalBackfillBatchInput({
++      cutoffSourceRowId: 100,
++      confirmation: "wrong",
++    })).toThrow(/confirmation required/i);
++    expect(module.normalizeDarwishHistoricalBackfillBatchInput({
++      cutoffSourceRowId: 100,
++      afterSourceRowId: 10,
++      limit: 9999,
++      confirmation: module.DARWISH_PHASE_B4_CONFIRMATION,
++    })).toEqual({ cutoffSourceRowId: 100, afterSourceRowId: 10, limit: 500 });
++  });
++
++  it("derives sender role conservatively from proven direction and group context", async () => {
++    const module = await import("./darwishHistoricalBackfillService");
++    expect(module.classifyDarwishHistoricalSenderRole("outbound", false)).toBe("business");
++    expect(module.classifyDarwishHistoricalSenderRole("inbound", false)).toBe("customer");
++    expect(module.classifyDarwishHistoricalSenderRole("inbound", true)).toBe("participant");
++    expect(module.classifyDarwishHistoricalSenderRole("unknown", true)).toBe("unknown");
++  });
++
++  it("rejects invalid or completed cursors before any write path can run", async () => {
++    const module = await import("./darwishHistoricalBackfillService");
++    expect(() => module.normalizeDarwishHistoricalBackfillBatchInput({
++      cutoffSourceRowId: 100,
++      afterSourceRowId: 100,
++      confirmation: module.DARWISH_PHASE_B4_CONFIRMATION,
++    })).toThrow(/cursor must be lower than cutoff/i);
++    expect(() => module.normalizeDarwishHistoricalBackfillBatchInput({
++      cutoffSourceRowId: 0,
++      confirmation: module.DARWISH_PHASE_B4_CONFIRMATION,
++    })).toThrow(/invalid.*cutoff/i);
++  });
++});
+diff --git a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts
+index dc82b26..3227dc0 100644
+--- a/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts
++++ b/server/services/darwish/chatwoot/darwishHistoricalBackfillService.ts
+@@ -401,3 +401,465 @@ export async function getDarwishHistoricalBackfillDryRun(conflictSampleLimit = 1
+     readyForControlledWriteBackfill:
+       targetSchemaReadyForHistoricalWrite &&
+       conflictingDuplicateGroups === 0 &&
+       safeCandidateGroups > 0,
+   };
+ }
++
++export const DARWISH_PHASE_B4_CONFIRMATION = "DARWISH_PHASE_B4_CONTROLLED_BACKFILL";
++
++export function classifyDarwishHistoricalSenderRole(direction: unknown, isGroup: boolean) {
++  const normalized = stringOf(direction).toLowerCase();
++  if (normalized === "outbound") return "business" as const;
++  if (normalized === "inbound" && isGroup) return "participant" as const;
++  if (normalized === "inbound") return "customer" as const;
++  return "unknown" as const;
++}
++
++export function normalizeDarwishHistoricalBackfillBatchInput(input: {
++  cutoffSourceRowId: number;
++  afterSourceRowId?: number;
++  limit?: number;
++  confirmation?: string;
++}) {
++  if (input.confirmation !== DARWISH_PHASE_B4_CONFIRMATION) {
++    throw new Error("Darwish Phase B4 controlled backfill confirmation required");
++  }
++  const cutoffSourceRowId = Math.floor(Number(input.cutoffSourceRowId));
++  const afterSourceRowId = Math.max(0, Math.floor(Number(input.afterSourceRowId ?? 0)));
++  const limit = Math.max(1, Math.min(500, Math.floor(Number(input.limit ?? 250))));
++  if (!Number.isSafeInteger(cutoffSourceRowId) || cutoffSourceRowId <= 0) {
++    throw new Error("Invalid Darwish historical cutoff source row id");
++  }
++  if (!Number.isSafeInteger(afterSourceRowId) || afterSourceRowId < 0) {
++    throw new Error("Invalid Darwish historical cursor");
++  }
++  if (afterSourceRowId >= cutoffSourceRowId) {
++    throw new Error("Darwish historical cursor must be lower than cutoff");
++  }
++  return { cutoffSourceRowId, afterSourceRowId, limit } as const;
++}
++
++async function getDarwishHistoricalTargetSchema() {
++  const factColumns = await getTableColumns("darwish_message_facts");
++  const targetSchema: DarwishHistoricalTargetSchema = {
++    messageTypePersisted: factColumns.has("message_type"),
++    groupClassificationPersisted: factColumns.has("is_group") || factColumns.has("chat_type"),
++    senderIdentityPersisted: factColumns.has("sender_identifier") || factColumns.has("sender_jid"),
++    senderRolePersisted: factColumns.has("sender_role"),
++    accountManagerPersisted: factColumns.has("account_manager_id"),
++    sourceRowIdPersisted: factColumns.has("source_row_id"),
++  };
++  return { factColumns, targetSchema, ready: isDarwishHistoricalTargetSchemaReady(targetSchema) };
++}
++
++export async function getDarwishHistoricalBackfillWritePlan(requestedCutoffSourceRowId?: number) {
++  const db = await getDb();
++  if (!db) {
++    return {
++      success: false,
++      mode: "controlled_write_plan",
++      source: "whatsapp_messages",
++      error: "Database unavailable",
++      readyForControlledWriteBackfill: false,
++    };
++  }
++
++  const messageColumns = await getTableColumns("whatsapp_messages");
++  const chatColumns = await getTableColumns("whatsapp_chats");
++  const requiredMessageColumns = [
++    "id",
++    "message_id",
++    "session_id",
++    "chat_id",
++    "direction",
++    "sent_at",
++    "created_at",
++    "message_type",
++    "body",
++    "sender_jid",
++  ];
++  const requiredChatColumns = ["id", "jid", "chat_type", "linked_client_id", "assigned_user_id"];
++  const missingMessageColumns = requiredMessageColumns.filter((column) => !messageColumns.has(column));
++  const missingChatColumns = requiredChatColumns.filter((column) => !chatColumns.has(column));
++  const sourceSchemaCompatible = missingMessageColumns.length === 0 && missingChatColumns.length === 0;
++  const target = await getDarwishHistoricalTargetSchema();
++
++  if (!sourceSchemaCompatible) {
++    return {
++      success: false,
++      mode: "controlled_write_plan",
++      source: "whatsapp_messages",
++      sourceSchemaCompatible: false,
++      missingMessageColumns,
++      missingChatColumns,
++      targetSchema: target.targetSchema,
++      targetSchemaReadyForHistoricalWrite: target.ready,
++      readyForControlledWriteBackfill: false,
++    };
++  }
++
++  const highWater = rowsOf(await db.execute(sql`
++    SELECT MAX(id) AS maxSourceRowId FROM whatsapp_messages
++  `))[0] || {};
++  const currentMaxSourceRowId = numberOf(highWater.maxSourceRowId);
++  const requested = requestedCutoffSourceRowId == null
++    ? currentMaxSourceRowId
++    : Math.floor(Number(requestedCutoffSourceRowId));
++  const cutoffSourceRowId = Math.min(currentMaxSourceRowId, Math.max(0, requested));
++
++  const grouped = rowsOf(await db.execute(sql`
++    SELECT
++      COUNT(*) AS logicalGroups,
++      SUM(CASE WHEN rowCount > 1 THEN 1 ELSE 0 END) AS duplicateGroups,
++      SUM(CASE WHEN rowCount > 1 THEN rowCount - 1 ELSE 0 END) AS extraDuplicateRows,
++      SUM(CASE
++        WHEN rowCount > 1
++         AND distinctBodyHashes <= 1
++         AND distinctDirections <= 1
++         AND distinctMessageTypes <= 1
++         AND distinctSentTimestamps <= 1
++        THEN 1 ELSE 0 END
++      ) AS exactDuplicateGroups,
++      SUM(CASE
++        WHEN rowCount > 1
++         AND (
++           distinctBodyHashes > 1 OR
++           distinctDirections > 1 OR
++           distinctMessageTypes > 1 OR
++           distinctSentTimestamps > 1
++         )
++        THEN 1 ELSE 0 END
++      ) AS conflictingDuplicateGroups,
++      SUM(CASE
++        WHEN invalidDirectionRows = 0
++         AND missingTimestampRows = 0
++         AND (
++           rowCount = 1 OR
++           (
++             distinctBodyHashes <= 1 AND
++             distinctDirections <= 1 AND
++             distinctMessageTypes <= 1 AND
++             distinctSentTimestamps <= 1
++           )
++         )
++        THEN 1 ELSE 0 END
++      ) AS safeCandidateGroups
++    FROM (
++      SELECT
++        session_id,
++        chat_id,
++        message_id,
++        COUNT(*) AS rowCount,
++        COUNT(DISTINCT SHA2(COALESCE(body, ''), 256)) AS distinctBodyHashes,
++        COUNT(DISTINCT LOWER(TRIM(COALESCE(direction, '')))) AS distinctDirections,
++        COUNT(DISTINCT LOWER(TRIM(COALESCE(message_type, '')))) AS distinctMessageTypes,
++        COUNT(DISTINCT COALESCE(DATE_FORMAT(sent_at, '%Y-%m-%d %H:%i:%s.%f'), '')) AS distinctSentTimestamps,
++        SUM(CASE WHEN LOWER(TRIM(direction)) NOT IN ('inbound', 'outbound') OR direction IS NULL THEN 1 ELSE 0 END) AS invalidDirectionRows,
++        SUM(CASE WHEN sent_at IS NULL THEN 1 ELSE 0 END) AS missingTimestampRows
++      FROM whatsapp_messages
++      WHERE id <= ${cutoffSourceRowId}
++        AND message_id IS NOT NULL
++        AND TRIM(message_id) <> ''
++      GROUP BY session_id, chat_id, message_id
++    ) groupedMessages
++  `))[0] || {};
++
++  const source = rowsOf(await db.execute(sql`
++    SELECT
++      COUNT(*) AS sourceRows,
++      SUM(CASE WHEN id <= ${cutoffSourceRowId} THEN 1 ELSE 0 END) AS snapshotRows
++    FROM whatsapp_messages
++  `))[0] || {};
++
++  const existing = rowsOf(await db.execute(sql`
++    SELECT
++      COUNT(*) AS existingHistoricalFacts,
++      COUNT(DISTINCT source_row_id) AS existingHistoricalSourceRows
++    FROM darwish_message_facts
++    WHERE source = 'whatsapp_messages'
++      AND source_row_id IS NOT NULL
++      AND source_row_id <= ${cutoffSourceRowId}
++  `))[0] || {};
++
++  const conflictingDuplicateGroups = numberOf(grouped.conflictingDuplicateGroups);
++  const safeCandidateGroups = numberOf(grouped.safeCandidateGroups);
++  const sourceJobIdCompatible = cutoffSourceRowId <= 4294967295;
++  const readyForControlledWriteBackfill =
++    cutoffSourceRowId > 0 &&
++    sourceSchemaCompatible &&
++    target.ready &&
++    sourceJobIdCompatible &&
++    conflictingDuplicateGroups === 0 &&
++    safeCandidateGroups > 0;
++
++  return {
++    success: true,
++    mode: "controlled_write_plan",
++    source: "whatsapp_messages",
++    sourceNamespace: "whatsapp_messages",
++    dedupePolicyVersion: "v1",
++    sourceSchemaCompatible,
++    targetSchema: target.targetSchema,
++    targetSchemaReadyForHistoricalWrite: target.ready,
++    sourceJobIdCompatible,
++    currentMaxSourceRowId,
++    cutoffSourceRowId,
++    sourceRows: numberOf(source.sourceRows),
++    snapshotRows: numberOf(source.snapshotRows),
++    logicalGroups: numberOf(grouped.logicalGroups),
++    duplicateGroups: numberOf(grouped.duplicateGroups),
++    extraDuplicateRows: numberOf(grouped.extraDuplicateRows),
++    exactDuplicateGroups: numberOf(grouped.exactDuplicateGroups),
++    conflictingDuplicateGroups,
++    safeCandidateGroups,
++    existingHistoricalFacts: numberOf(existing.existingHistoricalFacts),
++    existingHistoricalSourceRows: numberOf(existing.existingHistoricalSourceRows),
++    readyForControlledWriteBackfill,
++    safety: {
++      snapshotFrozenAtSourceRowId: cutoffSourceRowId,
++      phoneCandidateMatchesAutoApplied: false,
++      clientMutation: false,
++      assignmentMutation: false,
++      outboundActions: 0,
++    },
++  };
++}
++
++export async function executeDarwishHistoricalBackfillBatch(input: {
++  cutoffSourceRowId: number;
++  afterSourceRowId?: number;
++  limit?: number;
++  confirmation?: string;
++}) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const normalized = normalizeDarwishHistoricalBackfillBatchInput(input);
++  const plan = await getDarwishHistoricalBackfillWritePlan(normalized.cutoffSourceRowId);
++  if (!plan.success || !plan.readyForControlledWriteBackfill) {
++    throw new Error("Darwish historical controlled write gate is closed");
++  }
++  if (plan.cutoffSourceRowId !== normalized.cutoffSourceRowId) {
++    throw new Error("Darwish historical cutoff changed or exceeds current source high-water mark");
++  }
++
++  const candidates = rowsOf(await db.execute(sql`
++    SELECT m.id AS sourceRowId
++    FROM whatsapp_messages m
++    INNER JOIN (
++      SELECT
++        session_id,
++        chat_id,
++        message_id,
++        MIN(id) AS winnerId,
++        COUNT(*) AS rowCount,
++        COUNT(DISTINCT SHA2(COALESCE(body, ''), 256)) AS distinctBodyHashes,
++        COUNT(DISTINCT LOWER(TRIM(COALESCE(direction, '')))) AS distinctDirections,
++        COUNT(DISTINCT LOWER(TRIM(COALESCE(message_type, '')))) AS distinctMessageTypes,
++        COUNT(DISTINCT COALESCE(DATE_FORMAT(sent_at, '%Y-%m-%d %H:%i:%s.%f'), '')) AS distinctSentTimestamps,
++        SUM(CASE WHEN LOWER(TRIM(direction)) NOT IN ('inbound', 'outbound') OR direction IS NULL THEN 1 ELSE 0 END) AS invalidDirectionRows,
++        SUM(CASE WHEN sent_at IS NULL THEN 1 ELSE 0 END) AS missingTimestampRows
++      FROM whatsapp_messages
++      WHERE id <= ${normalized.cutoffSourceRowId}
++        AND message_id IS NOT NULL
++        AND TRIM(message_id) <> ''
++      GROUP BY session_id, chat_id, message_id
++      HAVING invalidDirectionRows = 0
++         AND missingTimestampRows = 0
++         AND (
++           rowCount = 1 OR
++           (
++             distinctBodyHashes <= 1 AND
++             distinctDirections <= 1 AND
++             distinctMessageTypes <= 1 AND
++             distinctSentTimestamps <= 1
++           )
++         )
++    ) safeGroups ON safeGroups.winnerId = m.id
++    WHERE m.id > ${normalized.afterSourceRowId}
++      AND m.id <= ${normalized.cutoffSourceRowId}
++    ORDER BY m.id ASC
++    LIMIT ${normalized.limit}
++  `));
++
++  if (!candidates.length) {
++    const totalFacts = rowsOf(await db.execute(sql`
++      SELECT COUNT(*) AS totalFacts
++      FROM darwish_message_facts
++      WHERE source = 'whatsapp_messages'
++        AND source_row_id IS NOT NULL
++        AND source_row_id <= ${normalized.cutoffSourceRowId}
++    `))[0] || {};
++    return {
++      success: true,
++      mode: "controlled_write_batch",
++      cutoffSourceRowId: normalized.cutoffSourceRowId,
++      afterSourceRowId: normalized.afterSourceRowId,
++      batchCandidateRows: 0,
++      insertedRows: 0,
++      historicalFactsAtCutoff: numberOf(totalFacts.totalFacts),
++      nextAfterSourceRowId: normalized.afterSourceRowId,
++      complete: true,
++      outboundActions: 0,
++      customerMutation: false,
++      assignmentMutation: false,
++    };
++  }
++
++  const batchLastSourceRowId = numberOf(candidates[candidates.length - 1]?.sourceRowId);
++  const before = rowsOf(await db.execute(sql`
++    SELECT COUNT(*) AS totalFacts
++    FROM darwish_message_facts
++    WHERE source = 'whatsapp_messages'
++      AND source_row_id IS NOT NULL
++      AND source_row_id <= ${normalized.cutoffSourceRowId}
++  `))[0] || {};
++
++  await db.execute(sql`
++    INSERT INTO darwish_message_facts (
++      source_job_id,
++      source_event_id,
++      source_row_id,
++      source,
++      conversation_key,
++      customer_key,
++      client_id,
++      account_manager_id,
++      group_jid,
++      evolution_instance,
++      chatwoot_conversation_id,
++      message_id,
++      message_type,
++      is_group,
++      sender_identifier,
++      sender_role,
++      message_timestamp,
++      received_timestamp,
++      direction,
++      text_available,
++      timestamp_quality,
++      identity_quality,
++      direction_quality,
++      processing_status,
++      dedupe_key
++    )
++    SELECT
++      CAST(m.id AS UNSIGNED),
++      CONCAT('whatsapp_messages:', CAST(m.id AS CHAR)),
++      m.id,
++      'whatsapp_messages',
++      CONCAT('whatsapp:', COALESCE(CAST(m.session_id AS CHAR), 'unknown'), ':', COALESCE(CAST(m.chat_id AS CHAR), 'unknown')),
++      CASE
++        WHEN c.linked_client_id IS NOT NULL THEN CONCAT('client:', CAST(c.linked_client_id AS CHAR))
++        WHEN LOWER(COALESCE(c.chat_type, '')) = 'group' THEN CONCAT('group:', COALESCE(CAST(m.session_id AS CHAR), 'unknown'), ':', COALESCE(CAST(m.chat_id AS CHAR), 'unknown'))
++        ELSE CONCAT('conversation:', COALESCE(CAST(m.session_id AS CHAR), 'unknown'), ':', COALESCE(CAST(m.chat_id AS CHAR), 'unknown'))
++      END,
++      c.linked_client_id,
++      c.assigned_user_id,
++      CASE WHEN LOWER(COALESCE(c.chat_type, '')) = 'group' THEN c.jid ELSE NULL END,
++      CONCAT('session:', COALESCE(CAST(m.session_id AS CHAR), 'unknown')),
++      NULL,
++      m.message_id,
++      LOWER(TRIM(COALESCE(m.message_type, 'unknown'))),
++      CASE WHEN LOWER(COALESCE(c.chat_type, '')) = 'group' THEN TRUE ELSE FALSE END,
++      m.sender_jid,
++      CASE
++        WHEN LOWER(TRIM(COALESCE(m.direction, ''))) = 'outbound' THEN 'business'
++        WHEN LOWER(TRIM(COALESCE(m.direction, ''))) = 'inbound' AND LOWER(COALESCE(c.chat_type, '')) = 'group' THEN 'participant'
++        WHEN LOWER(TRIM(COALESCE(m.direction, ''))) = 'inbound' THEN 'customer'
++        ELSE 'unknown'
++      END,
++      m.sent_at,
++      COALESCE(m.created_at, m.sent_at),
++      LOWER(TRIM(m.direction)),
++      CASE
++        WHEN m.body IS NOT NULL
++         AND LENGTH(TRIM(m.body)) > 0
++         AND LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(m.message_type, 'unknown')), '_', ''), '-', ''), ' ', '')) NOT IN (
++           'messagecontextinfo', 'senderkeydistribution', 'senderkeydistributionmessage',
++           'keydistributionmessage', 'protocolmessage', 'encryptedmessage', 'call', 'calllog'
++         )
++        THEN TRUE ELSE FALSE
++      END,
++      CASE
++        WHEN m.sent_at IS NULL AND m.created_at IS NULL THEN 'missing'
++        WHEN m.sent_at IS NULL THEN 'received_fallback'
++        WHEN m.created_at IS NULL THEN 'exact'
++        WHEN ABS(TIMESTAMPDIFF(MINUTE, m.sent_at, m.created_at)) <= 1440 THEN 'exact'
++        ELSE 'outlier'
++      END,
++      CASE
++        WHEN c.linked_client_id IS NOT NULL THEN 'resolved_client'
++        WHEN LOWER(COALESCE(c.chat_type, '')) = 'group' THEN 'group_context'
++        ELSE 'conversation_only'
++      END,
++      'explicit',
++      CASE
++        WHEN LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(m.message_type, 'unknown')), '_', ''), '-', ''), ' ', '')) IN (
++          'messagecontextinfo', 'senderkeydistribution', 'senderkeydistributionmessage',
++          'keydistributionmessage', 'protocolmessage', 'encryptedmessage', 'call', 'calllog'
++        ) THEN 'system_event'
++        ELSE 'ready'
++      END,
++      SHA2(CONCAT_WS('|', 'whatsapp_messages', 'v1', COALESCE(CAST(m.session_id AS CHAR), ''), COALESCE(CAST(m.chat_id AS CHAR), ''), m.message_id), 256)
++    FROM whatsapp_messages m
++    LEFT JOIN whatsapp_chats c ON c.id = m.chat_id
++    INNER JOIN (
++      SELECT
++        session_id,
++        chat_id,
++        message_id,
++        MIN(id) AS winnerId,
++        COUNT(*) AS rowCount,
++        COUNT(DISTINCT SHA2(COALESCE(body, ''), 256)) AS distinctBodyHashes,
++        COUNT(DISTINCT LOWER(TRIM(COALESCE(direction, '')))) AS distinctDirections,
++        COUNT(DISTINCT LOWER(TRIM(COALESCE(message_type, '')))) AS distinctMessageTypes,
++        COUNT(DISTINCT COALESCE(DATE_FORMAT(sent_at, '%Y-%m-%d %H:%i:%s.%f'), '')) AS distinctSentTimestamps,
++        SUM(CASE WHEN LOWER(TRIM(direction)) NOT IN ('inbound', 'outbound') OR direction IS NULL THEN 1 ELSE 0 END) AS invalidDirectionRows,
++        SUM(CASE WHEN sent_at IS NULL THEN 1 ELSE 0 END) AS missingTimestampRows
++      FROM whatsapp_messages
++      WHERE id <= ${normalized.cutoffSourceRowId}
++        AND message_id IS NOT NULL
++        AND TRIM(message_id) <> ''
++      GROUP BY session_id, chat_id, message_id
++      HAVING invalidDirectionRows = 0
++         AND missingTimestampRows = 0
++         AND (
++           rowCount = 1 OR
++           (
++             distinctBodyHashes <= 1 AND
++             distinctDirections <= 1 AND
++             distinctMessageTypes <= 1 AND
++             distinctSentTimestamps <= 1
++           )
++         )
++    ) safeGroups ON safeGroups.winnerId = m.id
++    WHERE m.id > ${normalized.afterSourceRowId}
++      AND m.id <= ${batchLastSourceRowId}
++      AND m.id <= ${normalized.cutoffSourceRowId}
++    ORDER BY m.id ASC
++    ON DUPLICATE KEY UPDATE dedupe_key = VALUES(dedupe_key)
++  `);
++
++  const after = rowsOf(await db.execute(sql`
++    SELECT COUNT(*) AS totalFacts
++    FROM darwish_message_facts
++    WHERE source = 'whatsapp_messages'
++      AND source_row_id IS NOT NULL
++      AND source_row_id <= ${normalized.cutoffSourceRowId}
++  `))[0] || {};
++  const beforeCount = numberOf(before.totalFacts);
++  const afterCount = numberOf(after.totalFacts);
++
++  return {
++    success: true,
++    mode: "controlled_write_batch",
++    cutoffSourceRowId: normalized.cutoffSourceRowId,
++    afterSourceRowId: normalized.afterSourceRowId,
++    batchCandidateRows: candidates.length,
++    insertedRows: Math.max(0, afterCount - beforeCount),
++    duplicateOrExistingRows: Math.max(0, candidates.length - Math.max(0, afterCount - beforeCount)),
++    historicalFactsAtCutoff: afterCount,
++    nextAfterSourceRowId: batchLastSourceRowId,
++    complete: candidates.length < normalized.limit,
++    outboundActions: 0,
++    customerMutation: false,
++    assignmentMutation: false,
++  };
++}
