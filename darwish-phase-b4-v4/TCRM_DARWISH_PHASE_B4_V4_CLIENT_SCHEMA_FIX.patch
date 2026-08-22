@@ -1,0 +1,33 @@
+diff --git a/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.test.ts b/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.test.ts
+index f1c1f14..b7e9b4b 100644
+--- a/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.test.ts
++++ b/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.test.ts
+@@ -49,6 +49,7 @@ describe("Darwish Phase B4 controlled historical backfill safety", () => {
+   it("uses the real clients soft-delete column and one limit+1 candidate probe", async () => {
+     const module = await import("./darwishHistoricalBackfillWriteService");
+     expect(module.DARWISH_PHASE_B4_CLIENT_DELETED_AT_COLUMN).toBe("deletedAt");
++    expect(module.DARWISH_PHASE_B4_CLIENT_ACCOUNT_MANAGER_ID_COLUMN).toBe("accountManagerId");
+     expect(module.getDarwishHistoricalCandidateProbeLimit(250)).toBe(251);
+     expect(module.getDarwishHistoricalCandidateProbeLimit(500)).toBe(501);
+     expect(module.isDarwishHistoricalCandidateProbeComplete(250, 250)).toBe(true);
+diff --git a/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.ts b/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.ts
+index ac15bae..2809b87 100644
+--- a/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.ts
++++ b/server/services/darwish/chatwoot/darwishHistoricalBackfillWriteService.ts
+@@ -25,6 +25,7 @@ export const DARWISH_PHASE_B4_CONFIRMATION = "DARWISH_PHASE_B4_CONTROLLED_BACKFI
+ export const DARWISH_PHASE_B4_MAX_BATCH_SIZE = 500;
+ 
+ export const DARWISH_PHASE_B4_CLIENT_DELETED_AT_COLUMN = "deletedAt";
++export const DARWISH_PHASE_B4_CLIENT_ACCOUNT_MANAGER_ID_COLUMN = "accountManagerId";
+ 
+ export function getDarwishHistoricalCandidateProbeLimit(batchLimit: number) {
+   const normalized = Math.max(1, Math.min(DARWISH_PHASE_B4_MAX_BATCH_SIZE, Math.floor(Number(batchLimit))));
+@@ -372,7 +373,7 @@ export async function executeDarwishHistoricalBackfillBatch(input: {
+         ELSE CONCAT('conversation:', COALESCE(CAST(m.session_id AS CHAR), 'unknown'), ':', COALESCE(CAST(m.chat_id AS CHAR), 'unknown'))
+       END,
+       c.linked_client_id,
+-      cl.account_manager_id,
++      cl.accountManagerId,
+       CASE WHEN LOWER(COALESCE(c.chat_type, '')) = 'group' THEN c.jid ELSE NULL END,
+       CONCAT('session:', COALESCE(CAST(m.session_id AS CHAR), 'unknown')),
+       NULL,
