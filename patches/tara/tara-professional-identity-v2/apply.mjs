@@ -4,10 +4,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * TCRM — Tara Professional Identity V2
+ * TCRM — Tara Professional Identity V2.1 compatibility fix
  * Target: client/src/pages/TaraAgentPage.tsx
- * Adds: real-person AI-generated avatar, bilingual professional job title,
- * compact role summary, expertise tags, and profile-style hero treatment.
+ * Compatible with Premium V1 where metricCards sits between counts and busy.
+ * Adds: AI-generated real-person avatar, bilingual professional job title,
+ * localized role summary, expertise tags, and profile-style hero treatment.
  * Scope: UX/UI only. No API/DB/permissions/routes/business logic changes.
  */
 
@@ -19,15 +20,21 @@ const avatarB64Path = path.join(patchDir, 'tara-avatar-320.jpg.b64');
 const avatarTarget = path.resolve(cwd, 'public/ai-staff/tara-avatar.jpg');
 
 function fail(message, code = 1) {
-  console.error(`[tara-identity-v2] ${message}`);
+  console.error(`[tara-identity-v2.1] ${message}`);
   process.exit(code);
 }
 function info(message) {
-  console.log(`[tara-identity-v2] ${message}`);
+  console.log(`[tara-identity-v2.1] ${message}`);
 }
 function replaceOnce(input, before, after, label) {
   if (!input.includes(before)) fail(`expected block not found: ${label}`);
   return input.replace(before, after);
+}
+function insertAfter(input, anchor, insertion, label) {
+  const index = input.indexOf(anchor);
+  if (index === -1) fail(`expected anchor not found: ${label}`);
+  const at = index + anchor.length;
+  return input.slice(0, at) + insertion + input.slice(at);
 }
 
 if (!fs.existsSync(target)) fail(`target not found: ${target}`, 2);
@@ -42,7 +49,7 @@ const identityHelper = `function getTaraIdentity(isRTL: boolean) {
             profileTag: "الملف الوظيفي",
             jobTitle: "أخصائي المبيعات الهاتفية وتأهيل العملاء المحتملين بالذكاء الاصطناعي",
             summary: "تتولى محادثات المبيعات الأولية، وتأهيل العملاء المحتملين، والمتابعات، وتجهيز الحالات للتسليم إلى فريق المبيعات.",
-            focus: ["المبيعات الهاتفية", "تأهيل العملاء", "المتابعات"],
+            focus: ["المبيعات الهاتفية", "تأهيل العملاء المحتملين", "المتابعات"],
             alt: "الصورة المهنية لتارا",
         }
         : {
@@ -139,12 +146,8 @@ if (mode === '--apply') {
   }
 
   if (!source.includes('const taraIdentity = getTaraIdentity(isRTL);')) {
-    source = replaceOnce(
-      source,
-      '    const counts: any = dashboardQ.data?.counts || {};\n    const busy = dashboardQ.isLoading || settingsQ.isLoading || campaignsQ.isLoading;',
-      '    const counts: any = dashboardQ.data?.counts || {};\n    const taraIdentity = getTaraIdentity(isRTL);\n    const busy = dashboardQ.isLoading || settingsQ.isLoading || campaignsQ.isLoading;',
-      'identity binding',
-    );
+    const countsAnchor = '    const counts: any = dashboardQ.data?.counts || {};';
+    source = insertAfter(source, countsAnchor, '\n    const taraIdentity = getTaraIdentity(isRTL);', 'identity binding after counts');
   }
 
   source = replaceHero(source);
@@ -156,7 +159,7 @@ if (mode === '--apply') {
 
   const output = usesCRLF ? source.replace(/\n/g, '\r\n') : source;
   fs.writeFileSync(target, output, 'utf8');
-  info('applied Tara identity V2 and installed avatar asset');
+  info('applied Tara identity V2.1 and installed avatar asset');
   process.exit(0);
 }
 
