@@ -1,6 +1,6 @@
-# Tara Professional Identity V2
+# Tara Professional Identity V2.1
 
-This patch upgrades Tara from a generic AI-tool header into a professional AI staff profile.
+This patch upgrades Tara from a generic AI-tool header into a professional AI staff profile and is compatible with the current Premium V1 Tara page structure.
 
 ## Included
 - AI-generated professional real-person avatar for Tara.
@@ -9,7 +9,10 @@ This patch upgrades Tara from a generic AI-tool header into a professional AI st
 - Localized role summary and expertise tags.
 - Live enabled/disabled status retained.
 - Premium profile/name-tag hero treatment.
-- Existing KPI cards, navigation, settings, APIs, permissions, database, routes, and Tara business logic remain unchanged.
+- Existing Premium V1 KPI cards, navigation, settings, APIs, permissions, database, routes, and Tara business logic remain unchanged.
+
+## Compatibility fix
+V2.1 no longer assumes that `busy` appears immediately after the Tara dashboard `counts` declaration. It safely inserts the identity binding after the `counts` line, preserving the existing Premium V1 `metricCards` block.
 
 ## Target
 `client/src/pages/TaraAgentPage.tsx`
