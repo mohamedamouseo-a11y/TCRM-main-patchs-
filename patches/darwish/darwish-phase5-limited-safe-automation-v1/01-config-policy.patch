@@ -1,0 +1,167 @@
+diff --git a/server/services/darwish/chatwoot/darwishConfig.ts b/server/services/darwish/chatwoot/darwishConfig.ts
+--- a/server/services/darwish/chatwoot/darwishConfig.ts
++++ b/server/services/darwish/chatwoot/darwishConfig.ts
+@@ -11,12 +11,29 @@
+   return Math.min(Math.floor(parsed), max);
+ };
+ 
++const asRiskLevel = (value: string | undefined, fallback: "low" | "medium" | "high" | "critical") => {
++  const normalized = String(value || "").trim().toLowerCase();
++  return normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "critical"
++    ? normalized
++    : fallback;
++};
++
+ export function getDarwishConfig() {
+   return {
+     enabled: asBool(process.env.DARWISH_ENABLED, true) && asBool(process.env.DARWISH_CHATWOOT_ENABLED, false),
+     workerEnabled: asBool(process.env.DARWISH_WORKER_ENABLED, true),
+     workerIntervalMs: asPositiveInt(process.env.DARWISH_WORKER_INTERVAL_MS, 30000, 300000),
+     approvedOutboundEnabled: asBool(process.env.DARWISH_APPROVED_OUTBOUND_ENABLED, false),
++    limitedAutomationEnabled: asBool(process.env.DARWISH_LIMITED_AUTOMATION_ENABLED, false),
++    autoInternalNoteEnabled: asBool(process.env.DARWISH_AUTO_INTERNAL_NOTE_ENABLED, true),
++    autoFollowUpReminderEnabled: asBool(process.env.DARWISH_AUTO_FOLLOWUP_REMINDER_ENABLED, true),
++    autoMaxRisk: asRiskLevel(process.env.DARWISH_AUTO_MAX_RISK, "medium"),
++    autoMaxActionsPerHour: asPositiveInt(process.env.DARWISH_AUTO_MAX_ACTIONS_PER_HOUR, 25, 500),
++    autoMaxActionsPerClientPerDay: asPositiveInt(process.env.DARWISH_AUTO_MAX_ACTIONS_PER_CLIENT_PER_DAY, 5, 100),
++    autoMaxActionsPerManagerPerHour: asPositiveInt(process.env.DARWISH_AUTO_MAX_ACTIONS_PER_MANAGER_PER_HOUR, 10, 200),
++    autoRequireClientContext: asBool(process.env.DARWISH_AUTO_REQUIRE_CLIENT_CONTEXT, true),
++    autoRequireAccountManager: asBool(process.env.DARWISH_AUTO_REQUIRE_ACCOUNT_MANAGER, true),
++    automationActorUserId: asPositiveInt(process.env.DARWISH_AUTOMATION_ACTOR_USER_ID, 0, 2_147_483_647),
+     chatwootUrl: String(process.env.DARWISH_CHATWOOT_BASE_URL || process.env.CHATWOOT_URL || "http://127.0.0.1:3308").replace(/\/$/, ""),
+     chatwootAccountId: String(process.env.DARWISH_CHATWOOT_ACCOUNT_ID || process.env.CHATWOOT_ACCOUNT_ID || "").trim(),
+     chatwootInboxId: String(process.env.DARWISH_CHATWOOT_INBOX_ID || process.env.CHATWOOT_DARWISH_INBOX_ID || "").trim(),
+@@ -34,7 +51,23 @@
+     enabled: config.enabled,
+     workerEnabled: config.workerEnabled,
+     workerIntervalMs: config.workerIntervalMs,
+-    actions: { approvedOutboundEnabled: config.approvedOutboundEnabled },
++    actions: {
++      approvedOutboundEnabled: config.approvedOutboundEnabled,
++      limitedAutomation: {
++        enabled: config.limitedAutomationEnabled,
++        policyVersion: "phase5-v1",
++        internalNoteEnabled: config.autoInternalNoteEnabled,
++        followUpReminderEnabled: config.autoFollowUpReminderEnabled,
++        customerReplyEnabled: false,
++        maxRisk: config.autoMaxRisk,
++        maxActionsPerHour: config.autoMaxActionsPerHour,
++        maxActionsPerClientPerDay: config.autoMaxActionsPerClientPerDay,
++        maxActionsPerManagerPerHour: config.autoMaxActionsPerManagerPerHour,
++        requireClientContext: config.autoRequireClientContext,
++        requireAccountManager: config.autoRequireAccountManager,
++        actorConfigured: config.automationActorUserId > 0,
++      },
++    },
+     chatwoot: {
+       url: config.chatwootUrl,
+       urlConfigured: Boolean(config.chatwootUrl),
+diff --git a/server/services/darwish/chatwoot/darwishAutomationPolicy.ts b/server/services/darwish/chatwoot/darwishAutomationPolicy.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishAutomationPolicy.ts
+@@ -0,0 +1,104 @@
++export const DARWISH_AUTOMATION_POLICY_VERSION = "phase5-v1";
++
++export type DarwishAutomationRisk = "low" | "medium" | "high" | "critical";
++
++export type DarwishAutomationCandidate = {
++  status: string;
++  actionType: string;
++  riskLevel: string | null | undefined;
++  sourceType: string | null | undefined;
++  clientId: number | null | undefined;
++  accountManagerId: number | null | undefined;
++};
++
++export type DarwishAutomationPolicyInput = {
++  enabled: boolean;
++  internalNoteEnabled: boolean;
++  followUpReminderEnabled: boolean;
++  maxRisk: DarwishAutomationRisk;
++  requireClientContext: boolean;
++  requireAccountManager: boolean;
++  automationActorConfigured: boolean;
++  globalRateRemaining: boolean;
++  clientRateRemaining: boolean;
++  managerRateRemaining: boolean;
++};
++
++export type DarwishAutomationDecision = {
++  eligible: boolean;
++  reason:
++    | "ELIGIBLE"
++    | "AUTOMATION_DISABLED"
++    | "AUTOMATION_ACTOR_MISSING"
++    | "ACTION_TYPE_NOT_ALLOWED"
++    | "CUSTOMER_FACING_ACTION"
++    | "RISK_TOO_HIGH"
++    | "CLIENT_CONTEXT_MISSING"
++    | "ACCOUNT_MANAGER_MISSING"
++    | "RATE_LIMIT_EXCEEDED"
++    | "UNTRUSTED_SOURCE"
++    | "EXECUTION_UNCERTAIN"
++    | "POLICY_VALIDATION_FAILED";
++  policyVersion: string;
++};
++
++const RISK_RANK: Record<DarwishAutomationRisk, number> = {
++  low: 1,
++  medium: 2,
++  high: 3,
++  critical: 4,
++};
++
++function normalizeRisk(value: string | null | undefined): DarwishAutomationRisk | null {
++  const risk = String(value || "").trim().toLowerCase();
++  return risk === "low" || risk === "medium" || risk === "high" || risk === "critical"
++    ? risk
++    : null;
++}
++
++function decision(reason: DarwishAutomationDecision["reason"], eligible = false): DarwishAutomationDecision {
++  return { eligible, reason, policyVersion: DARWISH_AUTOMATION_POLICY_VERSION };
++}
++
++export function evaluateDarwishAutomationPolicy(
++  candidate: DarwishAutomationCandidate,
++  policy: DarwishAutomationPolicyInput,
++): DarwishAutomationDecision {
++  if (!policy.enabled) return decision("AUTOMATION_DISABLED");
++  if (!policy.automationActorConfigured) return decision("AUTOMATION_ACTOR_MISSING");
++
++  if (candidate.status === "execution_uncertain") return decision("EXECUTION_UNCERTAIN");
++  if (candidate.status !== "proposed") return decision("POLICY_VALIDATION_FAILED");
++
++  if (String(candidate.sourceType || "") !== "supervisor_alert") return decision("UNTRUSTED_SOURCE");
++
++  const actionType = String(candidate.actionType || "");
++  if (actionType === "customer_reply") return decision("CUSTOMER_FACING_ACTION");
++  if (actionType === "internal_note" && !policy.internalNoteEnabled) return decision("ACTION_TYPE_NOT_ALLOWED");
++  if (actionType === "follow_up_reminder" && !policy.followUpReminderEnabled) return decision("ACTION_TYPE_NOT_ALLOWED");
++  if (actionType !== "internal_note" && actionType !== "follow_up_reminder") {
++    return decision("ACTION_TYPE_NOT_ALLOWED");
++  }
++
++  const risk = normalizeRisk(candidate.riskLevel);
++  if (!risk) return decision("POLICY_VALIDATION_FAILED");
++  if (RISK_RANK[risk] > RISK_RANK[policy.maxRisk]) return decision("RISK_TOO_HIGH");
++
++  if (policy.requireClientContext && !Number(candidate.clientId || 0)) {
++    return decision("CLIENT_CONTEXT_MISSING");
++  }
++
++  if (
++    actionType === "follow_up_reminder"
++    && policy.requireAccountManager
++    && !Number(candidate.accountManagerId || 0)
++  ) {
++    return decision("ACCOUNT_MANAGER_MISSING");
++  }
++
++  if (!policy.globalRateRemaining || !policy.clientRateRemaining || !policy.managerRateRemaining) {
++    return decision("RATE_LIMIT_EXCEEDED");
++  }
++
++  return decision("ELIGIBLE", true);
++}
