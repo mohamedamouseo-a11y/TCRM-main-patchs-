@@ -1,0 +1,99 @@
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -14,7 +14,32 @@
+ import { useLanguage } from "@/contexts/LanguageContext";
+ import { trpc } from "@/lib/trpc";
+ import { toast } from "sonner";
+-import { AlertTriangle, Bot, Brain, CheckCircle2, Link2, Loader2, MessageSquareWarning, RefreshCw, Server, Unplug } from "lucide-react";
++import { Activity, AlertTriangle, Bot, Brain, CheckCircle2, Headphones, Link2, Loader2, MessageSquareWarning, RefreshCw, Server, ShieldCheck, Sparkles, Unplug, Users2 } from "lucide-react";
++
++function DarwishPortrait() {
++  return (
++    <div className="relative grid h-full w-full place-items-center overflow-hidden rounded-full bg-gradient-to-br from-cyan-500/20 via-slate-900/10 to-blue-600/20">
++      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,rgba(255,255,255,0.9),transparent_32%)] opacity-70 dark:opacity-20" />
++      <div className="relative grid h-[78%] w-[78%] place-items-center rounded-full bg-gradient-to-br from-slate-700 to-slate-950 text-white shadow-inner">
++        <div className="absolute top-[18%] h-[29%] w-[29%] rounded-full bg-cyan-50/95" />
++        <div className="absolute bottom-[17%] h-[34%] w-[54%] rounded-t-[46%] bg-cyan-50/95" />
++        <Headphones className="absolute top-[18%] h-[34%] w-[34%] text-cyan-300" strokeWidth={1.6} />
++        <span className="absolute bottom-[8%] text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Darwish</span>
++      </div>
++    </div>
++  );
++}
++
++function PremiumMetricCard({ label, value, hint, icon: Icon }: any) {
++  return (
++    <Card className="group rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)] transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-500/30 hover:shadow-md">
++      <CardContent className="flex min-h-[124px] items-center gap-3.5 p-4">
++        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"><Icon className="h-5 w-5" /></div>
++        <div className="min-w-0"><p className="text-[28px] font-black leading-none tracking-[-0.04em]">{value}</p><p className="mt-2 truncate text-xs font-black">{label}</p><p className="mt-1 truncate text-[10px] font-medium text-muted-foreground">{hint}</p></div>
++      </CardContent>
++    </Card>
++  );
++}
+ 
+ export default function DarwishPage() {
+   const { lang, isRTL } = useLanguage();
+@@ -75,12 +100,42 @@
+ 
+   return <CRMLayout>
+     <div dir={isRTL ? "rtl" : "ltr"} className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+-      <div className="flex flex-wrap items-center justify-between gap-3">
+-        <div><h1 className="text-2xl font-bold">{ar ? "درويش — إجراءات بموافقة بشرية" : "Darwish — Human-Approved Actions"}</h1><p className="text-sm text-muted-foreground">{ar ? "المرحلة الرابعة: يقترح درويش إجراءات داخلية ومسودات ردود، لكن لا يعتمد أو ينفذ أي شيء تلقائيًا." : "Phase 4: Darwish proposes internal actions and reply drafts, but never approves or executes anything automatically."}</p></div>
+-        <Button variant="outline" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); void actionStatsQ.refetch(); void actionsQ.refetch(); void actionCapabilitiesQ.refetch(); }}><RefreshCw className="mr-2 h-4 w-4" />{ar ? "تحديث" : "Refresh"}</Button>
+-      </div>
++      <section data-darwish-uxui="ai-staff-premium-v1" className="relative overflow-hidden rounded-[28px] border border-border/70 bg-gradient-to-br from-cyan-500/12 via-card to-blue-500/5 shadow-[0_22px_64px_-40px_rgba(15,23,42,0.65)]">
++        <div className="pointer-events-none absolute -start-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl" />
++        <div className="relative flex flex-col gap-6 p-5 md:p-7 xl:flex-row xl:items-center xl:justify-between">
++          <div className="flex min-w-0 flex-col gap-5 md:flex-row md:items-center">
++            <div className="relative mx-auto h-[152px] w-[152px] shrink-0 md:mx-0">
++              <div className="absolute inset-0 rounded-full border border-border/70 bg-background/90 p-[7px] shadow-[0_16px_38px_-24px_rgba(15,23,42,0.75)] ring-1 ring-white/60 dark:ring-white/10"><DarwishPortrait /></div>
++              <span className={"absolute bottom-2.5 end-1.5 h-6 w-6 rounded-full border-4 border-card shadow-sm " + (health?.config?.workerEnabled ? "bg-emerald-500" : "bg-muted-foreground")} />
++            </div>
++            <div className="min-w-0">
++              <p className="mb-2 text-[11px] font-black uppercase tracking-[0.22em] text-cyan-700 dark:text-cyan-300">AI STAFF AGENT</p>
++              <div className="flex flex-wrap items-center gap-2"><h1 className="text-3xl font-black tracking-tight md:text-4xl">{ar ? "درويش" : "Darwish"}</h1><Badge variant="outline" className="rounded-full bg-background/80 px-3 py-1 font-bold"><ShieldCheck className="me-1 h-3.5 w-3.5" />{ar ? "مراجعة بشرية" : "Human approved"}</Badge></div>
++              <p className="mt-2 text-lg font-black text-foreground">{ar ? "مشرف دعم العملاء بالذكاء الاصطناعي" : "AI Customer Support Supervisor"}</p>
++              <p className="mt-1 text-sm font-semibold text-muted-foreground">{ar ? "AI Customer Support Supervisor" : "مشرف دعم العملاء بالذكاء الاصطناعي"}</p>
++              <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{ar ? "يراقب صوت العميل والمخاطر وجودة التعامل، ويحوّل الإشارات إلى توصيات ومسودات وإجراءات لا تُنفذ إلا بعد مراجعة بشرية." : "Supervises customer voice, service risk and handling quality, turning signals into recommendations, drafts and actions that stay under human approval."}</p>
++              <div className="mt-4 flex flex-wrap gap-2">
++                {(ar ? ["صوت العميل", "ذاكرة العميل", "ذكاء التعامل", "ذكاء الإدارة"] : ["Voice of Customer", "Customer Memory", "Handling Intelligence", "Management Intelligence"]).map((skill) => <Badge key={skill} variant="secondary" className="rounded-full px-3 py-1 text-[11px] font-bold">{skill}</Badge>)}
++              </div>
++            </div>
++          </div>
++          <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
++            <div className="flex flex-wrap gap-2"><Badge variant="outline" className="h-10 gap-2 rounded-xl bg-background/80 px-4 font-bold shadow-sm"><Activity className="h-4 w-4 text-emerald-500" />{health?.config?.workerEnabled ? (ar ? "نشط" : "Active") : (ar ? "جار الفحص" : "Checking")}</Badge><Badge variant="outline" className="h-10 gap-2 rounded-xl bg-background/80 px-4 font-bold shadow-sm"><Sparkles className="h-4 w-4 text-cyan-600" />{ar ? "ذكاء خدمة العملاء" : "CX Intelligence"}</Badge></div>
++            <Button variant="outline" className="h-10 rounded-xl bg-background/70 font-bold" onClick={() => { void healthQ.refetch(); void linksQ.refetch(); void jobsQ.refetch(); void mappingCountsQ.refetch(); void intelligenceStatsQ.refetch(); void intelligenceQ.refetch(); void supervisorQ.refetch(); void alertsQ.refetch(); void accountManagersQ.refetch(); void digestQ.refetch(); void actionStatsQ.refetch(); void actionsQ.refetch(); void actionCapabilitiesQ.refetch(); }}><RefreshCw className="me-2 h-4 w-4" />{ar ? "تحديث البيانات" : "Refresh data"}</Button>
++          </div>
++        </div>
++      </section>
++
++      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
++        <PremiumMetricCard label={ar ? "التحليلات" : "Analyses"} value={intelligenceStatsQ.data?.totalAnalyses || 0} hint={ar ? "إشارات تم تحليلها" : "signals analyzed"} icon={Brain} />
++        <PremiumMetricCard label={ar ? "الشكاوى" : "Complaints"} value={intelligenceStatsQ.data?.complaints || 0} hint={ar ? "صوت عميل سلبي" : "customer complaints"} icon={MessageSquareWarning} />
++        <PremiumMetricCard label={ar ? "عاجل" : "Urgent"} value={intelligenceStatsQ.data?.urgent || 0} hint={ar ? "تحتاج انتباه" : "needs attention"} icon={AlertTriangle} />
++        <PremiumMetricCard label={ar ? "تصعيدات" : "Escalations"} value={intelligenceStatsQ.data?.escalations || 0} hint={ar ? "مراجعة مطلوبة" : "review required"} icon={ShieldCheck} />
++        <PremiumMetricCard label={ar ? "تنبيهات نشطة" : "Active Alerts"} value={supervisorQ.data?.activeAlerts || 0} hint={ar ? "مراقبة المشرف" : "supervisor watch"} icon={Users2} />
++        <PremiumMetricCard label={ar ? "إجراءات مقترحة" : "Proposed Actions"} value={actionStatsQ.data?.proposed || 0} hint={ar ? "بانتظار قرار بشري" : "awaiting human decision"} icon={Sparkles} />
++      </section>
+ 
+-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
++      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Server className="h-4 w-4" />{ar ? "حالة Chatwoot" : "Chatwoot"}</CardTitle></CardHeader><CardContent>{healthQ.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : statusBadge(health?.chatwoot?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.chatwoot?.error || health?.chatwoot?.reason || health?.chatwoot?.url}</p></CardContent></Card>
+         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Bot className="h-4 w-4" />{ar ? "العامل" : "Worker"}</CardTitle></CardHeader><CardContent>{statusBadge(Boolean(health?.config?.workerEnabled))}<p className="mt-2 text-xs text-muted-foreground">{health?.config?.workerIntervalMs ? `${health.config.workerIntervalMs} ms` : "—"}</p></CardContent></Card>
+         <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "واتساب" : "WhatsApp"}</CardTitle></CardHeader><CardContent>{statusBadge(health?.evolution?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.evolution?.error || health?.evolution?.reason || (health?.evolution?.instanceCount != null ? `${health.evolution.instanceCount} instances` : "—")}</p></CardContent></Card>
+@@ -91,14 +146,6 @@
+ 
+       <DarwishDataReadinessCard />
+ 
+-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Brain className="h-4 w-4" />{ar ? "تحليلات درويش" : "Analyses"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.totalAnalyses || 0}</p></CardContent></Card>
+-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><MessageSquareWarning className="h-4 w-4" />{ar ? "شكاوى" : "Complaints"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.complaints || 0}</p></CardContent></Card>
+-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="h-4 w-4" />{ar ? "عاجل" : "Urgent"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.urgent || 0}</p></CardContent></Card>
+-        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "سلبي" : "Negative"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.negative || 0}</p></CardContent></Card>
+-        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "تصعيد مطلوب" : "Escalations"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{intelligenceStatsQ.data?.escalations || 0}</p></CardContent></Card>
+-      </div>
+-
+       <DarwishVoiceOfCustomerPanel />
+ 
+       <DarwishDemandProblemIntelligencePanel />
