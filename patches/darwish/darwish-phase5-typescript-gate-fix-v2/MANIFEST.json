@@ -1,0 +1,18 @@
+{
+  "01-darwish-page-health-union-fix-v2.patch": {
+    "sha256": "4479d05f491ca66cc552795c7be8600d18f24aa8e6586b66edda0da47871b819",
+    "size": 2585
+  },
+  "BOM.md": {
+    "sha256": "2e7a7073b0f8ab1821ac448ba14fbe8f91e90d28c1ab0fa63b3d48ecf409a1da",
+    "size": 1692
+  },
+  "README.md": {
+    "sha256": "085d425f8e2eac589e03dd4af6a71746de37125372a2e1c44e3c40f862f51144",
+    "size": 335
+  },
+  "MANUS_APPLY_TEST_PROMPT.md": {
+    "sha256": "4aef7037dec040455736862dab8e35bfc091e96006227ae8135e62dd2e88d10a",
+    "size": 4927
+  }
+}
