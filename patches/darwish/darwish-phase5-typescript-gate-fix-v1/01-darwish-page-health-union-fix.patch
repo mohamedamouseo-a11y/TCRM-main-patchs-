@@ -1,0 +1,9 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -134,7 +134,7 @@ export default function DarwishPage() {
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Server className="h-4 w-4" />{ar ? "حالة Chatwoot" : "Chatwoot"}</CardTitle></CardHeader><CardContent>{healthQ.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : statusBadge(health?.chatwoot?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.chatwoot?.error || health?.chatwoot?.reason || health?.chatwoot?.url}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Server className="h-4 w-4" />{ar ? "حالة Chatwoot" : "Chatwoot"}</CardTitle></CardHeader><CardContent>{healthQ.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : statusBadge(health?.chatwoot?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.chatwoot ? ("error" in health.chatwoot ? health.chatwoot.error : "reason" in health.chatwoot ? health.chatwoot.reason : "url" in health.chatwoot ? health.chatwoot.url : undefined) : undefined}</p></CardContent></Card>
+         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Bot className="h-4 w-4" />{ar ? "العامل" : "Worker"}</CardTitle></CardHeader><CardContent>{statusBadge(Boolean(health?.config?.workerEnabled))}<p className="mt-2 text-xs text-muted-foreground">{health?.config?.workerIntervalMs ? `${health.config.workerIntervalMs} ms` : "—"}</p></CardContent></Card>
