@@ -1,0 +1,344 @@
+diff --git a/server/services/darwish/chatwoot/darwishAutomationPolicy.test.ts b/server/services/darwish/chatwoot/darwishAutomationPolicy.test.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishAutomationPolicy.test.ts
+@@ -0,0 +1,85 @@
++import { describe, expect, it } from "vitest";
++import { evaluateDarwishAutomationPolicy } from "./darwishAutomationPolicy";
++
++const candidate = {
++  status: "proposed",
++  actionType: "internal_note",
++  riskLevel: "low",
++  sourceType: "supervisor_alert",
++  clientId: 7,
++  accountManagerId: 4,
++};
++
++const policy = {
++  enabled: true,
++  internalNoteEnabled: true,
++  followUpReminderEnabled: true,
++  maxRisk: "medium" as const,
++  requireClientContext: true,
++  requireAccountManager: true,
++  automationActorConfigured: true,
++  globalRateRemaining: true,
++  clientRateRemaining: true,
++  managerRateRemaining: true,
++};
++
++describe("Darwish Phase 5 limited safe automation policy", () => {
++  it("allows a low-risk internal note", () => {
++    expect(evaluateDarwishAutomationPolicy(candidate, policy)).toMatchObject({ eligible: true, reason: "ELIGIBLE" });
++  });
++
++  it("allows a medium-risk follow-up reminder with an owner", () => {
++    expect(evaluateDarwishAutomationPolicy({
++      ...candidate,
++      actionType: "follow_up_reminder",
++      riskLevel: "medium",
++    }, policy)).toMatchObject({ eligible: true, reason: "ELIGIBLE" });
++  });
++
++  it("blocks high-risk actions", () => {
++    expect(evaluateDarwishAutomationPolicy({ ...candidate, riskLevel: "high" }, policy).reason).toBe("RISK_TOO_HIGH");
++  });
++
++  it("always blocks customer replies", () => {
++    expect(evaluateDarwishAutomationPolicy({ ...candidate, actionType: "customer_reply" }, policy).reason)
++      .toBe("CUSTOMER_FACING_ACTION");
++  });
++
++  it("blocks untrusted sources", () => {
++    expect(evaluateDarwishAutomationPolicy({ ...candidate, sourceType: "manual" }, policy).reason)
++      .toBe("UNTRUSTED_SOURCE");
++  });
++
++  it("blocks missing client context", () => {
++    expect(evaluateDarwishAutomationPolicy({ ...candidate, clientId: null }, policy).reason)
++      .toBe("CLIENT_CONTEXT_MISSING");
++  });
++
++  it("blocks follow-up reminders with no account manager", () => {
++    expect(evaluateDarwishAutomationPolicy({
++      ...candidate,
++      actionType: "follow_up_reminder",
++      accountManagerId: null,
++    }, policy).reason).toBe("ACCOUNT_MANAGER_MISSING");
++  });
++
++  it("blocks when the master switch is disabled", () => {
++    expect(evaluateDarwishAutomationPolicy(candidate, { ...policy, enabled: false }).reason)
++      .toBe("AUTOMATION_DISABLED");
++  });
++
++  it("blocks when the system automation actor is not configured", () => {
++    expect(evaluateDarwishAutomationPolicy(candidate, { ...policy, automationActorConfigured: false }).reason)
++      .toBe("AUTOMATION_ACTOR_MISSING");
++  });
++
++  it("blocks when any rate limit is exhausted", () => {
++    expect(evaluateDarwishAutomationPolicy(candidate, { ...policy, clientRateRemaining: false }).reason)
++      .toBe("RATE_LIMIT_EXCEEDED");
++  });
++
++  it("blocks uncertain executions from automatic retry", () => {
++    expect(evaluateDarwishAutomationPolicy({ ...candidate, status: "execution_uncertain" }, policy).reason)
++      .toBe("EXECUTION_UNCERTAIN");
++  });
++});
+diff --git a/server/services/darwish/chatwoot/darwishActionService.ts b/server/services/darwish/chatwoot/darwishActionService.ts
+--- a/server/services/darwish/chatwoot/darwishActionService.ts
++++ b/server/services/darwish/chatwoot/darwishActionService.ts
+@@ -3,6 +3,11 @@
+ import { getDb } from "../../../db";
+ import { callTaraProviderWithFallback } from "../../tara/taraMultiProviderService";
+ import { sendDarwishApprovedChatwootReply } from "./darwishChatwootService";
++import { getDarwishConfig } from "./darwishConfig";
++import {
++  DARWISH_AUTOMATION_POLICY_VERSION,
++  evaluateDarwishAutomationPolicy,
++} from "./darwishAutomationPolicy";
+ 
+ type DarwishActionType = "internal_note" | "follow_up_reminder" | "customer_reply";
+ type DarwishActionStatus = "proposed" | "approved" | "executing" | "execution_uncertain" | "executed" | "rejected";
+@@ -509,6 +514,238 @@
+   }
+ }
+ 
++
++async function getDarwishAutomationRateState(db: any, proposal: any, config: ReturnType<typeof getDarwishConfig>) {
++  const clientId = numberOf(proposal.clientId || (proposal.payload as any)?.clientId);
++  const accountManagerId = numberOf(proposal.accountManagerId || (proposal.payload as any)?.accountManagerId);
++
++  const globalCount = numberOf(rowsOf(await db.execute(sql`
++    SELECT COUNT(*) AS count
++    FROM darwish_action_events
++    WHERE event_type = 'automation_executed'
++      AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 HOUR)
++  `))[0]?.count);
++
++  const clientCount = clientId
++    ? numberOf(rowsOf(await db.execute(sql`
++        SELECT COUNT(*) AS count
++        FROM darwish_action_events
++        WHERE event_type = 'automation_executed'
++          AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 DAY)
++          AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.clientId')) = ${String(clientId)}
++      `))[0]?.count)
++    : 0;
++
++  const managerCount = accountManagerId
++    ? numberOf(rowsOf(await db.execute(sql`
++        SELECT COUNT(*) AS count
++        FROM darwish_action_events
++        WHERE event_type = 'automation_executed'
++          AND created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 HOUR)
++          AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.accountManagerId')) = ${String(accountManagerId)}
++      `))[0]?.count)
++    : 0;
++
++  return {
++    globalRateRemaining: globalCount < config.autoMaxActionsPerHour,
++    clientRateRemaining: !clientId || clientCount < config.autoMaxActionsPerClientPerDay,
++    managerRateRemaining: !accountManagerId || managerCount < config.autoMaxActionsPerManagerPerHour,
++  };
++}
++
++async function executeDarwishAutomatedInternalAction(proposal: any, config: ReturnType<typeof getDarwishConfig>) {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++
++  const actorUserId = numberOf(config.automationActorUserId);
++  if (!actorUserId) throw new Error("Darwish automation actor is not configured");
++
++  const claimToken = createHash("sha256")
++    .update(`${proposal.id}\0${process.pid}\0${Date.now()}\0${Math.random()}`)
++    .digest("hex");
++
++  await db.execute(sql`
++    UPDATE darwish_action_proposals
++    SET status = 'executing',
++        execution_result = ${JSON.stringify({ automationClaimToken: claimToken })},
++        last_error = NULL,
++        updated_at = CURRENT_TIMESTAMP
++    WHERE id = ${numberOf(proposal.id)} AND status = 'proposed'
++  `);
++
++  const claimed = await loadProposal(numberOf(proposal.id));
++  if (
++    claimed.status !== "executing"
++    || String((claimed.executionResult as any)?.automationClaimToken || "") !== claimToken
++  ) {
++    return { executed: false, claimed: false };
++  }
++
++  const auditBase = {
++    policyVersion: DARWISH_AUTOMATION_POLICY_VERSION,
++    mode: "limited_safe_automation",
++    actionType: claimed.actionType,
++    clientId: numberOf(claimed.clientId) || null,
++    accountManagerId: numberOf(claimed.accountManagerId) || null,
++  };
++
++  await recordActionEvent(db, numberOf(proposal.id), "automation_execution_started", actorUserId, auditBase);
++
++  try {
++    let result: Record<string, unknown>;
++    if (claimed.actionType === "internal_note") {
++      result = await executeInternalNote(db, claimed, actorUserId);
++    } else if (claimed.actionType === "follow_up_reminder") {
++      result = await executeFollowUpReminder(db, claimed);
++    } else {
++      throw new Error(`Phase 5 automation cannot execute action type ${claimed.actionType}`);
++    }
++
++    const executionResult = {
++      ...result,
++      automation: {
++        policyVersion: DARWISH_AUTOMATION_POLICY_VERSION,
++        mode: "limited_safe_automation",
++        actorUserId,
++      },
++    };
++
++    await db.execute(sql`
++      UPDATE darwish_action_proposals
++      SET status = 'executed',
++          executed_at = CURRENT_TIMESTAMP,
++          execution_result = ${JSON.stringify(executionResult)},
++          last_error = NULL,
++          updated_at = CURRENT_TIMESTAMP
++      WHERE id = ${numberOf(proposal.id)}
++        AND status = 'executing'
++        AND JSON_UNQUOTE(JSON_EXTRACT(execution_result, '$.automationClaimToken')) = ${claimToken}
++    `);
++
++    const after = await loadProposal(numberOf(proposal.id));
++    if (after.status !== "executed") {
++      throw new Error("Darwish automated execution could not be finalized atomically");
++    }
++
++    await recordActionEvent(db, numberOf(proposal.id), "automation_executed", actorUserId, {
++      ...auditBase,
++      result,
++    });
++    return { executed: true, claimed: true, result };
++  } catch (error) {
++    const message = safeText(error instanceof Error ? error.message : String(error), 2000);
++    await db.execute(sql`
++      UPDATE darwish_action_proposals
++      SET status = 'execution_uncertain',
++          last_error = ${message},
++          updated_at = CURRENT_TIMESTAMP
++      WHERE id = ${numberOf(proposal.id)} AND status = 'executing'
++    `);
++    await recordActionEvent(db, numberOf(proposal.id), "automation_execution_uncertain", actorUserId, {
++      ...auditBase,
++      error: message,
++    });
++    throw error;
++  }
++}
++
++export async function processDarwishLimitedAutomationBatch(limit = 10) {
++  const config = getDarwishConfig();
++  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
++
++  if (!config.limitedAutomationEnabled) {
++    return {
++      enabled: false,
++      policyVersion: DARWISH_AUTOMATION_POLICY_VERSION,
++      scanned: 0,
++      eligible: 0,
++      executed: 0,
++      blocked: 0,
++      failed: 0,
++      reasons: { AUTOMATION_DISABLED: 1 } as Record<string, number>,
++    };
++  }
++
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++
++  const safeScanLimit = Math.max(100, Math.min(500, safeLimit * 10));
++  const candidates = rowsOf(await db.execute(sql`
++    SELECT p.id, p.source_type AS sourceType, p.source_id AS sourceId,
++           p.client_id AS clientId, p.account_manager_id AS accountManagerId,
++           p.group_jid AS groupJid, p.group_name AS groupName,
++           p.action_type AS actionType, p.title, p.summary, p.payload,
++           p.risk_level AS riskLevel, p.status
++    FROM darwish_action_proposals p
++    WHERE p.status = 'proposed'
++      AND p.source_type = 'supervisor_alert'
++      AND p.action_type IN ('internal_note', 'follow_up_reminder')
++    ORDER BY p.created_at ASC, p.id ASC
++    LIMIT ${safeScanLimit}
++  `)).map((row) => ({ ...row, payload: parseJsonValue(row.payload) }));
++
++  let scanned = 0;
++  let eligible = 0;
++  let executed = 0;
++  let blocked = 0;
++  let failed = 0;
++  const reasons: Record<string, number> = {};
++
++  for (const proposal of candidates) {
++    if (executed >= safeLimit) break;
++    scanned += 1;
++
++    const rateState = await getDarwishAutomationRateState(db, proposal, config);
++    const decision = evaluateDarwishAutomationPolicy({
++      status: String(proposal.status || ""),
++      actionType: String(proposal.actionType || ""),
++      riskLevel: proposal.riskLevel == null ? null : String(proposal.riskLevel),
++      sourceType: proposal.sourceType == null ? null : String(proposal.sourceType),
++      clientId: numberOf(proposal.clientId) || null,
++      accountManagerId: numberOf(proposal.accountManagerId || (proposal.payload as any)?.accountManagerId) || null,
++    }, {
++      enabled: config.limitedAutomationEnabled,
++      internalNoteEnabled: config.autoInternalNoteEnabled,
++      followUpReminderEnabled: config.autoFollowUpReminderEnabled,
++      maxRisk: config.autoMaxRisk,
++      requireClientContext: config.autoRequireClientContext,
++      requireAccountManager: config.autoRequireAccountManager,
++      automationActorConfigured: config.automationActorUserId > 0,
++      ...rateState,
++    });
++
++    if (!decision.eligible) {
++      blocked += 1;
++      reasons[decision.reason] = (reasons[decision.reason] || 0) + 1;
++      continue;
++    }
++
++    eligible += 1;
++    try {
++      const result = await executeDarwishAutomatedInternalAction(proposal, config);
++      if (result.executed) {
++        executed += 1;
++      } else {
++        blocked += 1;
++        reasons.EXECUTION_CLAIM_LOST = (reasons.EXECUTION_CLAIM_LOST || 0) + 1;
++      }
++    } catch {
++      failed += 1;
++    }
++  }
++
++  return {
++    enabled: true,
++    policyVersion: DARWISH_AUTOMATION_POLICY_VERSION,
++    scanned,
++    eligible,
++    executed,
++    blocked,
++    failed,
++    reasons,
++  };
++}
++
+ export function __deriveDarwishActionSuggestionsForTests(alert: SupervisorAlertInput) {
+   return deriveDarwishActionSuggestions(alert);
+ }
