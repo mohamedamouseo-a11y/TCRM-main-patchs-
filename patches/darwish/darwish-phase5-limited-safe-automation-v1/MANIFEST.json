@@ -1,0 +1,30 @@
+{
+  "name": "darwish-phase5-limited-safe-automation-v1",
+  "target_repo": "mohamedamouseo-a11y/TCRM-MAIN-Tamiyouz-CRM-",
+  "target_branch": "main",
+  "baseline_head": "0d5696b0946142c1836cefd601c597db5a3f4187",
+  "apply_order": [
+    "01-config-policy.patch",
+    "02-policy-tests-action-service.patch",
+    "03-worker-ui-card.patch",
+    "04-darwish-page.patch"
+  ],
+  "parts": {
+    "01-config-policy.patch": {
+      "sha256": "f93253b0677e0623898d31f44692844400b5408a54613b2f57eae97957b61494",
+      "bytes": 7476
+    },
+    "02-policy-tests-action-service.patch": {
+      "sha256": "29414d24f30d3e9d1e059f4536174436ad273e0abbdc42c62f8a12cc925d7f80",
+      "bytes": 12872
+    },
+    "03-worker-ui-card.patch": {
+      "sha256": "6d18ffe28efbf02939949f127b830d7222c4c3dd698fd28657caa0184c923218",
+      "bytes": 7514
+    },
+    "04-darwish-page.patch": {
+      "sha256": "5faa660e1fc1e0342645a9a6345e1f2345921b74daa83a432201d2ecaad52e8e",
+      "bytes": 2676
+    }
+  }
+}
