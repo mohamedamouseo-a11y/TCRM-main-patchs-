@@ -1,0 +1,138 @@
+--- a/client/src/pages/ZaghloulV5Page.tsx
++++ b/client/src/pages/ZaghloulV5Page.tsx
+@@ -7,8 +7,8 @@
+ import { useLanguage } from "@/contexts/LanguageContext";
+ import { trpc } from "@/lib/trpc";
+ import {
+-  BarChart3, Bot, CheckCircle2, Code2, Globe, Key, MessageSquare, RefreshCw,
+-  Send, Settings, Shield, TrendingUp, Users, Webhook, Zap, GitBranch,
++  Activity, BarChart3, Bot, CheckCircle2, Code2, Globe, Key, Megaphone, MessageSquare, RefreshCw,
++  Send, Settings, Shield, Sparkles, Target, TrendingUp, Users, Webhook, Zap, GitBranch,
+ } from "lucide-react";
+ 
+ function EmptyState({ ar, label }: { ar: boolean; label: string }) {
+@@ -33,12 +33,26 @@
+     </div>
+   );
+ }
+-function StatCard({ label, value, icon: Icon }: { label: string; value: string | number; icon: any }) {
++function ZaghloulPortrait() {
+   return (
+-    <Card className="border-border/70 shadow-sm transition-shadow hover:shadow-md">
+-      <CardContent className="flex min-h-[112px] items-center gap-4 p-4 md:p-5">
+-        <Icon className="h-7 w-7 shrink-0 text-primary" />
+-        <div><p className="text-2xl font-black tracking-tight">{value}</p><p className="mt-0.5 text-sm font-medium text-muted-foreground">{label}</p></div>
++    <div className="relative grid h-full w-full place-items-center overflow-hidden rounded-full bg-gradient-to-br from-violet-500/25 via-indigo-500/10 to-fuchsia-500/20">
++      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,rgba(255,255,255,0.95),transparent_34%)] opacity-80 dark:opacity-20" />
++      <div className="relative grid h-[78%] w-[78%] place-items-center rounded-full bg-gradient-to-br from-indigo-700 to-slate-950 text-white shadow-inner">
++        <div className="absolute top-[17%] h-[30%] w-[30%] rounded-full bg-violet-50/95" />
++        <div className="absolute bottom-[17%] h-[34%] w-[56%] rounded-t-[46%] bg-violet-50/95" />
++        <Megaphone className="absolute bottom-[22%] end-[10%] h-6 w-6 -rotate-12 text-fuchsia-300" strokeWidth={1.8} />
++        <span className="absolute bottom-[8%] text-[10px] font-black uppercase tracking-[0.22em] text-violet-200">Zaghloul</span>
++      </div>
++    </div>
++  );
++}
++
++function StatCard({ label, value, hint, icon: Icon }: { label: string; value: string | number; hint?: string; icon: any }) {
++  return (
++    <Card className="group rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)] transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-500/30 hover:shadow-md">
++      <CardContent className="flex min-h-[124px] items-center gap-3.5 p-4">
++        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-violet-500/10 text-violet-700 dark:text-violet-300"><Icon className="h-5 w-5" /></div>
++        <div className="min-w-0"><p className="text-[28px] font-black leading-none tracking-[-0.04em]">{value}</p><p className="mt-2 truncate text-xs font-black">{label}</p>{hint ? <p className="mt-1 truncate text-[10px] font-medium text-muted-foreground">{hint}</p> : null}</div>
+       </CardContent>
+     </Card>
+   );
+@@ -71,43 +85,43 @@
+   return (
+     <CRMLayout>
+       <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 md:p-6 xl:p-8" dir={isRTL ? "rtl" : "ltr"}>
+-        {/* Header */}
+-        <div className="flex flex-col gap-4 rounded-2xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+-          <div>
+-            <h1 className="text-2xl font-black tracking-tight md:text-3xl">{ar ? "زغلول" : "Zaghloul"}</h1>
+-            <p className="mt-1 text-muted-foreground">
+-              {ar ? "مركز واتساب وإدارة العملاء والأتمتة داخل TCRM" : "WhatsApp, CRM and automation center inside TCRM"}
+-            </p>
+-          </div>
+-          <div className="flex items-center gap-2">
+-            <Badge variant={healthy ? "default" : "secondary"}>
+-              {healthy ? (ar ? "متصل" : "Connected") : (ar ? "جار الفحص" : "Checking")}
+-            </Badge>
+-            <Badge variant="outline">V5</Badge>
++        {/* Premium AI Staff identity */}
++        <section data-zaghloul-uxui="ai-staff-premium-v1" className="relative overflow-hidden rounded-[28px] border border-border/70 bg-gradient-to-br from-violet-500/12 via-card to-indigo-500/8 shadow-[0_22px_64px_-40px_rgba(15,23,42,0.65)]">
++          <div className="pointer-events-none absolute -start-24 -top-24 h-72 w-72 rounded-full bg-violet-400/20 blur-3xl" />
++          <div className="relative flex flex-col gap-6 p-5 md:p-7 xl:flex-row xl:items-center xl:justify-between">
++            <div className="flex min-w-0 flex-col gap-5 md:flex-row md:items-center">
++              <div className="relative mx-auto h-[152px] w-[152px] shrink-0 md:mx-0">
++                <div className="absolute inset-0 rounded-full border border-border/70 bg-background/90 p-[7px] shadow-[0_16px_38px_-24px_rgba(15,23,42,0.75)] ring-1 ring-white/60 dark:ring-white/10"><ZaghloulPortrait /></div>
++                <span className={"absolute bottom-2.5 end-1.5 h-6 w-6 rounded-full border-4 border-card shadow-sm " + (healthy ? "bg-emerald-500" : "bg-muted-foreground")} />
++              </div>
++              <div className="min-w-0">
++                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.22em] text-violet-700 dark:text-violet-300">AI STAFF AGENT</p>
++                <div className="flex flex-wrap items-center gap-2"><h1 className="text-3xl font-black tracking-tight md:text-4xl">{ar ? "زغلول" : "Zaghloul"}</h1><Badge variant="outline" className="rounded-full bg-background/80 px-3 py-1 font-bold"><Target className="me-1 h-3.5 w-3.5" />{ar ? "تفاعل ذكي" : "Engagement intelligence"}</Badge></div>
++                <p className="mt-2 text-lg font-black text-foreground">{ar ? "أخصائي التفاعل والتواصل الخارجي بالذكاء الاصطناعي" : "AI Outreach & Engagement Specialist"}</p>
++                <p className="mt-1 text-sm font-semibold text-muted-foreground">{ar ? "AI Outreach & Engagement Specialist" : "أخصائي التفاعل والتواصل الخارجي بالذكاء الاصطناعي"}</p>
++                <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{ar ? "يدير التواصل واسع النطاق والمحادثات والمتابعات والأتمتة من مساحة واحدة، مع إبقاء الفرق والبيانات ومسارات العميل داخل TCRM." : "Runs scalable outreach, conversations, follow-ups and automation from one workspace while keeping teams, customer data and journeys inside TCRM."}</p>
++                <div className="mt-4 flex flex-wrap gap-2">
++                  {(ar ? ["التواصل الخارجي", "المحادثات", "الأتمتة", "رحلة العميل"] : ["Outreach", "Conversations", "Automation", "Customer Journey"]).map((skill) => <Badge key={skill} variant="secondary" className="rounded-full px-3 py-1 text-[11px] font-bold">{skill}</Badge>)}
++                </div>
++              </div>
++            </div>
++            <div className="flex shrink-0 flex-col items-start gap-3 xl:items-end">
++              <div className="flex flex-wrap gap-2"><Badge variant="outline" className="h-10 gap-2 rounded-xl bg-background/80 px-4 font-bold shadow-sm"><Activity className="h-4 w-4 text-emerald-500" />{healthy ? (ar ? "متصل" : "Connected") : (ar ? "جار الفحص" : "Checking")}</Badge><Badge variant="outline" className="h-10 gap-2 rounded-xl bg-background/80 px-4 font-bold shadow-sm"><Sparkles className="h-4 w-4 text-violet-600" />{ar ? "مركز تفاعل موحد" : "Unified engagement"}</Badge></div>
++            </div>
+           </div>
+-        </div>
++        </section>
+ 
+-        {/* Status bar */}
+-        <Card className="border-border/70 bg-muted/20 shadow-none">
+-          <CardHeader className="pb-2 pt-4">
+-            <CardTitle className="flex items-center gap-2 text-sm font-bold md:text-base">
+-              <CheckCircle2 className="h-5 w-5" />
+-              {ar ? "حالة التكامل" : "Integration status"}
+-            </CardTitle>
+-            <CardDescription>
+-              {ar ? "يستخدم زغلول خدمات TCRM الحالية." : "Zaghloul reuses existing TCRM services — no parallel WhatsApp stack."}
+-            </CardDescription>
+-          </CardHeader>
+-          <CardContent className="flex flex-wrap gap-1.5 pb-4">
+-            {(featuresQ.data?.features || []).map((f: any) => (
+-              <Badge key={f.id} variant={f.enabled ? "outline" : "secondary"}>{f.name}</Badge>
+-            ))}
++        {/* Workspace capability status */}
++        <Card className="rounded-2xl border-border/70 bg-muted/20 shadow-none">
++          <CardContent className="flex flex-wrap items-center gap-2 p-4">
++            <div className="me-2 flex items-center gap-2 text-sm font-black"><CheckCircle2 className="h-5 w-5 text-violet-600" />{ar ? "قدرات مساحة العمل" : "Workspace capabilities"}</div>
++            {(featuresQ.data?.features || []).map((f: any) => <Badge key={f.id} variant={f.enabled ? "outline" : "secondary"} className="rounded-full">{f.name}</Badge>)}
+           </CardContent>
+         </Card>
+ 
+         {/* Main tabs */}
+         <Tabs defaultValue="dashboard" className="w-full space-y-4">
+-          <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-2xl bg-muted/60 p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:shrink-0">
++          <TabsList className="h-auto w-full flex-nowrap justify-start gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-muted/30 p-1.5 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_[role=tab]]:h-10 [&_[role=tab]]:shrink-0 [&_[role=tab]]:rounded-xl [&_[role=tab]]:border-b-2 [&_[role=tab]]:border-transparent [&_[role=tab]]:px-4 [&_[role=tab]]:text-xs [&_[role=tab]]:font-bold [&_[data-state=active]]:border-violet-500 [&_[data-state=active]]:bg-background [&_[data-state=active]]:text-foreground [&_[data-state=active]]:shadow-sm">
+             <TabsTrigger value="dashboard" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" />{ar ? "لوحة التحكم" : "Dashboard"}</TabsTrigger>
+             <TabsTrigger value="inbox" className="gap-1.5"><MessageSquare className="h-3.5 w-3.5" />{ar ? "الصندوق" : "Inbox"}</TabsTrigger>
+             <TabsTrigger value="contacts" className="gap-1.5"><Users className="h-3.5 w-3.5" />{ar ? "جهات الاتصال" : "Contacts"}</TabsTrigger>
+@@ -123,11 +137,13 @@
+ 
+           {/* ── Dashboard ─────────────────────────────────────────────── */}
+           <TabsContent value="dashboard" className="mt-4">
+-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+-              <StatCard label={ar ? "إجمالي جهات الاتصال" : "Total Contacts"} value={dashboardQ.data?.totalContacts ?? "…"} icon={Users} />
+-              <StatCard label={ar ? "إجمالي البث" : "Total Broadcasts"} value={dashboardQ.data?.totalBroadcasts ?? "…"} icon={Send} />
+-              <StatCard label={ar ? "المحادثات" : "Conversations"} value={dashboardQ.data?.totalConversations ?? 0} icon={MessageSquare} />
+-              <StatCard label={ar ? "غير مقروء" : "Unread"} value={dashboardQ.data?.unreadMessages ?? 0} icon={BarChart3} />
++            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
++              <StatCard label={ar ? "جهات الاتصال" : "Contacts"} value={dashboardQ.data?.totalContacts ?? "…"} hint={ar ? "قاعدة التواصل" : "audience base"} icon={Users} />
++              <StatCard label={ar ? "حملات البث" : "Broadcasts"} value={dashboardQ.data?.totalBroadcasts ?? "…"} hint={ar ? "تواصل واسع النطاق" : "scaled outreach"} icon={Send} />
++              <StatCard label={ar ? "المحادثات" : "Conversations"} value={dashboardQ.data?.totalConversations ?? 0} hint={ar ? "تفاعلات العملاء" : "customer interactions"} icon={MessageSquare} />
++              <StatCard label={ar ? "غير مقروء" : "Unread"} value={dashboardQ.data?.unreadMessages ?? 0} hint={ar ? "تحتاج متابعة" : "needs attention"} icon={BarChart3} />
++              <StatCard label={ar ? "الأتمتة" : "Automations"} value={automationsQ.data?.items?.length ?? 0} hint={ar ? "رحلات فعالة" : "active journeys"} icon={Zap} />
++              <StatCard label={ar ? "وكلاء AI" : "AI Agents"} value={aiAgentsQ.data?.items?.length ?? 0} hint={ar ? "تفاعل ذكي" : "smart engagement"} icon={Bot} />
+             </div>
+           </TabsContent>
+ 
