@@ -4,17 +4,23 @@ Project: `/var/www/TCRM-MAIN`
 
 Required branch: `main`
 
-Expected HEAD before commit: `0d5696b0946142c1836cefd601c597db5a3f4187`
+Expected HEAD before Phase 5 commit: `0d5696b0946142c1836cefd601c597db5a3f4187`
 
 Patch repository: `mohamedamouseo-a11y/TCRM-main-patchs-`
 
-Patch path: `patches/darwish/darwish-phase5-typescript-gate-fix-v1/01-darwish-page-health-union-fix.patch`
+Patch path:
+`patches/darwish/darwish-phase5-typescript-gate-fix-v1/01-darwish-page-health-union-fix.patch`
+
+Correct SHA-256 of the patch currently stored in the patch repository:
+`966fef917b142a8d922f88da7db7990a2bd2c4311435fc765a6564fdca35227c`
+
+IMPORTANT: The previous instruction contained an obsolete SHA-256 value. Use the corrected value above and the updated `MANIFEST.json` from the patch repository.
 
 ## Current known state
 
 The Phase 5 Limited Safe Automation bundle is ALREADY APPLIED in the live worktree. Do not reapply it.
 
-The prior validation passed policy tests, Darwish regressions, build, security, PM2, HTTP, UI, and DB safety. It was blocked only because the project TypeScript check included two TS2339 diagnostics in `client/src/pages/DarwishPage.tsx` for direct union access to `health.chatwoot.error` and `health.chatwoot.reason`.
+The previous validation was blocked only by two TS2339 diagnostics in `client/src/pages/DarwishPage.tsx` and the latest retry stopped before apply because the instruction contained the wrong patch hash. No patch was applied during that blocked retry.
 
 ## Strict rules
 
@@ -33,8 +39,6 @@ The prior validation passed policy tests, Darwish regressions, build, security, 
 
 ## 1. Precheck
 
-Run:
-
 ```bash
 cd /var/www/TCRM-MAIN
 git branch --show-current
@@ -46,15 +50,22 @@ git diff --check
 Required:
 - branch = `main`
 - HEAD = `0d5696b0946142c1836cefd601c597db5a3f4187`
-- worktree contains the same seven Phase 5 paths already reported
-- no unrelated paths
+- worktree contains only the seven existing Phase 5 paths
 - `git diff --check` PASS
 
-## 2. Verify patch integrity
+## 2. Refresh patch repository and verify patch
 
-Obtain the patch from the patch repository and verify SHA-256:
+Fast-forward the local patch repository to current `origin/main` only. Do not modify it locally.
 
-`bac1f73e018374df0ef5c3ba534b08fb54663e701088c75650e9beae3c9276b9`
+Verify:
+
+```bash
+sha256sum 01-darwish-page-health-union-fix.patch
+```
+
+Required SHA-256:
+
+`966fef917b142a8d922f88da7db7990a2bd2c4311435fc765a6564fdca35227c`
 
 Then:
 
@@ -68,38 +79,31 @@ No manual source edits.
 
 ## 3. TypeScript gate
 
-Run:
-
 ```bash
 NODE_OPTIONS=--max-old-space-size=3072 pnpm check > /tmp/tcrm-phase5-pnpm-check-after-fix.txt 2>&1 || true
 ```
 
-The overall project may still contain known pre-existing TypeScript diagnostics in unrelated TOS/Zaghloul/legacy files. Do not attempt to repair them in this task.
+The project may still contain known pre-existing TypeScript diagnostics in unrelated TOS/Zaghloul/legacy files. Do NOT repair them in this task.
 
-The Phase 5 acceptance gate is:
+Acceptance gate:
 
 `NEW_PHASE5_TYPESCRIPT_ERRORS=0`
 
-Check the current TypeScript output for diagnostics in ALL seven Phase 5 paths:
-
+Check diagnostics for all seven Phase 5 paths:
 - `client/src/pages/DarwishPage.tsx`
+- `client/src/components/darwish/DarwishLimitedAutomationCard.tsx`
 - `server/services/darwish/chatwoot/darwishActionService.ts`
 - `server/services/darwish/chatwoot/darwishConfig.ts`
 - `server/services/darwish/chatwoot/darwishWorker.ts`
-- `client/src/components/darwish/DarwishLimitedAutomationCard.tsx`
-- `server/services/darwish/chatwoot/darwishAutomationPolicy.test.ts`
 - `server/services/darwish/chatwoot/darwishAutomationPolicy.ts`
+- `server/services/darwish/chatwoot/darwishAutomationPolicy.test.ts`
 
 Required:
-- the previous DarwishPage TS2339 `error` diagnostic = GONE
-- the previous DarwishPage TS2339 `reason` diagnostic = GONE
+- previous DarwishPage TS2339 `error` diagnostic = GONE
+- previous DarwishPage TS2339 `reason` diagnostic = GONE
 - diagnostics across all seven Phase 5 paths = 0
 
-Record unrelated existing diagnostics separately as baseline-only. Do not modify them.
-
 ## 4. Tests
-
-Run:
 
 ```bash
 pnpm vitest run \
@@ -108,16 +112,13 @@ pnpm vitest run \
   server/services/darwish/chatwoot/darwishCustomerMemoryService.test.ts
 ```
 
-Then run the same Darwish regression suite used in the previous Phase 5 validation.
+Then run the same full Darwish regression suite used in the previous Phase 5 validation.
 
 Required:
-- Phase 5 policy tests PASS
-- Phase 4 regression PASS
-- Phase 3 regression PASS
+- policy tests PASS
+- Darwish regression PASS
 
 ## 5. Build + security
-
-Run:
 
 ```bash
 NODE_OPTIONS=--max-old-space-size=3072 pnpm build
@@ -133,7 +134,6 @@ Required:
 ## 6. Safety configuration
 
 Confirm without printing secrets:
-
 - `DARWISH_LIMITED_AUTOMATION_ENABLED` = unset/false
 - `DARWISH_AUTOMATION_ACTOR_USER_ID` = unset
 - `DARWISH_APPROVED_OUTBOUND_ENABLED` = unset/false
@@ -152,9 +152,9 @@ Verify:
 - local `/darwish` HTTP 200 repeatedly
 - public `/darwish` HTTP 200 repeatedly
 - Phase 5 worker marker present
-- UI still displays Limited Automation disabled
-- Automation Actor not configured
-- Customer outbound disabled
+- Limited Automation remains disabled
+- Automation Actor remains not configured
+- Customer outbound remains disabled
 
 ## 8. DB safety — SELECT only
 
@@ -166,8 +166,8 @@ Confirm:
 - execution_uncertain = 0
 - executed = 0
 - customer_reply = 0
-- task-attributable auto approvals = 0
-- task-attributable auto executions = 0
+- auto approvals by task = 0
+- auto executions by task = 0
 - WhatsApp messages sent by task = 0
 - Chatwoot customer replies sent by task = 0
 
