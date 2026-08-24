@@ -1,0 +1,18 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -6,6 +6,7 @@ import DarwishDemandProblemIntelligencePanel from "@/components/darwish/DarwishDemandProblemIntelligencePanel";
+ import DarwishCustomerMemoryPanel from "@/components/darwish/DarwishCustomerMemoryPanel";
+ import DarwishHandlingIntelligencePanel from "@/components/darwish/DarwishHandlingIntelligencePanel";
+ import DarwishManagementIntelligencePanel from "@/components/darwish/DarwishManagementIntelligencePanel";
++import DarwishLimitedAutomationCard from "@/components/darwish/DarwishLimitedAutomationCard";
+ import { Badge } from "@/components/ui/badge";
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+@@ -151,4 +152,6 @@ export default function DarwishPage() {
+
+       <DarwishManagementIntelligencePanel />
+
++      <DarwishLimitedAutomationCard />
++
+       <Card><CardHeader><CardTitle>{ar ? "أحدث تحليلات درويش" : "Latest Darwish intelligence"}</CardTitle><CardDescription>{ar ? "يمكن إنشاء مسودة رد للمراجعة البشرية. إنشاء المسودة لا يرسل أي رسالة." : "A reply draft can be generated for human review. Drafting never sends a message."}</CardDescription></CardHeader><CardContent><div className="space-y-3">{intelligenceQ.data?.length ? intelligenceQ.data.map((item) => <div key={item.id} className="rounded border p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{item.clientName || item.groupName || item.groupJid}</strong><div className="flex gap-2"><Badge variant={item.sentiment === "negative" ? "destructive" : "secondary"}>{item.sentiment}</Badge><Badge variant={item.urgency === "critical" || item.urgency === "high" ? "destructive" : "secondary"}>{item.urgency}</Badge>{item.complaintDetected ? <Badge>{ar ? "شكوى" : "Complaint"}</Badge> : null}</div></div><p className="mt-2 whitespace-pre-wrap text-muted-foreground">{item.summary}</p>{item.escalationRequired ? <p className="mt-2 font-medium text-destructive">{ar ? "تصعيد: " : "Escalation: "}{item.escalationReason || "—"}</p> : null}<Button className="mt-2" size="sm" variant="outline" disabled={draftReplyM.isPending} onClick={() => draftReplyM.mutate({ intelligenceId: item.id })}>{ar ? "اقترح مسودة رد" : "Draft reply"}</Button></div>) : <p className="text-sm text-muted-foreground">{ar ? "لا توجد تحليلات بعد." : "No intelligence results yet."}</p>}</div></CardContent></Card>
