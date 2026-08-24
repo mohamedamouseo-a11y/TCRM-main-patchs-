@@ -1,0 +1,3 @@
+services:
+  vexa-lite:
+    image: tcrm-vexa-lite:video-audio-drive-v1
