@@ -1,0 +1,13 @@
+diff --git a/client/src/pages/DarwishPage.tsx b/client/src/pages/DarwishPage.tsx
+index 542881f..828fbe3 100644
+--- a/client/src/pages/DarwishPage.tsx
++++ b/client/src/pages/DarwishPage.tsx
+@@ -132,7 +132,7 @@
+       </section>
+ 
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+-        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Server className="h-4 w-4" />{ar ? "حالة Chatwoot" : "Chatwoot"}</CardTitle></CardHeader><CardContent>{healthQ.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : statusBadge(health?.chatwoot?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.chatwoot?.error || health?.chatwoot?.reason || health?.chatwoot?.url}</p></CardContent></Card>
++        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Server className="h-4 w-4" />{ar ? "حالة Chatwoot" : "Chatwoot"}</CardTitle></CardHeader><CardContent>{healthQ.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : statusBadge(health?.chatwoot?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.chatwoot ? ("error" in health.chatwoot ? health.chatwoot.error : "reason" in health.chatwoot ? health.chatwoot.reason : "url" in health.chatwoot ? health.chatwoot.url : undefined) : undefined}</p></CardContent></Card>
+         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Bot className="h-4 w-4" />{ar ? "العامل" : "Worker"}</CardTitle></CardHeader><CardContent>{statusBadge(Boolean(health?.config?.workerEnabled))}<p className="mt-2 text-xs text-muted-foreground">{health?.config?.workerIntervalMs ? `${health.config.workerIntervalMs} ms` : "—"}</p></CardContent></Card>
+         <Card><CardHeader className="pb-2"><CardTitle className="text-base">{ar ? "واتساب" : "WhatsApp"}</CardTitle></CardHeader><CardContent>{statusBadge(health?.evolution?.reachable)}<p className="mt-2 text-xs text-muted-foreground">{health?.evolution?.error || health?.evolution?.reason || (health?.evolution?.instanceCount != null ? `${health.evolution.instanceCount} instances` : "—")}</p></CardContent></Card>
+         <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><Link2 className="h-4 w-4" />{ar ? "الربط" : "Mapping"}</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{linksQ.data?.length || 0}</p><p className="text-xs text-muted-foreground">{ar ? "مجموعة مربوطة" : "linked groups"}</p></CardContent></Card>
