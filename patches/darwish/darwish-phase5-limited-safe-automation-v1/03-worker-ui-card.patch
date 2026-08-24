@@ -1,0 +1,139 @@
+diff --git a/server/services/darwish/chatwoot/darwishWorker.ts b/server/services/darwish/chatwoot/darwishWorker.ts
+--- a/server/services/darwish/chatwoot/darwishWorker.ts
++++ b/server/services/darwish/chatwoot/darwishWorker.ts
+@@ -2,7 +2,7 @@
+ import { getDarwishChatwootHealth } from "./darwishChatwootService";
+ import { processDarwishIntelligenceBatch } from "./darwishIntelligenceService";
+ import { refreshDarwishSupervisor } from "./darwishSupervisorService";
+-import { refreshDarwishActionProposals } from "./darwishActionService";
++import { processDarwishLimitedAutomationBatch, refreshDarwishActionProposals } from "./darwishActionService";
+ import { bridgeWAGatewayMessagesToDarwish } from "./darwishWAGatewayBridge";
+ 
+ let timer: NodeJS.Timeout | undefined;
+@@ -12,7 +12,7 @@
+ export function startDarwishWorker() {
+   const config = getDarwishConfig();
+   if (!config.workerEnabled) {
+-    console.info("[Darwish] Phase 4 worker disabled by configuration");
++    console.info("[Darwish] Phase 5 worker disabled by configuration");
+     return () => undefined;
+   }
+   if (timer) return () => clearInterval(timer);
+@@ -33,23 +33,30 @@
+ 
+       const batch = await processDarwishIntelligenceBatch(5);
+       if (batch.processed || batch.failed) {
+-        console.info(`[Darwish] Phase 4 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
++        console.info(`[Darwish] Phase 5 intelligence tick processed=${batch.processed} failed=${batch.failed} chatwootReachable=${Boolean(health.reachable)}`);
+       }
+       supervisorTick += 1;
+       if (batch.processed > 0 || supervisorTick >= 10) {
+         const supervisor = await refreshDarwishSupervisor(100);
+         supervisorTick = 0;
+         if (supervisor.refreshed || supervisor.activeAlerts) {
+-          console.info(`[Darwish] Phase 4 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
++          console.info(`[Darwish] Phase 5 supervisor refreshed=${supervisor.refreshed} activeAlerts=${supervisor.activeAlerts}`);
+         }
+         const actions = await refreshDarwishActionProposals(100);
+         if (actions.created) {
+-          console.info(`[Darwish] Phase 4 action proposals created=${actions.created} existing=${actions.existing}`);
++          console.info(`[Darwish] Phase 5 action proposals created=${actions.created} existing=${actions.existing}`);
++        }
++        const automation = await processDarwishLimitedAutomationBatch(10);
++        if (automation.executed || automation.failed) {
++          console.info(
++            `[Darwish] Phase 5 limited automation scanned=${automation.scanned} eligible=${automation.eligible} executed=${automation.executed} blocked=${automation.blocked} failed=${automation.failed}`,
++          );
+         }
+       }
+-      // Phase 4 may create proposals automatically, but never approves or executes them. Human approval is mandatory.
++      // Phase 5 can auto-execute only policy-eligible low-risk internal actions.
++      // Customer replies, high-risk actions, approvals and uncertain retries remain human-controlled.
+     } catch (error) {
+-      console.warn("[Darwish] Phase 4 worker tick failed", error instanceof Error ? error.message : String(error));
++      console.warn("[Darwish] Phase 5 worker tick failed", error instanceof Error ? error.message : String(error));
+     } finally {
+       running = false;
+     }
+@@ -57,7 +64,7 @@
+   void tick();
+   timer = setInterval(() => void tick(), config.workerIntervalMs);
+   timer.unref?.();
+-  console.info(`[Darwish] Phase 4 worker started intervalMs=${config.workerIntervalMs}`);
++  console.info(`[Darwish] Phase 5 worker started intervalMs=${config.workerIntervalMs}`);
+   return () => {
+     if (timer) clearInterval(timer);
+     timer = undefined;
+diff --git a/client/src/components/darwish/DarwishLimitedAutomationCard.tsx b/client/src/components/darwish/DarwishLimitedAutomationCard.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/darwish/DarwishLimitedAutomationCard.tsx
+@@ -0,0 +1,68 @@
++import { Badge } from "@/components/ui/badge";
++import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { trpc } from "@/lib/trpc";
++import { ShieldCheck, Zap } from "lucide-react";
++
++export default function DarwishLimitedAutomationCard() {
++  const { lang } = useLanguage();
++  const ar = lang === "ar";
++  const healthQ = trpc.darwish.health.useQuery(undefined, {
++    refetchInterval: 30_000,
++    refetchOnWindowFocus: false,
++  });
++
++  const automation = healthQ.data?.config?.actions?.limitedAutomation;
++  const enabled = Boolean(automation?.enabled);
++
++  return (
++    <Card className="rounded-2xl border-border/70">
++      <CardHeader>
++        <div className="flex flex-wrap items-start justify-between gap-3">
++          <div>
++            <CardTitle className="flex items-center gap-2">
++              <Zap className="h-5 w-5" />
++              {ar ? "الأتمتة المحدودة الآمنة — Phase 5" : "Limited Safe Automation — Phase 5"}
++            </CardTitle>
++            <CardDescription>
++              {ar
++                ? "تنفيذ تلقائي محدود للإجراءات الداخلية منخفضة المخاطر فقط. رسائل العملاء تظل خارج الأتمتة."
++                : "Policy-controlled automation for low-risk internal actions only. Customer messaging remains outside automation."}
++            </CardDescription>
++          </div>
++          <Badge variant={enabled ? "default" : "secondary"}>
++            {enabled ? (ar ? "مفعّلة" : "Enabled") : (ar ? "مقفولة افتراضيًا" : "Disabled by default")}
++          </Badge>
++        </div>
++      </CardHeader>
++      <CardContent className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
++        <div className="rounded-xl border p-3">
++          <div className="font-semibold">{ar ? "الإجراءات المسموحة" : "Allowed actions"}</div>
++          <div className="mt-1 text-muted-foreground">
++            {automation?.internalNoteEnabled ? "internal_note" : "—"}
++            {automation?.followUpReminderEnabled ? " · follow_up_reminder" : ""}
++          </div>
++        </div>
++        <div className="rounded-xl border p-3">
++          <div className="font-semibold">{ar ? "أقصى مستوى مخاطر" : "Maximum risk"}</div>
++          <div className="mt-1 text-muted-foreground">{automation?.maxRisk || "medium"}</div>
++        </div>
++        <div className="rounded-xl border p-3">
++          <div className="font-semibold">{ar ? "هوية التنفيذ الآلي" : "Automation actor"}</div>
++          <div className="mt-1 text-muted-foreground">
++            {automation?.actorConfigured ? (ar ? "مضبوطة" : "Configured") : (ar ? "غير مضبوطة" : "Not configured")}
++          </div>
++        </div>
++        <div className="rounded-xl border p-3">
++          <div className="flex items-center gap-2 font-semibold">
++            <ShieldCheck className="h-4 w-4" />
++            {ar ? "إرسال العميل" : "Customer outbound"}
++          </div>
++          <div className="mt-1 text-muted-foreground">
++            {ar ? "مقفول — يحتاج مراجعة بشرية" : "Disabled — human approval required"}
++          </div>
++        </div>
++      </CardContent>
++    </Card>
++  );
++}
