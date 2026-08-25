@@ -1,0 +1,426 @@
+diff --git a/client/src/components/FelfelJoinButton.tsx b/client/src/components/FelfelJoinButton.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/FelfelJoinButton.tsx
+@@ -0,0 +1,124 @@
++import { useState } from "react";
++import { Bot, Loader2 } from "lucide-react";
++import { toast } from "sonner";
++
++import { Button } from "@/components/ui/button";
++import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { trpc } from "@/lib/trpc";
++
++type FelfelJoinButtonProps = {
++  clientId?: number;
++  leadId?: number;
++  dealId?: number;
++  title?: string;
++  isRTL?: boolean;
++  className?: string;
++};
++
++export default function FelfelJoinButton({
++  clientId,
++  leadId,
++  dealId,
++  title,
++  isRTL = false,
++  className,
++}: FelfelJoinButtonProps) {
++  const [open, setOpen] = useState(false);
++  const [meetingUrl, setMeetingUrl] = useState("");
++
++  const joinMeeting = trpc.felfel.joinFromCrmContext.useMutation({
++    onSuccess: (result) => {
++      if (result.reused) {
++        toast.info(isRTL ? "فلفل مرتبط بالفعل بهذا الاجتماع." : "Felfel is already linked to this meeting.");
++      } else {
++        toast.success(isRTL ? "تم إرسال طلب انضمام فلفل للاجتماع." : "Felfel join request sent.");
++      }
++      setMeetingUrl("");
++      setOpen(false);
++    },
++    onError: (error) => {
++      toast.error(isRTL ? "تعذر إدخال فلفل إلى الاجتماع." : "Felfel could not join the meeting.", {
++        description: error.message,
++      });
++    },
++  });
++
++  const submit = () => {
++    const url = meetingUrl.trim();
++    if (!url) {
++      toast.error(isRTL ? "أضف رابط الاجتماع أولًا." : "Enter the meeting URL first.");
++      return;
++    }
++    joinMeeting.mutate({
++      meetingUrl: url,
++      clientId,
++      leadId,
++      dealId,
++      title: title?.trim() || undefined,
++    });
++  };
++
++  return (
++    <>
++      <Button
++        type="button"
++        variant="outline"
++        size="sm"
++        className={className || "gap-2 rounded-xl"}
++        onClick={() => setOpen(true)}
++        disabled={joinMeeting.isPending}
++        title={isRTL ? "إدخال فلفل إلى الاجتماع" : "Join meeting with Felfel"}
++      >
++        {joinMeeting.isPending ? <Loader2 size={15} className="animate-spin" /> : <Bot size={15} />}
++        {isRTL ? "فلفل" : "Felfel"}
++      </Button>
++
++      <Dialog open={open} onOpenChange={(next) => !joinMeeting.isPending && setOpen(next)}>
++        <DialogContent className="sm:max-w-md" dir={isRTL ? "rtl" : "ltr"}>
++          <DialogHeader>
++            <DialogTitle>{isRTL ? "انضم بفلفل" : "Join with Felfel"}</DialogTitle>
++          </DialogHeader>
++
++          <div className="space-y-2 py-2">
++            <Label htmlFor="felfel-crm-meeting-url">
++              {isRTL ? "رابط الاجتماع" : "Meeting URL"}
++            </Label>
++            <Input
++              id="felfel-crm-meeting-url"
++              type="url"
++              autoComplete="off"
++              placeholder="https://meet.google.com/..."
++              value={meetingUrl}
++              onChange={(event) => setMeetingUrl(event.target.value)}
++              onKeyDown={(event) => {
++                if (event.key === "Enter") {
++                  event.preventDefault();
++                  submit();
++                }
++              }}
++              disabled={joinMeeting.isPending}
++              dir="ltr"
++            />
++            <p className="text-xs text-muted-foreground">
++              {isRTL
++                ? "يدعم Google Meet وMicrosoft Teams وZoom وJitsi. سيتم ربط الاجتماع تلقائيًا بالسجل الحالي."
++                : "Supports Google Meet, Microsoft Teams, Zoom and Jitsi. The meeting will be linked to the current CRM record."}
++            </p>
++          </div>
++
++          <DialogFooter>
++            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={joinMeeting.isPending}>
++              {isRTL ? "إلغاء" : "Cancel"}
++            </Button>
++            <Button type="button" onClick={submit} disabled={joinMeeting.isPending || !meetingUrl.trim()}>
++              {joinMeeting.isPending && <Loader2 size={15} className="me-2 animate-spin" />}
++              {isRTL ? "إدخال فلفل" : "Join Felfel"}
++            </Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </>
++  );
++}
++diff --git a/client/src/pages/LeadProfile.tsx b/client/src/pages/LeadProfile.tsx
++--- a/client/src/pages/LeadProfile.tsx
+++++ b/client/src/pages/LeadProfile.tsx
++@@ -76,4 +76,5 @@
++ import { Link, useLocation, useParams } from "wouter";
++ import { useInnoCall } from "@/contexts/InnoCallProvider";
++ import { InnoCallHistoryDialog } from "@/components/InnoCallHistoryDialog";
+++import FelfelJoinButton from "@/components/FelfelJoinButton";
++ 
++@@ -1437,5 +1438,13 @@
++                             {innocallLoading ? <Loader2 size={16} className="animate-spin" /> : <PhoneCall size={16} />}
++                             {isRTL ? "اتصال" : "Call"}
++                           </Button>
++                           <InnoCallHistoryDialog leadId={Number(lead.id)} isRTL={isRTL} />
+++                          {canEdit && (
+++                            <FelfelJoinButton
+++                              leadId={Number(lead.id)}
+++                              dealId={deal?.id ? Number(deal.id) : undefined}
+++                              title={`Sales Meeting — ${lead.name ?? lead.phone}`}
+++                              isRTL={isRTL}
+++                            />
+++                          )}
++                           {canEdit && lead.stage !== "Won" && lead.stage !== "Lost" && (
++diff --git a/client/src/pages/ClientProfile.tsx b/client/src/pages/ClientProfile.tsx
++--- a/client/src/pages/ClientProfile.tsx
+++++ b/client/src/pages/ClientProfile.tsx
++@@ -33,4 +33,5 @@
++ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
++ import { useInnoCall } from "@/contexts/InnoCallProvider";
++ import { InnoCallHistoryDialog } from "@/components/InnoCallHistoryDialog";
+++import FelfelJoinButton from "@/components/FelfelJoinButton";
++ 
++@@ -1640,5 +1641,15 @@
++                   {innocallLoading ? <Loader2 size={13} className="animate-spin" /> : <PhoneCall size={13} />}
++                   {isRTL ? "اتصال" : "Call"}
++                 </Button>
++                 {client?.id && <InnoCallHistoryDialog clientId={Number(client.id)} isRTL={isRTL} className="client-profile-ghost-action" />}
+++                {canWriteClientRecord && client?.id && (
+++                  <FelfelJoinButton
+++                    clientId={Number(client.id)}
+++                    leadId={client.leadId ? Number(client.leadId) : undefined}
+++                    dealId={client.dealId ? Number(client.dealId) : undefined}
+++                    title={`Client Meeting — ${clientName}`}
+++                    isRTL={isRTL}
+++                    className="client-profile-ghost-action"
+++                  />
+++                )}
++                 <Button size="sm" className="client-profile-primary-action" onClick={() => { setActiveTab("followups"); openAddFollowUpDialog(); }}>+ Follow up</Button>
++diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services/felfel/felfelCrmMeetingService.ts
++new file mode 100644
++--- /dev/null
+++++ b/server/services/felfel/felfelCrmMeetingService.ts
++@@ -0,0 +1,221 @@
+++import { TRPCError } from "@trpc/server";
+++import { and, desc, eq, isNull } from "drizzle-orm";
+++
+++import { clients, crmMeetings, deals, leads } from "../../../drizzle/schema";
+++import { getDb } from "../../db";
+++import { createFelfelMeeting, detectFelfelMeetingUrl } from "./felfelAdapter";
+++
+++const RECENT_JOIN_WINDOW_MS = 12 * 60 * 60 * 1000;
+++
+++export type FelfelCrmJoinInput = {
+++  meetingUrl: string;
+++  clientId?: number;
+++  leadId?: number;
+++  dealId?: number;
+++  title?: string;
+++};
+++
+++export type FelfelCrmJoinActor = {
+++  id: number;
+++  role: string | null | undefined;
+++};
+++
+++function normalizeRole(value: unknown) {
+++  return String(value ?? "").replace(/[\s_-]+/g, "").toLowerCase();
+++}
+++
+++function safeErrorMessage(error: unknown) {
+++  const message = error instanceof Error ? error.message : "Felfel join request failed";
+++  return message.trim().slice(0, 2000) || "Felfel join request failed";
+++}
+++
+++function isSameRelationship(existing: any, context: { clientId: number | null; leadId: number | null; dealId: number | null }) {
+++  if (existing.clientId && context.clientId && Number(existing.clientId) === context.clientId) return true;
+++  if (existing.leadId && context.leadId && Number(existing.leadId) === context.leadId) return true;
+++  if (existing.dealId && context.dealId && Number(existing.dealId) === context.dealId) return true;
+++  return !existing.clientId && !existing.leadId && !existing.dealId;
+++}
+++
+++export async function joinFelfelFromCrmContext(input: FelfelCrmJoinInput, actor: FelfelCrmJoinActor) {
+++  const actorId = Number(actor.id);
+++  if (!Number.isInteger(actorId) || actorId <= 0) {
+++    throw new TRPCError({ code: "UNAUTHORIZED", message: "Authentication is required" });
+++  }
+++
+++  const role = normalizeRole(actor.role);
+++  const supportedRoles = new Set([
+++    "admin",
+++    "superadmin",
+++    "salesmanager",
+++    "salesagent",
+++    "coldsalesagent",
+++    "accountmanager",
+++    "accountmanagerlead",
+++  ]);
+++  if (!supportedRoles.has(role)) {
+++    throw new TRPCError({ code: "FORBIDDEN", message: "Your role cannot start Felfel from this CRM context" });
+++  }
+++
+++  if (!input.clientId && !input.leadId && !input.dealId) {
+++    throw new TRPCError({ code: "BAD_REQUEST", message: "A Client, Lead, or Deal context is required" });
+++  }
+++
+++  const parsed = detectFelfelMeetingUrl(input.meetingUrl);
+++  if (!parsed) {
+++    throw new TRPCError({ code: "BAD_REQUEST", message: "Unsupported or invalid meeting URL" });
+++  }
+++
+++  const db = await getDb();
+++  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available" });
+++
+++  let client: any = null;
+++  let lead: any = null;
+++  let deal: any = null;
+++
+++  if (input.clientId) {
+++    const rows = await db.select().from(clients)
+++      .where(and(eq(clients.id, input.clientId), isNull(clients.deletedAt)))
+++      .limit(1);
+++    client = rows[0] ?? null;
+++    if (!client) throw new TRPCError({ code: "NOT_FOUND", message: "Client not found" });
+++  }
+++
+++  if (input.dealId) {
+++    const rows = await db.select().from(deals)
+++      .where(and(eq(deals.id, input.dealId), isNull(deals.deletedAt)))
+++      .limit(1);
+++    deal = rows[0] ?? null;
+++    if (!deal) throw new TRPCError({ code: "NOT_FOUND", message: "Deal not found" });
+++  }
+++
+++  const resolvedLeadId = Number(input.leadId ?? client?.leadId ?? deal?.leadId ?? 0) || null;
+++  if (resolvedLeadId) {
+++    const rows = await db.select().from(leads)
+++      .where(and(eq(leads.id, resolvedLeadId), isNull(leads.deletedAt)))
+++      .limit(1);
+++    lead = rows[0] ?? null;
+++    if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead not found" });
+++  }
+++
+++  const resolvedClientId = Number(input.clientId ?? 0) || null;
+++  const resolvedDealId = Number(input.dealId ?? client?.dealId ?? 0) || null;
+++
+++  if (client?.leadId && resolvedLeadId && Number(client.leadId) !== resolvedLeadId) {
+++    throw new TRPCError({ code: "BAD_REQUEST", message: "Client and Lead do not belong to the same CRM relationship" });
+++  }
+++  if (deal?.leadId && resolvedLeadId && Number(deal.leadId) !== resolvedLeadId) {
+++    throw new TRPCError({ code: "BAD_REQUEST", message: "Deal and Lead do not belong to the same CRM relationship" });
+++  }
+++  if (client?.dealId && resolvedDealId && Number(client.dealId) !== resolvedDealId) {
+++    throw new TRPCError({ code: "BAD_REQUEST", message: "Client and Deal do not belong to the same CRM relationship" });
+++  }
+++
+++  const privileged = new Set(["admin", "superadmin", "salesmanager", "accountmanagerlead"]);
+++  let allowed = privileged.has(role);
+++
+++  if (!allowed && (role === "salesagent" || role === "coldsalesagent")) {
+++    allowed = Boolean(lead && Number(lead.ownerId ?? 0) === actorId);
+++  }
+++
+++  if (!allowed && role === "accountmanager") {
+++    allowed = Boolean(client && Number(client.accountManagerId ?? 0) === actorId);
+++  }
+++
+++  if (!allowed) {
+++    throw new TRPCError({ code: "FORBIDDEN", message: "You do not have access to start Felfel for this CRM record" });
+++  }
+++
+++  const context = { clientId: resolvedClientId, leadId: resolvedLeadId, dealId: resolvedDealId };
+++  const recentRows = await db.select().from(crmMeetings)
+++    .where(and(
+++      eq(crmMeetings.platform, parsed.platform),
+++      eq(crmMeetings.nativeMeetingId, parsed.nativeId),
+++    ))
+++    .orderBy(desc(crmMeetings.createdAt))
+++    .limit(5);
+++
+++  const recentExisting = recentRows.find((row: any) => {
+++    if (!isSameRelationship(row, context)) return false;
+++    if (String(row.status || "").toLowerCase() === "failed") return false;
+++    const createdAt = row.createdAt ? new Date(String(row.createdAt)).getTime() : 0;
+++    return createdAt > 0 && Date.now() - createdAt <= RECENT_JOIN_WINDOW_MS;
+++  });
+++
+++  if (recentExisting) {
+++    return { meeting: recentExisting, reused: true };
+++  }
+++
+++  const conflictingRecent = recentRows.find((row: any) => {
+++    if (isSameRelationship(row, context)) return false;
+++    if (String(row.status || "").toLowerCase() === "failed") return false;
+++    const createdAt = row.createdAt ? new Date(String(row.createdAt)).getTime() : 0;
+++    return createdAt > 0 && Date.now() - createdAt <= RECENT_JOIN_WINDOW_MS;
+++  });
+++  if (conflictingRecent) {
+++    throw new TRPCError({
+++      code: "CONFLICT",
+++      message: "This meeting link is already linked to another CRM record",
+++    });
+++  }
+++
+++  const safeTitle = String(input.title ?? "").trim().slice(0, 255)
+++    || `Felfel Meeting — ${String(client?.leadName ?? lead?.name ?? `CRM #${resolvedClientId ?? resolvedLeadId ?? resolvedDealId}`).slice(0, 180)}`;
+++
+++  await db.insert(crmMeetings).values({
+++    clientId: resolvedClientId,
+++    leadId: resolvedLeadId,
+++    dealId: resolvedDealId,
+++    ownerUserId: actorId,
+++    createdByUserId: actorId,
+++    title: safeTitle,
+++    platform: parsed.platform,
+++    meetingUrl: parsed.url,
+++    nativeMeetingId: parsed.nativeId,
+++    source: "crm_context",
+++    status: "joining",
+++    felfelStatus: "requesting",
+++    transcriptStatus: "not_started",
+++    analysisStatus: "not_started",
+++    recordingStatus: "not_started",
+++    archiveStatus: "not_started",
+++  } as any);
+++
+++  const createdRows = await db.select().from(crmMeetings)
+++    .where(and(
+++      eq(crmMeetings.platform, parsed.platform),
+++      eq(crmMeetings.nativeMeetingId, parsed.nativeId),
+++      eq(crmMeetings.createdByUserId, actorId),
+++    ))
+++    .orderBy(desc(crmMeetings.createdAt))
+++    .limit(1);
+++
+++  const crmMeeting = createdRows[0];
+++  if (!crmMeeting?.id) {
+++    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "CRM meeting could not be created" });
+++  }
+++
+++  try {
+++    const felfelMeeting = await createFelfelMeeting(parsed.url, "Felfel");
+++    await db.update(crmMeetings).set({
+++      felfelMeetingId: felfelMeeting.meetingId || felfelMeeting.id || null,
+++      felfelStatus: felfelMeeting.status || "join_requested",
+++      status: "joining",
+++      startedAt: felfelMeeting.startedAt || null,
+++      lastError: null,
+++    } as any).where(eq(crmMeetings.id, Number(crmMeeting.id)));
+++
+++    const rows = await db.select().from(crmMeetings)
+++      .where(eq(crmMeetings.id, Number(crmMeeting.id)))
+++      .limit(1);
+++    return { meeting: rows[0] ?? crmMeeting, reused: false };
+++  } catch (error) {
+++    const message = safeErrorMessage(error);
+++    await db.update(crmMeetings).set({
+++      status: "failed",
+++      felfelStatus: "failed",
+++      lastError: message,
+++    } as any).where(eq(crmMeetings.id, Number(crmMeeting.id))).catch(() => undefined);
+++
+++    throw new TRPCError({ code: "BAD_GATEWAY", message });
+++  }
+++}
++diff --git a/server/routers.ts b/server/routers.ts
++--- a/server/routers.ts
+++++ b/server/routers.ts
++@@ -1,1 +1,2 @@
+++import { joinFelfelFromCrmContext } from "./services/felfel/felfelCrmMeetingService";
++ import { canDownloadCrmFileCanonical } from "./services/crmFileAuthorization";
++@@ -1916,4 +1917,16 @@
++   felfel: router({
++     health: felfelProcedure.query(() => getFelfelHealth()),
++     capabilities: felfelProcedure.query(() => getFelfelCapabilities()),
+++    joinFromCrmContext: protectedProcedure
+++      .input(z.object({
+++        meetingUrl: z.string().url().max(2048),
+++        clientId: z.number().int().positive().optional(),
+++        leadId: z.number().int().positive().optional(),
+++        dealId: z.number().int().positive().optional(),
+++        title: z.string().trim().max(255).optional(),
+++      }))
+++      .mutation(({ ctx, input }) => joinFelfelFromCrmContext(input, {
+++        id: Number(ctx.user.id),
+++        role: ctx.user.role,
+++      })),
++     createMeeting: felfelProcedure
