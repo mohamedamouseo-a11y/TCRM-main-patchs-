@@ -1,0 +1,10 @@
+diff --git a/.gitignore b/.gitignore
+--- a/.gitignore
++++ b/.gitignore
+@@ -115,3 +115,6 @@ external/mautic/
+ 
+ # TEM Phase 5 AI Marketing Agent migration — version this exact additive migration only
+ !/drizzle/migrations/20260823_tem_ai_marketing_agent.sql
++
++# Felfel Phase 1 meeting entity migration — version this exact additive migration only
++!/drizzle/migrations/20260825_felfel_phase1_meeting_entity_foundation.sql
