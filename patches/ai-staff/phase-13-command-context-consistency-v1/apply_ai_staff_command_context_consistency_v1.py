@@ -6,7 +6,6 @@ import pathlib
 import subprocess
 
 ROOT = pathlib.Path.cwd()
-
 TARGETS = {
     "darwish": (pathlib.Path("client/src/pages/DarwishPage.tsx"), "9534afddf3b242c03bcf25f9c05568b277e735d5"),
     "zaghloul": (pathlib.Path("client/src/pages/ZaghloulV5Page.tsx"), "2663ad9dc4d66c39349323225ea207894562bf78"),
@@ -35,10 +34,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 
 
 def require_bases() -> None:
+    mismatches = []
     for name, (path, expected) in TARGETS.items():
         actual = git_blob(path)
         if actual != expected:
-            raise RuntimeError(f"{name} base blob mismatch: expected {expected}, got {actual}")
+            mismatches.append(f"{name}: expected {expected}, got {actual}")
+    if mismatches:
+        raise RuntimeError("Base blob mismatch(s): " + "; ".join(mismatches))
 
 
 def patch_darwish(text: str) -> str:
@@ -63,20 +65,19 @@ def patch_zaghloul(text: str) -> str:
         '<Card data-zaghloul-engagement-command="v3" data-ai-staff-command="context-v1" className=',
         "Zaghloul shared command marker",
     )
-    text = replace_once(
+    return replace_once(
         text,
         '<Badge variant="secondary" className="w-fit rounded-full px-3 py-1.5 text-[11px] font-bold">{ar ? "واجهة قراءة وتنقل" : "Read & navigate"}</Badge>',
         '<div className="flex flex-wrap items-center gap-2"><Badge variant="secondary" className="w-fit rounded-full px-3 py-1.5 text-[11px] font-bold">{ar ? `المساحة الحالية: ${zaghloulWorkspaceLabel}` : `Current workspace: ${zaghloulWorkspaceLabel}`}</Badge><Badge variant="outline" className="w-fit rounded-full px-3 py-1.5 text-[10px] font-bold text-muted-foreground">{ar ? "قراءة وتنقل فقط" : "Read & navigate only"}</Badge></div>',
         "Zaghloul current workspace context",
     )
-    return text
 
 
 def patch_tara(text: str) -> str:
     text = replace_once(
         text,
         '    const [taraWorkspace, setTaraWorkspace] = useState(initialTab);\n',
-        '''    const [taraWorkspace, setTaraWorkspace] = useState(initialTab);\n    const taraWorkspaceLabel = (isRTL ? {\n      settings: "الإعدادات", providers: "مزودو الذكاء الاصطناعي", elevenlabs: "الصوت وElevenLabs", moderator: "المشرف", campaigns: "الحملات", qualification: "التأهيل", followups: "المتابعات", social: "القنوات الاجتماعية", knowledge: "المعرفة", test: "الاختبار", logs: "السجلات",\n    } : {\n      settings: "Settings", providers: "AI Providers", elevenlabs: "Voice & ElevenLabs", moderator: "Moderator", campaigns: "Campaigns", qualification: "Qualification", followups: "Follow-ups", social: "Social Channels", knowledge: "Knowledge", test: "Test", logs: "Logs",\n    })[taraWorkspace] || taraWorkspace;\n''',
+        '''    const [taraWorkspace, setTaraWorkspace] = useState(initialTab);\n    const taraWorkspaceLabel = (isRTL ? {\n      settings: "الإعدادات", providers: "مزودو الذكاء الاصطناعي", voice: "الصوت وElevenLabs", moderators: "المودريتور", campaigns: "الحملات", qualification: "التأهيل", followups: "المتابعات", social: "القنوات الاجتماعية", knowledge: "المعرفة", test: "الاختبار", logs: "السجلات",\n    } : {\n      settings: "Settings", providers: "AI Providers", voice: "Voice & ElevenLabs", moderators: "Moderator", campaigns: "Campaigns", qualification: "Qualification", followups: "Follow-ups", social: "Social Channels", knowledge: "Knowledge", test: "Test", logs: "Logs",\n    })[taraWorkspace] || taraWorkspace;\n''',
         "Tara workspace label",
     )
     text = replace_once(
@@ -85,13 +86,12 @@ def patch_tara(text: str) -> str:
         '<Card data-tara-sales-command="v3" data-ai-staff-command="context-v1" className=',
         "Tara shared command marker",
     )
-    text = replace_once(
+    return replace_once(
         text,
         '<Badge variant="secondary" className="w-fit rounded-full px-3 py-1.5 text-[11px] font-bold">{isRTL ? (scopeId ? `نطاق الحملة: ${scopeId}` : "النطاق الحالي: عام") : (scopeId ? `Campaign scope: ${scopeId}` : "Current scope: Global")}</Badge>',
         '<div className="flex flex-wrap items-center gap-2"><Badge variant="secondary" className="w-fit rounded-full px-3 py-1.5 text-[11px] font-bold">{isRTL ? `المساحة الحالية: ${taraWorkspaceLabel}` : `Current workspace: ${taraWorkspaceLabel}`}</Badge><Badge variant="outline" className="w-fit rounded-full px-3 py-1.5 text-[10px] font-bold text-muted-foreground">{isRTL ? (scopeId ? `نطاق الحملة: ${scopeId}` : "النطاق: عام") : (scopeId ? `Campaign scope: ${scopeId}` : "Scope: Global")}</Badge></div>',
         "Tara current workspace context",
     )
-    return text
 
 
 def patch_felfel(text: str) -> str:
@@ -103,13 +103,12 @@ def patch_felfel(text: str) -> str:
     )
 
 
-def patched_by_name(name: str, text: str) -> str:
-    return {
-        "darwish": patch_darwish,
-        "zaghloul": patch_zaghloul,
-        "tara": patch_tara,
-        "felfel": patch_felfel,
-    }[name](text)
+PATCHERS = {
+    "darwish": patch_darwish,
+    "zaghloul": patch_zaghloul,
+    "tara": patch_tara,
+    "felfel": patch_felfel,
+}
 
 
 def verify() -> None:
@@ -126,6 +125,7 @@ def verify() -> None:
             'const [darwishWorkspace, setDarwishWorkspace] = useState("intelligence")',
         ],
         "zaghloul": [
+            '// @ts-nocheck',
             'data-zaghloul-engagement-command="v3"',
             'data-zaghloul-workspace="grouped-nav-v2"',
             'data-ai-staff-refresh="zaghloul-v1"',
@@ -134,12 +134,16 @@ def verify() -> None:
             'Read & navigate only',
         ],
         "tara": [
+            '// @ts-nocheck',
             'data-tara-sales-command="v3"',
             'data-tara-workspace="control-center-v2"',
             'data-ai-staff-refresh="tara-v1"',
             'const taraWorkspaceLabel =',
+            'voice: "Voice & ElevenLabs"',
+            'moderators: "Moderator"',
             'Current workspace: ${taraWorkspaceLabel}',
             'Campaign scope: ${scopeId}',
+            'const initialTab = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "social" ? "social" : "settings";',
         ],
         "felfel": [
             'data-felfel-meeting-command="v9"',
@@ -188,11 +192,13 @@ def main() -> None:
 
     if args.apply:
         require_bases()
-        for name, (path, _) in TARGETS.items():
-            text = read(path)
+        current = {name: read(path) for name, (path, _) in TARGETS.items()}
+        for name, text in current.items():
             if 'data-ai-staff-command="context-v1"' in text:
                 raise RuntimeError(f"{name}: Phase 13 marker already present")
-            write(path, patched_by_name(name, text))
+        patched = {name: PATCHERS[name](text) for name, text in current.items()}
+        for name, (path, _) in TARGETS.items():
+            write(path, patched[name])
         for name, (path, _) in TARGETS.items():
             print(f"{name.upper()}_TARGET_BLOB={git_blob(path)}")
         print("APPLY=PASS")
