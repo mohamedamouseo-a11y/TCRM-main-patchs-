@@ -149,30 +149,28 @@ def verify() -> None:
     missing = [item for item in required if item not in text]
     if missing:
         raise RuntimeError("Missing markers after patch: " + ", ".join(missing))
-    if text.count('data-felfel-section="crm-approved-actions"') != 1:
-        raise RuntimeError("CRM approved actions wrapper count mismatch")
-    if text.count('data-felfel-section="follow-up-planner"') != 1:
-        raise RuntimeError("Follow-up wrapper count mismatch")
-    if text.count('data-felfel-section="meeting-archive"') != 1:
-        raise RuntimeError("Archive wrapper count mismatch")
-    if text.count('data-felfel-section="felfel-take"') != 1:
-        raise RuntimeError("Felfel take wrapper count mismatch")
+    for marker in ["crm-approved-actions", "follow-up-planner", "meeting-archive", "felfel-take"]:
+        if text.count(f'data-felfel-section="{marker}"') != 1:
+            raise RuntimeError(f"{marker}: wrapper count mismatch")
     print(f"FELFEL_TARGET_BLOB={git_blob(TARGET)}")
     print("VERIFY=PASS")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["--check", "--apply", "--verify"])
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--check", action="store_true")
+    group.add_argument("--apply", action="store_true")
+    group.add_argument("--verify", action="store_true")
     args = parser.parse_args()
 
-    if args.mode == "--check":
+    if args.check:
         require_base()
         print(f"BASE_FELFEL_BLOB={EXPECTED_BLOB}")
         print("CHECK=PASS")
         return
 
-    if args.mode == "--apply":
+    if args.apply:
         require_base()
         text = patched(read())
         write(text)
