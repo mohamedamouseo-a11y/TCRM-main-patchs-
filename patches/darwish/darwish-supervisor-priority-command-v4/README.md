@@ -10,6 +10,18 @@ Purpose: continue BUILD/IMPLEMENTATION work after Phase 8 by making Darwish fast
 - Guarded file: `client/src/pages/DarwishPage.tsx`
 - Expected base blob: `f90ee0ad2c3f73663e914e3ddad93963795d215f`
 
+## Corrective helper note
+
+The first Phase 9 helper revision stopped safely during `--apply` because its insertion anchor was unnecessarily broad and returned zero matches on the live baseline. No application file changed.
+
+The helper is now corrected to anchor directly on the unique existing Supervisor Workspace marker:
+
+`<Card data-darwish-workspace="supervisor-v3"`
+
+The baseline HEAD/blob are unchanged, so this is a retry of the same Phase 9 implementation, not a new implementation phase.
+
+The production host exposes `python3` rather than `python`; use `python3` for this helper.
+
 ## Exact scope
 
 Changes exactly one application file:
@@ -76,9 +88,9 @@ The new navigation controls contain no `.mutate()` call and do not alter query/r
 From `/var/www/TCRM-MAIN`:
 
 ```bash
-python <PATCH_PATH>/apply_darwish_supervisor_priority_command_v4.py --check
-python <PATCH_PATH>/apply_darwish_supervisor_priority_command_v4.py --apply
-python <PATCH_PATH>/apply_darwish_supervisor_priority_command_v4.py --verify
+python3 <PATCH_PATH>/apply_darwish_supervisor_priority_command_v4.py --check
+python3 <PATCH_PATH>/apply_darwish_supervisor_priority_command_v4.py --apply
+python3 <PATCH_PATH>/apply_darwish_supervisor_priority_command_v4.py --verify
 ```
 
 ## User-requested execution mode
