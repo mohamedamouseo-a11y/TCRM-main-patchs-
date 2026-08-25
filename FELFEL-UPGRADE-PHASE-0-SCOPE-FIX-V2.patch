@@ -1,0 +1,26 @@
+diff --git a/server/services/felfel/felfelAdapter.ts b/server/services/felfel/felfelAdapter.ts
+--- a/server/services/felfel/felfelAdapter.ts
++++ b/server/services/felfel/felfelAdapter.ts
+@@ -226,5 +226,10 @@ async function mintUserApiKey(): Promise<string> {
+   const provisioned = getProvisionedApiKey();
+-  if (provisioned) return provisioned;
++  const adminToken = getAdminToken();
++
++  // Prefer a managed token whenever the admin API is available so Felfel
++  // always receives the complete scopes required for both bot lifecycle and
++  // transcript/meeting access. A provisioned key remains a fallback only.
++  if (!adminToken && provisioned) return provisioned;
+ 
+   const existing = await runAdminCurl(`/admin/users/email/${encodeURIComponent(FELFEL_SERVICE_EMAIL)}`, "GET").catch((error: unknown) => {
+     if (error instanceof FelfelAdapterError && error.status === 404) return null;
+@@ -241,8 +246,8 @@ async function mintUserApiKey(): Promise<string> {
+   }
+   if (!user?.id) throw new FelfelAdapterError("Felfel admin API did not return a service user");
+ 
+-  const tokenResponse = await runAdminCurl(`/admin/users/${user.id}/tokens?scope=bot`, "POST", {
+-    scopes: ["bot"],
++  const tokenResponse = await runAdminCurl(`/admin/users/${user.id}/tokens?scopes=bot,tx`, "POST", {
++    scopes: ["bot", "tx"],
+     name: "TCRM Felfel Adapter",
+   }) as { token?: string };
+   if (!tokenResponse.token) throw new FelfelAdapterError("Felfel admin API did not return a scoped API key");
