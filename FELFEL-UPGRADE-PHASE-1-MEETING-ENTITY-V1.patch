@@ -1,0 +1,90 @@
+diff --git a/drizzle/schema.ts b/drizzle/schema.ts
+--- a/drizzle/schema.ts
++++ b/drizzle/schema.ts
+@@ -3501,4 +3501,45 @@
+ export type TaraAiProvider = typeof taraAiProviders.$inferSelect;
+ export type InsertTaraAiProvider = typeof taraAiProviders.$inferInsert;
+ 
+ // TARA_MULTI_PROVIDER_RAKAN_STYLE_V1
++
++// ── Felfel / CRM Meeting Entity Foundation V1 ────────────────────────────────
++// Generic CRM-owned meeting record. Raw transcript content is intentionally not
++// stored here; later phases attach recording/analysis references to this entity.
++export const crmMeetings = mysqlTable("crm_meetings", {
++  id: int().autoincrement().notNull(),
++  clientId: int(),
++  leadId: int(),
++  dealId: int(),
++  ownerUserId: int(),
++  createdByUserId: int(),
++  title: varchar({ length: 255 }).notNull(),
++  platform: varchar({ length: 40 }),
++  meetingUrl: varchar({ length: 2048 }),
++  nativeMeetingId: varchar({ length: 512 }),
++  felfelMeetingId: varchar({ length: 255 }),
++  source: varchar({ length: 40 }).default("manual").notNull(),
++  status: varchar({ length: 40 }).default("scheduled").notNull(),
++  felfelStatus: varchar({ length: 40 }),
++  transcriptStatus: varchar({ length: 40 }).default("not_started").notNull(),
++  analysisStatus: varchar({ length: 40 }).default("not_started").notNull(),
++  recordingStatus: varchar({ length: 40 }).default("not_started").notNull(),
++  archiveStatus: varchar({ length: 40 }).default("not_started").notNull(),
++  scheduledAt: timestamp({ mode: "string" }),
++  startedAt: timestamp({ mode: "string" }),
++  endedAt: timestamp({ mode: "string" }),
++  lastError: text(),
++  createdAt: timestamp({ mode: "string" }).default(sql`(now())`).notNull(),
++  updatedAt: timestamp({ mode: "string" }).default(sql`(now())`).onUpdateNow().notNull(),
++}, (table) => [
++  primaryKey({ columns: [table.id], name: "crm_meetings_id" }),
++  index("idx_crm_meetings_client_created").on(table.clientId, table.createdAt),
++  index("idx_crm_meetings_lead_created").on(table.leadId, table.createdAt),
++  index("idx_crm_meetings_deal_created").on(table.dealId, table.createdAt),
++  index("idx_crm_meetings_owner_status").on(table.ownerUserId, table.status),
++  index("idx_crm_meetings_schedule").on(table.status, table.scheduledAt),
++  index("idx_crm_meetings_felfel_ref").on(table.platform, table.nativeMeetingId),
++]);
++
++export type CrmMeeting = typeof crmMeetings.$inferSelect;
++export type InsertCrmMeeting = typeof crmMeetings.$inferInsert;
++diff --git a/drizzle/migrations/20260825_felfel_phase1_meeting_entity_foundation.sql b/drizzle/migrations/20260825_felfel_phase1_meeting_entity_foundation.sql
++new file mode 100644
++--- /dev/null
+++++ b/drizzle/migrations/20260825_felfel_phase1_meeting_entity_foundation.sql
++@@ -0,0 +1,36 @@
+++-- Felfel Upgrade Phase 1: generic CRM meeting entity foundation.
+++-- Additive-only. Raw transcript content is intentionally not stored in this table.
+++
+++CREATE TABLE IF NOT EXISTS `crm_meetings` (
+++  `id` INT NOT NULL AUTO_INCREMENT,
+++  `clientId` INT NULL,
+++  `leadId` INT NULL,
+++  `dealId` INT NULL,
+++  `ownerUserId` INT NULL,
+++  `createdByUserId` INT NULL,
+++  `title` VARCHAR(255) NOT NULL,
+++  `platform` VARCHAR(40) NULL,
+++  `meetingUrl` VARCHAR(2048) NULL,
+++  `nativeMeetingId` VARCHAR(512) NULL,
+++  `felfelMeetingId` VARCHAR(255) NULL,
+++  `source` VARCHAR(40) NOT NULL DEFAULT 'manual',
+++  `status` VARCHAR(40) NOT NULL DEFAULT 'scheduled',
+++  `felfelStatus` VARCHAR(40) NULL,
+++  `transcriptStatus` VARCHAR(40) NOT NULL DEFAULT 'not_started',
+++  `analysisStatus` VARCHAR(40) NOT NULL DEFAULT 'not_started',
+++  `recordingStatus` VARCHAR(40) NOT NULL DEFAULT 'not_started',
+++  `archiveStatus` VARCHAR(40) NOT NULL DEFAULT 'not_started',
+++  `scheduledAt` TIMESTAMP NULL DEFAULT NULL,
+++  `startedAt` TIMESTAMP NULL DEFAULT NULL,
+++  `endedAt` TIMESTAMP NULL DEFAULT NULL,
+++  `lastError` TEXT NULL,
+++  `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+++  `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+++  PRIMARY KEY (`id`),
+++  KEY `idx_crm_meetings_client_created` (`clientId`, `createdAt`),
+++  KEY `idx_crm_meetings_lead_created` (`leadId`, `createdAt`),
+++  KEY `idx_crm_meetings_deal_created` (`dealId`, `createdAt`),
+++  KEY `idx_crm_meetings_owner_status` (`ownerUserId`, `status`),
+++  KEY `idx_crm_meetings_schedule` (`status`, `scheduledAt`),
+++  KEY `idx_crm_meetings_felfel_ref` (`platform`, `nativeMeetingId`)
+++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
