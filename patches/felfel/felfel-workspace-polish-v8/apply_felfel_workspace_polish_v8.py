@@ -34,9 +34,11 @@ def wrap_card_by_anchor(text: str, anchor: str, marker: str, ar_label: str, en_l
     if text.count(anchor) != 1:
         raise RuntimeError(f"{marker}: expected one anchor, found {text.count(anchor)}")
     anchor_index = text.index(anchor)
-    card_start = text.rfind("<Card", 0, anchor_index)
-    if card_start < 0:
+    card_open_re = re.compile(r"<Card(?:\s[^>]*)?>")
+    openings = list(card_open_re.finditer(text, 0, anchor_index))
+    if not openings:
         raise RuntimeError(f"{marker}: opening Card not found")
+    card_start = openings[-1].start()
 
     token_re = re.compile(r"<Card(?:\s[^>]*)?>|</Card>")
     depth = 0
