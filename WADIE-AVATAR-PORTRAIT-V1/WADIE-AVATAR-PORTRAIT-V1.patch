@@ -1,0 +1,30 @@
+diff --git a/client/src/pages/MediaBuyerPage.tsx b/client/src/pages/MediaBuyerPage.tsx
+--- a/client/src/pages/MediaBuyerPage.tsx
++++ b/client/src/pages/MediaBuyerPage.tsx
+@@ -2,6 +2,7 @@ import CRMLayout from "@/components/CRMLayout";
+ import { Badge } from "@/components/ui/badge";
+ import { Button } from "@/components/ui/button";
+ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+ import { useLanguage } from "@/contexts/LanguageContext";
++import wadieAvatar from "@/assets/ai-staff/wadie-avatar.jpg";
+ import {
+   Activity,
+   BarChart3,
+@@ -62,13 +63,10 @@ export default function WadiePage() {
+             <div className="flex min-w-0 flex-col gap-5 md:flex-row md:items-center">
+               <div className="relative mx-auto h-[152px] w-[152px] shrink-0 md:mx-0">
+                 <div className="absolute inset-0 rounded-full border border-border/70 bg-background/90 p-[7px] shadow-[0_16px_38px_-24px_rgba(15,23,42,0.75)] ring-1 ring-white/60 dark:ring-white/10">
+-                  <div className="grid h-full w-full place-items-center rounded-full bg-gradient-to-br from-sky-950 via-blue-900 to-indigo-900 text-white">
+-                    <div className="text-center">
+-                      <Target className="mx-auto h-12 w-12 text-sky-200" strokeWidth={1.5} />
+-                      <span className="mt-1 block text-xl font-black tracking-[0.18em]">W</span>
+-                    </div>
+-                  </div>
++                  <img
++                    src={wadieAvatar}
++                    alt={text("Wadie — AI Media Buyer Specialist", "وديع — متخصص شراء إعلانات بالذكاء الاصطناعي")}
++                    className="h-full w-full rounded-full object-cover object-center"
++                  />
+                 </div>
+                 <span className="absolute bottom-2.5 end-1.5 h-6 w-6 rounded-full border-4 border-card bg-amber-400 shadow-sm" title={text("Integration pending", "التكامل قيد الإعداد")} />
+               </div>
