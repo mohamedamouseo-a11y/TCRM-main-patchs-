@@ -1,0 +1,39 @@
+{
+  "name": "TCRM-ACCESS-CONTROL-PHASE1-FOUNDATION-V1",
+  "target_repository": "mohamedamouseo-a11y/TCRM-MAIN-Tamiyouz-CRM-",
+  "target_branch": "main",
+  "baseline_commit": "09ebaf500f3a06ad8650b204752e59a1f7c3fd5e",
+  "delivery_repository": "mohamedamouseo-a11y/TCRM-main-patchs-",
+  "mode": "shadow",
+  "changes_existing_files": [
+    "server/routers.ts"
+  ],
+  "adds_files": [
+    "shared/accessControl.ts",
+    "server/services/accessControl/accessDecision.ts",
+    "server/services/accessControl/accessStore.ts",
+    "server/services/accessControl/accessEngine.ts",
+    "server/services/accessControl/accessDecision.test.ts",
+    "server/accessControlRouter.ts",
+    "scripts/apply-access-control-phase1-migration.ts"
+  ],
+  "database_tables": [
+    "access_roles",
+    "access_permissions",
+    "access_role_permissions",
+    "access_user_roles",
+    "access_user_overrides",
+    "access_temporary_grants",
+    "access_org_units",
+    "access_user_org_units",
+    "access_decision_logs"
+  ],
+  "safety": {
+    "legacy_users_role_unchanged": true,
+    "existing_authorization_not_replaced": true,
+    "default_deny": true,
+    "explicit_deny_wins": true,
+    "admin_only_configuration": true,
+    "operational_roles_seeded_empty": true
+  }
+}
