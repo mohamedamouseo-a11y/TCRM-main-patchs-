@@ -1,0 +1,1390 @@
+diff --git a/server/routers.ts b/server/routers.ts
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -244,6 +244,7 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+ import { darwishRouter } from "./services/darwish/chatwoot/darwishRouter";
+ import { shawkyRouter } from "./services/shawky/shawkyRouter";
+ import { wadieRouter } from "./services/wadie/wadieRouter";
++import { accessControlRouter } from "./accessControlRouter";
+ import { temRouter } from "./tem/temRouter";
+ import {
+   createTaraLeadFromSocialConversation,
+@@ -1925,6 +1926,7 @@ export const appRouter = router({
+   darwish: darwishRouter,
+   shawky: shawkyRouter,
+   wadie: wadieRouter,
++  accessControl: accessControlRouter,
+   system: systemRouter,
+   tem: temRouter,
+ 
+
+diff --git a/shared/accessControl.ts b/shared/accessControl.ts
+new file mode 100644
+--- /dev/null
++++ b/shared/accessControl.ts
+@@ -0,0 +1,179 @@
++export const ACCESS_EFFECTS = ["allow", "deny"] as const;
++export type AccessEffect = (typeof ACCESS_EFFECTS)[number];
++
++export const ACCESS_SCOPES = [
++  "own",
++  "assigned",
++  "team",
++  "department",
++  "branch",
++  "custom",
++  "all",
++] as const;
++export type AccessScope = (typeof ACCESS_SCOPES)[number];
++
++export const ACCESS_RISK_LEVELS = ["low", "medium", "high", "critical"] as const;
++export type AccessRiskLevel = (typeof ACCESS_RISK_LEVELS)[number];
++
++export const ACCESS_OPERATORS = [
++  "eq",
++  "neq",
++  "in",
++  "not_in",
++  "lt",
++  "lte",
++  "gt",
++  "gte",
++  "exists",
++] as const;
++export type AccessOperator = (typeof ACCESS_OPERATORS)[number];
++
++export interface AccessCondition {
++  left: string;
++  operator: AccessOperator;
++  right?: unknown;
++}
++
++export interface AccessPermissionDefinition {
++  key: string;
++  module: string;
++  resource: string;
++  action: string;
++  risk: AccessRiskLevel;
++  description: string;
++}
++
++export interface AccessDecision {
++  allowed: boolean;
++  effect: AccessEffect;
++  permission: string;
++  scope: AccessScope | null;
++  reason: string;
++  source: string;
++  matchedPolicies: Array<{
++    source: string;
++    sourceId?: number | string | null;
++    effect: AccessEffect;
++    scope: AccessScope;
++  }>;
++}
++
++function permission(
++  key: string,
++  module: string,
++  resource: string,
++  action: string,
++  risk: AccessRiskLevel,
++  description: string,
++): AccessPermissionDefinition {
++  return { key, module, resource, action, risk, description };
++}
++
++export const ACCESS_PERMISSION_REGISTRY: readonly AccessPermissionDefinition[] = [
++  permission("dashboard.view", "dashboard", "dashboard", "view", "low", "View the main CRM dashboard"),
++
++  permission("sales.leads.list", "sales", "leads", "list", "low", "List leads"),
++  permission("sales.leads.view", "sales", "leads", "view", "low", "View lead details"),
++  permission("sales.leads.create", "sales", "leads", "create", "medium", "Create leads"),
++  permission("sales.leads.edit", "sales", "leads", "edit", "medium", "Edit leads"),
++  permission("sales.leads.delete", "sales", "leads", "delete", "high", "Delete leads"),
++  permission("sales.leads.assign", "sales", "leads", "assign", "high", "Assign leads"),
++  permission("sales.leads.reassign", "sales", "leads", "reassign", "high", "Reassign leads"),
++  permission("sales.leads.export", "sales", "leads", "export", "critical", "Export lead data"),
++  permission("sales.leads.import", "sales", "leads", "import", "high", "Import lead data"),
++
++  permission("sales.deals.list", "sales", "deals", "list", "low", "List deals"),
++  permission("sales.deals.view", "sales", "deals", "view", "low", "View deals"),
++  permission("sales.deals.create", "sales", "deals", "create", "medium", "Create deals"),
++  permission("sales.deals.edit", "sales", "deals", "edit", "medium", "Edit deals"),
++  permission("sales.deals.delete", "sales", "deals", "delete", "high", "Delete deals"),
++  permission("sales.deals.approve", "sales", "deals", "approve", "high", "Approve sensitive deal operations"),
++
++  permission("sales.quotations.list", "sales", "quotations", "list", "low", "List quotations"),
++  permission("sales.quotations.view", "sales", "quotations", "view", "low", "View quotations"),
++  permission("sales.quotations.create", "sales", "quotations", "create", "medium", "Create quotations"),
++  permission("sales.quotations.edit", "sales", "quotations", "edit", "medium", "Edit quotations"),
++  permission("sales.quotations.delete", "sales", "quotations", "delete", "high", "Delete quotations"),
++  permission("sales.quotations.approve", "sales", "quotations", "approve", "high", "Approve quotations"),
++  permission("sales.quotations.print", "sales", "quotations", "print", "medium", "Print quotations"),
++  permission("sales.quotations.export", "sales", "quotations", "export", "high", "Export quotations"),
++
++  permission("clients.records.list", "clients", "records", "list", "low", "List clients"),
++  permission("clients.records.view", "clients", "records", "view", "low", "View clients"),
++  permission("clients.records.create", "clients", "records", "create", "medium", "Create clients"),
++  permission("clients.records.edit", "clients", "records", "edit", "medium", "Edit clients"),
++  permission("clients.records.delete", "clients", "records", "delete", "critical", "Delete clients"),
++  permission("clients.records.restore", "clients", "records", "restore", "high", "Restore deleted clients"),
++  permission("clients.records.export", "clients", "records", "export", "critical", "Export client data"),
++
++  permission("clients.contracts.view", "clients", "contracts", "view", "medium", "View contracts"),
++  permission("clients.contracts.create", "clients", "contracts", "create", "high", "Create contracts"),
++  permission("clients.contracts.edit", "clients", "contracts", "edit", "high", "Edit contracts"),
++  permission("clients.contracts.download", "clients", "contracts", "download", "high", "Download contracts"),
++  permission("clients.contracts.approve", "clients", "contracts", "approve", "critical", "Approve contract changes"),
++
++  permission("clients.renewals.view", "clients", "renewals", "view", "medium", "View renewals"),
++  permission("clients.renewals.edit", "clients", "renewals", "edit", "high", "Edit renewals"),
++  permission("clients.renewals.approve", "clients", "renewals", "approve", "critical", "Approve renewals"),
++
++  permission("marketing.campaigns.list", "marketing", "campaigns", "list", "low", "List campaigns"),
++  permission("marketing.campaigns.view", "marketing", "campaigns", "view", "low", "View campaigns"),
++  permission("marketing.campaigns.create", "marketing", "campaigns", "create", "medium", "Create campaigns"),
++  permission("marketing.campaigns.edit", "marketing", "campaigns", "edit", "high", "Edit campaigns"),
++  permission("marketing.campaigns.publish", "marketing", "campaigns", "publish", "critical", "Publish campaigns"),
++  permission("marketing.campaigns.budget_change", "marketing", "campaigns", "budget_change", "critical", "Change campaign budgets"),
++  permission("marketing.campaigns.delete", "marketing", "campaigns", "delete", "critical", "Delete campaigns"),
++  permission("marketing.campaigns.export", "marketing", "campaigns", "export", "high", "Export campaign data"),
++
++  permission("communications.inbox.view", "communications", "inbox", "view", "medium", "View shared inbox"),
++  permission("communications.inbox.reply", "communications", "inbox", "reply", "medium", "Reply from shared inbox"),
++  permission("communications.chat.view", "communications", "chat", "view", "low", "View central chat"),
++  permission("communications.chat.send", "communications", "chat", "send", "medium", "Send central chat messages"),
++
++  permission("files.crm.list", "files", "crm_files", "list", "low", "List CRM files"),
++  permission("files.crm.view", "files", "crm_files", "view", "medium", "View CRM files"),
++  permission("files.crm.upload", "files", "crm_files", "upload", "medium", "Upload CRM files"),
++  permission("files.crm.download", "files", "crm_files", "download", "high", "Download CRM files"),
++  permission("files.crm.share", "files", "crm_files", "share", "critical", "Create public file links"),
++  permission("files.crm.delete", "files", "crm_files", "delete", "high", "Delete CRM files"),
++
++  permission("workspace.tws.view", "workspace", "tws", "view", "low", "Open TWS workspace"),
++  permission("workspace.tws.manage", "workspace", "tws", "manage", "high", "Manage TWS workspace"),
++  permission("hr.thrs.view", "hr", "thrs", "view", "medium", "View THRS"),
++  permission("hr.thrs.manage", "hr", "thrs", "manage", "high", "Manage THRS"),
++
++  permission("ai_staff.tara.execute", "ai_staff", "tara", "execute", "high", "Execute Tara actions"),
++  permission("ai_staff.zaghloul.execute", "ai_staff", "zaghloul", "execute", "high", "Execute Zaghloul actions"),
++  permission("ai_staff.felfel.execute", "ai_staff", "felfel", "execute", "high", "Execute Felfel actions"),
++  permission("ai_staff.darwish.execute", "ai_staff", "darwish", "execute", "high", "Execute Darwish actions"),
++  permission("ai_staff.shawky.execute", "ai_staff", "shawky", "execute", "high", "Execute Shawky actions"),
++  permission("ai_staff.wadie.execute", "ai_staff", "wadie", "execute", "high", "Execute Wadie actions"),
++  permission("ai_staff.rakan.execute", "ai_staff", "rakan", "execute", "critical", "Execute Rakan actions"),
++
++  permission("reports.operational.view", "reports", "operational", "view", "medium", "View operational reports"),
++  permission("reports.operational.export", "reports", "operational", "export", "high", "Export operational reports"),
++  permission("reports.financial.view", "reports", "financial", "view", "high", "View financial reports"),
++  permission("reports.financial.export", "reports", "financial", "export", "critical", "Export financial reports"),
++
++  permission("settings.general.view", "settings", "general", "view", "low", "View general settings"),
++  permission("settings.general.manage", "settings", "general", "manage", "high", "Manage general settings"),
++  permission("settings.users.view", "settings", "users", "view", "high", "View users"),
++  permission("settings.users.manage", "settings", "users", "manage", "critical", "Manage users"),
++  permission("settings.integrations.view", "settings", "integrations", "view", "high", "View integration settings"),
++  permission("settings.integrations.manage", "settings", "integrations", "manage", "critical", "Manage integrations"),
++  permission("settings.audit.view", "settings", "audit", "view", "high", "View audit logs"),
++
++  permission("security.access.overview", "security", "access", "overview", "high", "View access-control overview"),
++  permission("security.access.roles.view", "security", "access_roles", "view", "high", "View access roles"),
++  permission("security.access.roles.manage", "security", "access_roles", "manage", "critical", "Manage roles and permissions"),
++  permission("security.access.users.manage", "security", "access_users", "manage", "critical", "Assign user roles and overrides"),
++  permission("security.access.temporary.manage", "security", "temporary_access", "manage", "critical", "Grant temporary access"),
++  permission("security.access.simulate", "security", "access_simulator", "simulate", "high", "Simulate access decisions"),
++  permission("security.access.decisions.view", "security", "access_decisions", "view", "high", "View access decision logs"),
++] as const;
++
++export const ACCESS_PERMISSION_KEYS = ACCESS_PERMISSION_REGISTRY.map((item) => item.key);
++
++export function getAccessPermissionDefinition(key: string) {
++  return ACCESS_PERMISSION_REGISTRY.find((item) => item.key === key) ?? null;
++}
+
+diff --git a/server/services/accessControl/accessDecision.ts b/server/services/accessControl/accessDecision.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/accessControl/accessDecision.ts
+@@ -0,0 +1,134 @@
++import type {
++  AccessCondition,
++  AccessDecision,
++  AccessEffect,
++  AccessScope,
++} from "@shared/accessControl";
++
++export interface AccessCandidate {
++  source: "user_override" | "temporary_grant" | "role_permission" | "legacy_role_bridge";
++  sourceId?: number | string | null;
++  effect: AccessEffect;
++  scope: AccessScope;
++  conditions?: AccessCondition[] | null;
++}
++
++export interface AccessEvaluationInput {
++  permission: string;
++  user: Record<string, unknown>;
++  resource?: Record<string, unknown> | null;
++  context?: Record<string, unknown> | null;
++  candidates: AccessCandidate[];
++}
++
++const SCOPE_RANK: Record<AccessScope, number> = {
++  own: 1,
++  assigned: 2,
++  team: 3,
++  department: 4,
++  branch: 5,
++  custom: 6,
++  all: 7,
++};
++
++const SOURCE_RANK: Record<AccessCandidate["source"], number> = {
++  role_permission: 1,
++  legacy_role_bridge: 2,
++  temporary_grant: 3,
++  user_override: 4,
++};
++
++function valueAtPath(input: AccessEvaluationInput, path: string): unknown {
++  const [root, ...parts] = path.split(".");
++  let value: unknown =
++    root === "user"
++      ? input.user
++      : root === "resource"
++        ? input.resource
++        : root === "context"
++          ? input.context
++          : undefined;
++
++  for (const part of parts) {
++    if (!value || typeof value !== "object") return undefined;
++    value = (value as Record<string, unknown>)[part];
++  }
++  return value;
++}
++
++function normalizeComparable(value: unknown): unknown {
++  if (value instanceof Date) return value.getTime();
++  return value;
++}
++
++function matchesCondition(input: AccessEvaluationInput, condition: AccessCondition): boolean {
++  const left = normalizeComparable(valueAtPath(input, condition.left));
++  const right = normalizeComparable(condition.right);
++
++  switch (condition.operator) {
++    case "eq":
++      return left === right;
++    case "neq":
++      return left !== right;
++    case "in":
++      return Array.isArray(right) && right.includes(left);
++    case "not_in":
++      return Array.isArray(right) && !right.includes(left);
++    case "lt":
++      return Number(left) < Number(right);
++    case "lte":
++      return Number(left) <= Number(right);
++    case "gt":
++      return Number(left) > Number(right);
++    case "gte":
++      return Number(left) >= Number(right);
++    case "exists":
++      return condition.right === false
++        ? left === undefined || left === null
++        : left !== undefined && left !== null;
++    default:
++      return false;
++  }
++}
++
++function matchesCandidate(input: AccessEvaluationInput, candidate: AccessCandidate) {
++  if (!candidate.conditions?.length) return true;
++  return candidate.conditions.every((condition) => matchesCondition(input, condition));
++}
++
++function sortCandidates(a: AccessCandidate, b: AccessCandidate) {
++  const sourceDelta = SOURCE_RANK[b.source] - SOURCE_RANK[a.source];
++  if (sourceDelta !== 0) return sourceDelta;
++  return SCOPE_RANK[b.scope] - SCOPE_RANK[a.scope];
++}
++
++export function evaluateAccessCandidates(input: AccessEvaluationInput): AccessDecision {
++  const matched = input.candidates.filter((candidate) => matchesCandidate(input, candidate));
++
++  const denied = matched.filter((candidate) => candidate.effect === "deny").sort(sortCandidates);
++  if (denied.length) {
++    return {
++      allowed: false,
++      effect: "deny",
++      permission: input.permission,
++      scope: denied[0].scope,
++      reason: "explicit_deny",
++      source: denied[0].source,
++      matchedPolicies: denied.map((candidate) => ({
++        source: candidate.source,
++        sourceId: candidate.sourceId ?? null,
++        effect: candidate.effect,
++        scope: candidate.scope,
++      })),
++    };
++  }
++
++  const allowed = matched.filter((candidate) => candidate.effect === "allow").sort(sortCandidates);
++  if (allowed.length) {
++    const widestScope = [...allowed].sort((a, b) => SCOPE_RANK[b.scope] - SCOPE_RANK[a.scope])[0].scope;
++    return {
++      allowed: true,
++      effect: "allow",
++      permission: input.permission,
++      scope: widestScope,
++      reason: "matching_allow",
++      source: allowed[0].source,
++      matchedPolicies: allowed.map((candidate) => ({
++        source: candidate.source,
++        sourceId: candidate.sourceId ?? null,
++        effect: candidate.effect,
++        scope: candidate.scope,
++      })),
++    };
++  }
++
++  return {
++    allowed: false,
++    effect: "deny",
++    permission: input.permission,
++    scope: null,
++    reason: input.candidates.length ? "conditions_not_met" : "no_matching_policy",
++    source: "default_deny",
++    matchedPolicies: [],
++  };
++}
+
+diff --git a/server/services/accessControl/accessStore.ts b/server/services/accessControl/accessStore.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/accessControl/accessStore.ts
+@@ -0,0 +1,286 @@
++import { sql } from "drizzle-orm";
++import type { AccessCondition, AccessEffect, AccessScope } from "@shared/accessControl";
++import { getDb } from "../../db";
++import type { AccessCandidate } from "./accessDecision";
++
++function mysqlRows(result: any): any[] {
++  if (Array.isArray(result) && Array.isArray(result[0])) return result[0];
++  if (Array.isArray(result)) return result;
++  return [];
++}
++
++function parseConditions(value: unknown): AccessCondition[] | null {
++  if (!value) return null;
++  if (Array.isArray(value)) return value as AccessCondition[];
++  if (typeof value === "string") {
++    try {
++      const parsed = JSON.parse(value);
++      return Array.isArray(parsed) ? parsed : null;
++    } catch {
++      return null;
++    }
++  }
++  return null;
++}
++
++export async function requireAccessControlDb() {
++  const db = await getDb();
++  if (!db) throw new Error("Database unavailable");
++  const ready = mysqlRows(await db.execute(sql`
++    SELECT COUNT(*) AS count
++    FROM information_schema.TABLES
++    WHERE TABLE_SCHEMA = DATABASE()
++      AND TABLE_NAME IN (
++        'access_roles',
++        'access_permissions',
++        'access_role_permissions',
++        'access_user_roles',
++        'access_user_overrides',
++        'access_temporary_grants',
++        'access_decision_logs'
++      )
++  `));
++  if (Number(ready[0]?.count ?? 0) !== 7) {
++    const error: any = new Error("Access Control Phase 1 migration is required");
++    error.code = "ACCESS_CONTROL_NOT_READY";
++    throw error;
++  }
++  return db;
++}
++
++export async function isAccessControlInstalled(): Promise<boolean> {
++  try {
++    await requireAccessControlDb();
++    return true;
++  } catch {
++    return false;
++  }
++}
++
++export async function listAccessCandidates(input: {
++  userId: number;
++  legacyRole?: string | null;
++  permissionKey: string;
++}): Promise<AccessCandidate[]> {
++  const db = await requireAccessControlDb();
++
++  const overrideRows = mysqlRows(await db.execute(sql`
++    SELECT
++      'user_override' AS source,
++      uo.id AS sourceId,
++      uo.effect,
++      uo.scope,
++      uo.conditions_json AS conditionsJson
++    FROM access_user_overrides uo
++    INNER JOIN access_permissions p ON p.id = uo.permission_id
++    WHERE uo.user_id = ${input.userId}
++      AND p.permission_key = ${input.permissionKey}
++      AND (uo.expires_at IS NULL OR uo.expires_at > NOW())
++  `));
++
++  const temporaryRows = mysqlRows(await db.execute(sql`
++    SELECT
++      'temporary_grant' AS source,
++      tg.id AS sourceId,
++      'allow' AS effect,
++      tg.scope,
++      tg.conditions_json AS conditionsJson
++    FROM access_temporary_grants tg
++    INNER JOIN access_permissions p ON p.id = tg.permission_id
++    WHERE tg.user_id = ${input.userId}
++      AND p.permission_key = ${input.permissionKey}
++      AND tg.starts_at <= NOW()
++      AND tg.expires_at > NOW()
++      AND tg.revoked_at IS NULL
++  `));
++
++  const roleRows = mysqlRows(await db.execute(sql`
++    SELECT
++      'role_permission' AS source,
++      rp.role_id AS sourceId,
++      rp.effect,
++      rp.scope,
++      rp.conditions_json AS conditionsJson
++    FROM access_user_roles ur
++    INNER JOIN access_roles r ON r.id = ur.role_id AND r.is_active = 1
++    INNER JOIN access_role_permissions rp ON rp.role_id = ur.role_id
++    INNER JOIN access_permissions p ON p.id = rp.permission_id
++    WHERE ur.user_id = ${input.userId}
++      AND p.permission_key = ${input.permissionKey}
++      AND (ur.valid_from IS NULL OR ur.valid_from <= NOW())
++      AND (ur.valid_to IS NULL OR ur.valid_to > NOW())
++  `));
++
++  const legacyRows = input.legacyRole
++    ? mysqlRows(await db.execute(sql`
++        SELECT
++          'legacy_role_bridge' AS source,
++          r.id AS sourceId,
++          rp.effect,
++          rp.scope,
++          rp.conditions_json AS conditionsJson
++        FROM access_roles r
++        INNER JOIN access_role_permissions rp ON rp.role_id = r.id
++        INNER JOIN access_permissions p ON p.id = rp.permission_id
++        WHERE r.role_key = ${String(input.legacyRole)}
++          AND r.is_active = 1
++          AND p.permission_key = ${input.permissionKey}
++          AND NOT EXISTS (
++            SELECT 1
++            FROM access_user_roles ur2
++            WHERE ur2.user_id = ${input.userId}
++              AND (ur2.valid_from IS NULL OR ur2.valid_from <= NOW())
++              AND (ur2.valid_to IS NULL OR ur2.valid_to > NOW())
++          )
++      `))
++    : [];
++
++  return [...overrideRows, ...temporaryRows, ...roleRows, ...legacyRows].map((row: any) => ({
++    source: row.source,
++    sourceId: row.sourceId == null ? null : Number(row.sourceId),
++    effect: String(row.effect) as AccessEffect,
++    scope: String(row.scope) as AccessScope,
++    conditions: parseConditions(row.conditionsJson),
++  }));
++}
++
++export async function getAccessControlOverview() {
++  const db = await requireAccessControlDb();
++  const rows = mysqlRows(await db.execute(sql`
++    SELECT
++      (SELECT COUNT(*) FROM access_roles WHERE is_active = 1) AS roles,
++      (SELECT COUNT(*) FROM access_permissions) AS permissions,
++      (SELECT COUNT(DISTINCT user_id) FROM access_user_roles WHERE valid_to IS NULL OR valid_to > NOW()) AS assignedUsers,
++      (SELECT COUNT(*) FROM access_temporary_grants WHERE starts_at <= NOW() AND expires_at > NOW() AND revoked_at IS NULL) AS temporaryGrants,
++      (SELECT COUNT(*) FROM access_user_overrides WHERE expires_at IS NULL OR expires_at > NOW()) AS userOverrides,
++      (SELECT COUNT(*) FROM access_decision_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND effect = 'deny') AS deniedLast24h
++  `));
++  const row = rows[0] ?? {};
++  return {
++    roles: Number(row.roles ?? 0),
++    permissions: Number(row.permissions ?? 0),
++    assignedUsers: Number(row.assignedUsers ?? 0),
++    temporaryGrants: Number(row.temporaryGrants ?? 0),
++    userOverrides: Number(row.userOverrides ?? 0),
++    deniedLast24h: Number(row.deniedLast24h ?? 0),
++  };
++}
++
++export async function listAccessRoles() {
++  const db = await requireAccessControlDb();
++  return mysqlRows(await db.execute(sql`
++    SELECT
++      r.id,
++      r.role_key AS roleKey,
++      r.name,
++      r.description,
++      r.is_system AS isSystem,
++      r.is_active AS isActive,
++      r.version,
++      COUNT(DISTINCT rp.permission_id) AS permissionCount,
++      COUNT(DISTINCT ur.user_id) AS userCount,
++      r.created_at AS createdAt,
++      r.updated_at AS updatedAt
++    FROM access_roles r
++    LEFT JOIN access_role_permissions rp ON rp.role_id = r.id
++    LEFT JOIN access_user_roles ur
++      ON ur.role_id = r.id
++      AND (ur.valid_to IS NULL OR ur.valid_to > NOW())
++    GROUP BY r.id
++    ORDER BY r.is_system DESC, r.name ASC
++  `));
++}
++
++export async function getAccessRolePermissions(roleId: number) {
++  const db = await requireAccessControlDb();
++  return mysqlRows(await db.execute(sql`
++    SELECT
++      p.id AS permissionId,
++      p.permission_key AS permissionKey,
++      p.module,
++      p.resource,
++      p.action,
++      p.risk_level AS riskLevel,
++      rp.effect,
++      rp.scope,
++      rp.conditions_json AS conditions
++    FROM access_permissions p
++    LEFT JOIN access_role_permissions rp
++      ON rp.permission_id = p.id
++      AND rp.role_id = ${roleId}
++    ORDER BY p.module, p.resource, p.action
++  `));
++}
++
++export async function createAccessRole(input: {
++  roleKey: string;
++  name: string;
++  description?: string | null;
++  actorUserId: number;
++}) {
++  const db = await requireAccessControlDb();
++  await db.execute(sql`
++    INSERT INTO access_roles
++      (role_key, name, description, is_system, is_active, version, created_by, created_at, updated_at)
++    VALUES
++      (${input.roleKey}, ${input.name}, ${input.description ?? null}, 0, 1, 1, ${input.actorUserId}, NOW(), NOW())
++  `);
++  const rows = mysqlRows(await db.execute(sql`
++    SELECT id, role_key AS roleKey, name, description, is_system AS isSystem, is_active AS isActive, version
++    FROM access_roles
++    WHERE role_key = ${input.roleKey}
++    LIMIT 1
++  `));
++  return rows[0] ?? null;
++}
++
++export async function setAccessRolePermission(input: {
++  roleId: number;
++  permissionKey: string;
++  effect: AccessEffect;
++  scope: AccessScope;
++  conditions?: AccessCondition[] | null;
++}) {
++  const db = await requireAccessControlDb();
++  const permissionRows = mysqlRows(await db.execute(sql`
++    SELECT id FROM access_permissions WHERE permission_key = ${input.permissionKey} LIMIT 1
++  `));
++  const permissionId = Number(permissionRows[0]?.id ?? 0);
++  if (!permissionId) throw new Error(`Unknown permission: ${input.permissionKey}`);
++
++  await db.execute(sql`
++    INSERT INTO access_role_permissions
++      (role_id, permission_id, effect, scope, conditions_json, created_at, updated_at)
++    VALUES
++      (${input.roleId}, ${permissionId}, ${input.effect}, ${input.scope}, ${JSON.stringify(input.conditions ?? [])}, NOW(), NOW())
++    ON DUPLICATE KEY UPDATE
++      effect = VALUES(effect),
++      scope = VALUES(scope),
++      conditions_json = VALUES(conditions_json),
++      updated_at = NOW()
++  `);
++  await db.execute(sql`
++    UPDATE access_roles SET version = version + 1, updated_at = NOW() WHERE id = ${input.roleId}
++  `);
++  return { success: true };
++}
++
++export async function assignAccessRole(input: {
++  userId: number;
++  roleId: number;
++  actorUserId: number;
++  validFrom?: Date | null;
++  validTo?: Date | null;
++}) {
++  const db = await requireAccessControlDb();
++  await db.execute(sql`
++    INSERT INTO access_user_roles
++      (user_id, role_id, assigned_by, valid_from, valid_to, source, created_at)
++    VALUES
++      (${input.userId}, ${input.roleId}, ${input.actorUserId}, ${input.validFrom ?? null}, ${input.validTo ?? null}, 'manual', NOW())
++    ON DUPLICATE KEY UPDATE
++      assigned_by = VALUES(assigned_by),
++      valid_from = VALUES(valid_from),
++      valid_to = VALUES(valid_to),
++      source = 'manual'
++  `);
++  return { success: true };
++}
++
++export async function upsertAccessUserOverride(input: {
++  userId: number;
++  permissionKey: string;
++  effect: AccessEffect;
++  scope: AccessScope;
++  conditions?: AccessCondition[] | null;
++  reason?: string | null;
++  expiresAt?: Date | null;
++  actorUserId: number;
++}) {
++  const db = await requireAccessControlDb();
++  const permissionRows = mysqlRows(await db.execute(sql`
++    SELECT id FROM access_permissions WHERE permission_key = ${input.permissionKey} LIMIT 1
++  `));
++  const permissionId = Number(permissionRows[0]?.id ?? 0);
++  if (!permissionId) throw new Error(`Unknown permission: ${input.permissionKey}`);
++
++  await db.execute(sql`
++    INSERT INTO access_user_overrides
++      (user_id, permission_id, effect, scope, conditions_json, reason, expires_at, created_by, created_at, updated_at)
++    VALUES
++      (${input.userId}, ${permissionId}, ${input.effect}, ${input.scope}, ${JSON.stringify(input.conditions ?? [])},
++       ${input.reason ?? null}, ${input.expiresAt ?? null}, ${input.actorUserId}, NOW(), NOW())
++    ON DUPLICATE KEY UPDATE
++      effect = VALUES(effect),
++      scope = VALUES(scope),
++      conditions_json = VALUES(conditions_json),
++      reason = VALUES(reason),
++      expires_at = VALUES(expires_at),
++      created_by = VALUES(created_by),
++      updated_at = NOW()
++  `);
++  return { success: true };
++}
++
++export async function createTemporaryAccessGrant(input: {
++  userId: number;
++  permissionKey: string;
++  scope: AccessScope;
++  conditions?: AccessCondition[] | null;
++  startsAt: Date;
++  expiresAt: Date;
++  reason: string;
++  actorUserId: number;
++}) {
++  const db = await requireAccessControlDb();
++  const permissionRows = mysqlRows(await db.execute(sql`
++    SELECT id FROM access_permissions WHERE permission_key = ${input.permissionKey} LIMIT 1
++  `));
++  const permissionId = Number(permissionRows[0]?.id ?? 0);
++  if (!permissionId) throw new Error(`Unknown permission: ${input.permissionKey}`);
++
++  await db.execute(sql`
++    INSERT INTO access_temporary_grants
++      (user_id, permission_id, scope, conditions_json, starts_at, expires_at, reason, approved_by, created_by, created_at)
++    VALUES
++      (${input.userId}, ${permissionId}, ${input.scope}, ${JSON.stringify(input.conditions ?? [])},
++       ${input.startsAt}, ${input.expiresAt}, ${input.reason}, ${input.actorUserId}, ${input.actorUserId}, NOW())
++  `);
++  return { success: true };
++}
++
++export async function writeAccessDecisionLog(input: {
++  userId: number;
++  permissionKey: string;
++  resourceType?: string | null;
++  resourceId?: string | number | null;
++  effect: AccessEffect;
++  scope?: AccessScope | null;
++  source: string;
++  reason: string;
++  matchedPolicies?: unknown;
++}) {
++  const db = await requireAccessControlDb();
++  await db.execute(sql`
++    INSERT INTO access_decision_logs
++      (user_id, permission_key, resource_type, resource_id, effect, scope, source, reason, matched_policy_json, created_at)
++    VALUES
++      (${input.userId}, ${input.permissionKey}, ${input.resourceType ?? null}, ${input.resourceId == null ? null : String(input.resourceId)},
++       ${input.effect}, ${input.scope ?? null}, ${input.source}, ${input.reason},
++       ${JSON.stringify(input.matchedPolicies ?? [])}, NOW())
++  `);
++}
+
+diff --git a/server/services/accessControl/accessEngine.ts b/server/services/accessControl/accessEngine.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/accessControl/accessEngine.ts
+@@ -0,0 +1,71 @@
++import { TRPCError } from "@trpc/server";
++import type { AccessDecision } from "@shared/accessControl";
++import { evaluateAccessCandidates } from "./accessDecision";
++import {
++  isAccessControlInstalled,
++  listAccessCandidates,
++  writeAccessDecisionLog,
++} from "./accessStore";
++
++export interface AccessCheckInput {
++  user: {
++    id: number;
++    role?: string | null;
++    teamId?: number | null;
++    email?: string | null;
++    [key: string]: unknown;
++  };
++  permission: string;
++  resource?: Record<string, unknown> | null;
++  context?: Record<string, unknown> | null;
++  resourceType?: string | null;
++  resourceId?: string | number | null;
++  logDecision?: boolean;
++}
++
++export async function checkAccess(input: AccessCheckInput): Promise<AccessDecision> {
++  if (!(await isAccessControlInstalled())) {
++    return {
++      allowed: false,
++      effect: "deny",
++      permission: input.permission,
++      scope: null,
++      reason: "access_control_not_configured",
++      source: "default_deny",
++      matchedPolicies: [],
++    };
++  }
++
++  const candidates = await listAccessCandidates({
++    userId: Number(input.user.id),
++    legacyRole: input.user.role == null ? null : String(input.user.role),
++    permissionKey: input.permission,
++  });
++
++  const decision = evaluateAccessCandidates({
++    permission: input.permission,
++    user: input.user,
++    resource: input.resource,
++    context: input.context,
++    candidates,
++  });
++
++  if (input.logDecision) {
++    await writeAccessDecisionLog({
++      userId: Number(input.user.id),
++      permissionKey: input.permission,
++      resourceType: input.resourceType,
++      resourceId: input.resourceId,
++      effect: decision.effect,
++      scope: decision.scope,
++      source: decision.source,
++      reason: decision.reason,
++      matchedPolicies: decision.matchedPolicies,
++    }).catch((error) => {
++      console.error("[AccessControl] decision log failed", error);
++    });
++  }
++
++  return decision;
++}
++
++export async function requireAccess(input: AccessCheckInput): Promise<AccessDecision> {
++  const decision = await checkAccess({ ...input, logDecision: true });
++  if (!decision.allowed) {
++    throw new TRPCError({
++      code: "FORBIDDEN",
++      message: `Access denied: ${input.permission} (${decision.reason})`,
++    });
++  }
++  return decision;
++}
+
+diff --git a/server/accessControlRouter.ts b/server/accessControlRouter.ts
+new file mode 100644
+--- /dev/null
++++ b/server/accessControlRouter.ts
+@@ -0,0 +1,177 @@
++import { TRPCError } from "@trpc/server";
++import { z } from "zod";
++import {
++  ACCESS_EFFECTS,
++  ACCESS_PERMISSION_REGISTRY,
++  ACCESS_SCOPES,
++} from "@shared/accessControl";
++import { adminProcedure, protectedProcedure, router } from "./_core/trpc";
++import { checkAccess } from "./services/accessControl/accessEngine";
++import {
++  assignAccessRole,
++  createAccessRole,
++  createTemporaryAccessGrant,
++  getAccessControlOverview,
++  getAccessRolePermissions,
++  isAccessControlInstalled,
++  listAccessRoles,
++  setAccessRolePermission,
++  upsertAccessUserOverride,
++} from "./services/accessControl/accessStore";
++
++const effectSchema = z.enum(ACCESS_EFFECTS);
++const scopeSchema = z.enum(ACCESS_SCOPES);
++const conditionSchema = z.object({
++  left: z.string().min(1).max(120),
++  operator: z.enum(["eq", "neq", "in", "not_in", "lt", "lte", "gt", "gte", "exists"]),
++  right: z.unknown().optional(),
++}).strict();
++
++function toAccessControlError(error: unknown): never {
++  if ((error as any)?.code === "ACCESS_CONTROL_NOT_READY") {
++    throw new TRPCError({
++      code: "PRECONDITION_FAILED",
++      message: "Access Control migration is required before using this feature",
++    });
++  }
++  throw error;
++}
++
++export const accessControlRouter = router({
++  status: protectedProcedure.query(async () => ({
++    installed: await isAccessControlInstalled(),
++    mode: "shadow" as const,
++  })),
++
++  check: protectedProcedure
++    .input(z.object({
++      permission: z.string().min(3).max(160),
++      resourceType: z.string().max(80).optional().nullable(),
++      resourceId: z.union([z.string(), z.number()]).optional().nullable(),
++      resource: z.record(z.string(), z.unknown()).optional().nullable(),
++      context: z.record(z.string(), z.unknown()).optional().nullable(),
++    }).strict())
++    .query(async ({ ctx, input }) => checkAccess({
++      user: ctx.user as any,
++      permission: input.permission,
++      resourceType: input.resourceType,
++      resourceId: input.resourceId,
++      resource: input.resource,
++      context: input.context,
++      logDecision: false,
++    })),
++
++  registry: adminProcedure.query(() => ACCESS_PERMISSION_REGISTRY),
++
++  overview: adminProcedure.query(async () => {
++    try {
++      return await getAccessControlOverview();
++    } catch (error) {
++      return toAccessControlError(error);
++    }
++  }),
++
++  roles: adminProcedure.query(async () => {
++    try {
++      return await listAccessRoles();
++    } catch (error) {
++      return toAccessControlError(error);
++    }
++  }),
++
++  rolePermissions: adminProcedure
++    .input(z.object({ roleId: z.number().int().positive() }).strict())
++    .query(async ({ input }) => {
++      try {
++        return await getAccessRolePermissions(input.roleId);
++      } catch (error) {
++        return toAccessControlError(error);
++      }
++    }),
++
++  createRole: adminProcedure
++    .input(z.object({
++      roleKey: z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_-]{2,63}$/),
++      name: z.string().trim().min(2).max(120),
++      description: z.string().trim().max(500).optional().nullable(),
++    }).strict())
++    .mutation(async ({ ctx, input }) => {
++      try {
++        return await createAccessRole({
++          ...input,
++          actorUserId: Number(ctx.user.id),
++        });
++      } catch (error) {
++        return toAccessControlError(error);
++      }
++    }),
++
++  setRolePermission: adminProcedure
++    .input(z.object({
++      roleId: z.number().int().positive(),
++      permissionKey: z.string().min(3).max(160),
++      effect: effectSchema,
++      scope: scopeSchema,
++      conditions: z.array(conditionSchema).max(12).optional().nullable(),
++    }).strict())
++    .mutation(async ({ input }) => {
++      try {
++        return await setAccessRolePermission(input);
++      } catch (error) {
++        return toAccessControlError(error);
++      }
++    }),
++
++  assignRole: adminProcedure
++    .input(z.object({
++      userId: z.number().int().positive(),
++      roleId: z.number().int().positive(),
++      validFrom: z.coerce.date().optional().nullable(),
++      validTo: z.coerce.date().optional().nullable(),
++    }).strict())
++    .mutation(async ({ ctx, input }) => {
++      if (input.validFrom && input.validTo && input.validTo <= input.validFrom) {
++        throw new TRPCError({ code: "BAD_REQUEST", message: "validTo must be after validFrom" });
++      }
++      try {
++        return await assignAccessRole({
++          ...input,
++          actorUserId: Number(ctx.user.id),
++        });
++      } catch (error) {
++        return toAccessControlError(error);
++      }
++    }),
++
++  setUserOverride: adminProcedure
++    .input(z.object({
++      userId: z.number().int().positive(),
++      permissionKey: z.string().min(3).max(160),
++      effect: effectSchema,
++      scope: scopeSchema,
++      conditions: z.array(conditionSchema).max(12).optional().nullable(),
++      reason: z.string().trim().max(500).optional().nullable(),
++      expiresAt: z.coerce.date().optional().nullable(),
++    }).strict())
++    .mutation(async ({ ctx, input }) => {
++      try {
++        return await upsertAccessUserOverride({
++          ...input,
++          actorUserId: Number(ctx.user.id),
++        });
++      } catch (error) {
++        return toAccessControlError(error);
++      }
++    }),
++
++  grantTemporary: adminProcedure
++    .input(z.object({
++      userId: z.number().int().positive(),
++      permissionKey: z.string().min(3).max(160),
++      scope: scopeSchema,
++      conditions: z.array(conditionSchema).max(12).optional().nullable(),
++      startsAt: z.coerce.date(),
++      expiresAt: z.coerce.date(),
++      reason: z.string().trim().min(3).max(500),
++    }).strict())
++    .mutation(async ({ ctx, input }) => {
++      if (input.expiresAt <= input.startsAt) {
++        throw new TRPCError({ code: "BAD_REQUEST", message: "expiresAt must be after startsAt" });
++      }
++      try {
++        return await createTemporaryAccessGrant({
++          ...input,
++          actorUserId: Number(ctx.user.id),
++        });
++      } catch (error) {
++        return toAccessControlError(error);
++      }
++    }),
++
++  simulate: adminProcedure
++    .input(z.object({
++      user: z.object({
++        id: z.number().int().positive(),
++        role: z.string().max(80).optional().nullable(),
++        teamId: z.number().int().positive().optional().nullable(),
++        email: z.string().email().optional().nullable(),
++      }).passthrough(),
++      permission: z.string().min(3).max(160),
++      resourceType: z.string().max(80).optional().nullable(),
++      resourceId: z.union([z.string(), z.number()]).optional().nullable(),
++      resource: z.record(z.string(), z.unknown()).optional().nullable(),
++      context: z.record(z.string(), z.unknown()).optional().nullable(),
++    }).strict())
++    .query(async ({ input }) => checkAccess({
++      ...input,
++      user: input.user as any,
++      logDecision: true,
++    })),
++});
+
+diff --git a/scripts/apply-access-control-phase1-migration.ts b/scripts/apply-access-control-phase1-migration.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/apply-access-control-phase1-migration.ts
+@@ -0,0 +1,255 @@
++import { sql } from "drizzle-orm";
++import { ACCESS_PERMISSION_REGISTRY } from "../shared/accessControl";
++import { getDb } from "../server/db";
++
++const apply = process.argv.includes("--apply");
++
++const statements = [
++  `
++  CREATE TABLE IF NOT EXISTS access_roles (
++    id INT NOT NULL AUTO_INCREMENT,
++    role_key VARCHAR(64) NOT NULL,
++    name VARCHAR(120) NOT NULL,
++    description VARCHAR(500) NULL,
++    is_system TINYINT NOT NULL DEFAULT 0,
++    is_active TINYINT NOT NULL DEFAULT 1,
++    version INT NOT NULL DEFAULT 1,
++    created_by INT NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_access_roles_key (role_key),
++    KEY idx_access_roles_active (is_active)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_permissions (
++    id INT NOT NULL AUTO_INCREMENT,
++    permission_key VARCHAR(160) NOT NULL,
++    module VARCHAR(64) NOT NULL,
++    resource VARCHAR(80) NOT NULL,
++    action VARCHAR(64) NOT NULL,
++    risk_level ENUM('low','medium','high','critical') NOT NULL DEFAULT 'low',
++    description VARCHAR(500) NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_access_permissions_key (permission_key),
++    KEY idx_access_permissions_module (module, resource)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_role_permissions (
++    role_id INT NOT NULL,
++    permission_id INT NOT NULL,
++    effect ENUM('allow','deny') NOT NULL DEFAULT 'deny',
++    scope ENUM('own','assigned','team','department','branch','custom','all') NOT NULL DEFAULT 'own',
++    conditions_json JSON NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (role_id, permission_id),
++    KEY idx_access_role_permissions_permission (permission_id),
++    CONSTRAINT fk_access_role_permissions_role
++      FOREIGN KEY (role_id) REFERENCES access_roles(id) ON DELETE CASCADE,
++    CONSTRAINT fk_access_role_permissions_permission
++      FOREIGN KEY (permission_id) REFERENCES access_permissions(id) ON DELETE CASCADE
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_user_roles (
++    user_id INT NOT NULL,
++    role_id INT NOT NULL,
++    assigned_by INT NULL,
++    valid_from DATETIME NULL,
++    valid_to DATETIME NULL,
++    source VARCHAR(32) NOT NULL DEFAULT 'manual',
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (user_id, role_id),
++    KEY idx_access_user_roles_role (role_id),
++    KEY idx_access_user_roles_validity (user_id, valid_to),
++    CONSTRAINT fk_access_user_roles_role
++      FOREIGN KEY (role_id) REFERENCES access_roles(id) ON DELETE CASCADE
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_user_overrides (
++    id INT NOT NULL AUTO_INCREMENT,
++    user_id INT NOT NULL,
++    permission_id INT NOT NULL,
++    effect ENUM('allow','deny') NOT NULL DEFAULT 'deny',
++    scope ENUM('own','assigned','team','department','branch','custom','all') NOT NULL DEFAULT 'own',
++    conditions_json JSON NULL,
++    reason VARCHAR(500) NULL,
++    expires_at DATETIME NULL,
++    created_by INT NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_access_user_override (user_id, permission_id),
++    KEY idx_access_user_overrides_expiry (user_id, expires_at),
++    CONSTRAINT fk_access_user_overrides_permission
++      FOREIGN KEY (permission_id) REFERENCES access_permissions(id) ON DELETE CASCADE
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_temporary_grants (
++    id INT NOT NULL AUTO_INCREMENT,
++    user_id INT NOT NULL,
++    permission_id INT NOT NULL,
++    scope ENUM('own','assigned','team','department','branch','custom','all') NOT NULL DEFAULT 'own',
++    conditions_json JSON NULL,
++    starts_at DATETIME NOT NULL,
++    expires_at DATETIME NOT NULL,
++    reason VARCHAR(500) NOT NULL,
++    approved_by INT NULL,
++    created_by INT NULL,
++    revoked_at DATETIME NULL,
++    revoked_by INT NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    KEY idx_access_temporary_grants_active (user_id, starts_at, expires_at, revoked_at),
++    KEY idx_access_temporary_grants_permission (permission_id),
++    CONSTRAINT fk_access_temporary_grants_permission
++      FOREIGN KEY (permission_id) REFERENCES access_permissions(id) ON DELETE CASCADE
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_org_units (
++    id INT NOT NULL AUTO_INCREMENT,
++    parent_id INT NULL,
++    unit_type ENUM('organization','branch','department','team') NOT NULL,
++    unit_key VARCHAR(80) NOT NULL,
++    name VARCHAR(160) NOT NULL,
++    is_active TINYINT NOT NULL DEFAULT 1,
++    metadata_json JSON NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    UNIQUE KEY uq_access_org_units_key (unit_key),
++    KEY idx_access_org_units_parent (parent_id),
++    CONSTRAINT fk_access_org_units_parent
++      FOREIGN KEY (parent_id) REFERENCES access_org_units(id) ON DELETE SET NULL
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_user_org_units (
++    user_id INT NOT NULL,
++    org_unit_id INT NOT NULL,
++    relation_type ENUM('member','manager','owner') NOT NULL DEFAULT 'member',
++    is_primary TINYINT NOT NULL DEFAULT 0,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (user_id, org_unit_id),
++    KEY idx_access_user_org_units_unit (org_unit_id),
++    CONSTRAINT fk_access_user_org_units_unit
++      FOREIGN KEY (org_unit_id) REFERENCES access_org_units(id) ON DELETE CASCADE
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++  `
++  CREATE TABLE IF NOT EXISTS access_decision_logs (
++    id BIGINT NOT NULL AUTO_INCREMENT,
++    user_id INT NOT NULL,
++    permission_key VARCHAR(160) NOT NULL,
++    resource_type VARCHAR(80) NULL,
++    resource_id VARCHAR(120) NULL,
++    effect ENUM('allow','deny') NOT NULL,
++    scope ENUM('own','assigned','team','department','branch','custom','all') NULL,
++    source VARCHAR(64) NOT NULL,
++    reason VARCHAR(160) NOT NULL,
++    matched_policy_json JSON NULL,
++    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
++    PRIMARY KEY (id),
++    KEY idx_access_decision_logs_user_time (user_id, created_at),
++    KEY idx_access_decision_logs_permission_time (permission_key, created_at),
++    KEY idx_access_decision_logs_effect_time (effect, created_at)
++  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
++  `,
++];
++
++const systemRoles = [
++  ["Admin", "Administrator", "Full TCRM access-control role", 1],
++  ["Developer", "Developer", "Developer compatibility role; permissions intentionally start empty", 1],
++  ["SalesManager", "Sales Manager", "Sales management role", 1],
++  ["SalesAgent", "Sales Agent", "Sales agent role", 1],
++  ["ColdSalesAgent", "Cold Sales Agent", "Outbound sales agent role", 1],
++  ["AccountManager", "Account Manager", "Account management role", 1],
++  ["AccountManagerLead", "Account Manager Lead", "Account management lead role", 1],
++  ["MediaBuyer", "Media Buyer", "Media buying role", 1],
++  ["Viewer", "Viewer", "Read-only compatibility role", 1],
++  ["Moderator", "Moderator", "Moderator compatibility role", 1],
++] as const;
++
++async function run() {
++  if (!apply) {
++    console.log("[AccessControl] DRY RUN");
++    console.log(`Would create/verify ${statements.length} tables and seed ${ACCESS_PERMISSION_REGISTRY.length} permissions.`);
++    console.log("Run again with --apply to execute.");
++    return;
++  }
++
++  const db = await getDb();
++  if (!db) throw new Error("DATABASE_URL is not configured or database connection failed");
++
++  for (const statement of statements) {
++    await db.execute(sql.raw(statement));
++  }
++
++  for (const definition of ACCESS_PERMISSION_REGISTRY) {
++    await db.execute(sql`
++      INSERT INTO access_permissions
++        (permission_key, module, resource, action, risk_level, description, created_at, updated_at)
++      VALUES
++        (${definition.key}, ${definition.module}, ${definition.resource}, ${definition.action},
++         ${definition.risk}, ${definition.description}, NOW(), NOW())
++      ON DUPLICATE KEY UPDATE
++        module = VALUES(module),
++        resource = VALUES(resource),
++        action = VALUES(action),
++        risk_level = VALUES(risk_level),
++        description = VALUES(description),
++        updated_at = NOW()
++    `);
++  }
++
++  for (const [roleKey, name, description, isSystem] of systemRoles) {
++    await db.execute(sql`
++      INSERT INTO access_roles
++        (role_key, name, description, is_system, is_active, version, created_at, updated_at)
++      VALUES
++        (${roleKey}, ${name}, ${description}, ${isSystem}, 1, 1, NOW(), NOW())
++      ON DUPLICATE KEY UPDATE
++        name = VALUES(name),
++        description = VALUES(description),
++        is_system = VALUES(is_system),
++        is_active = 1,
++        updated_at = NOW()
++    `);
++  }
++
++  // Safe bootstrap: only the legacy Admin compatibility role receives full access.
++  // All operational roles stay empty until reviewed in the matrix. This prevents
++  // Phase 1 from silently expanding permissions during shadow-mode rollout.
++  await db.execute(sql`
++    INSERT INTO access_role_permissions
++      (role_id, permission_id, effect, scope, conditions_json, created_at, updated_at)
++    SELECT r.id, p.id, 'allow', 'all', JSON_ARRAY(), NOW(), NOW()
++    FROM access_roles r
++    CROSS JOIN access_permissions p
++    WHERE r.role_key = 'Admin'
++    ON DUPLICATE KEY UPDATE
++      effect = 'allow',
++      scope = 'all',
++      conditions_json = JSON_ARRAY(),
++      updated_at = NOW()
++  `);
++
++  console.log(`[AccessControl] Phase 1 migration complete. Seeded ${ACCESS_PERMISSION_REGISTRY.length} permissions.`);
++}
++
++run().catch((error) => {
++  console.error("[AccessControl] migration failed", error);
++  process.exitCode = 1;
++});
+
+diff --git a/server/services/accessControl/accessDecision.test.ts b/server/services/accessControl/accessDecision.test.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/accessControl/accessDecision.test.ts
+@@ -0,0 +1,78 @@
++import { describe, expect, it } from "vitest";
++import { evaluateAccessCandidates } from "./accessDecision";
++
++describe("evaluateAccessCandidates", () => {
++  it("defaults to deny", () => {
++    const decision = evaluateAccessCandidates({
++      permission: "sales.leads.view",
++      user: { id: 1 },
++      candidates: [],
++    });
++    expect(decision.allowed).toBe(false);
++    expect(decision.reason).toBe("no_matching_policy");
++  });
++
++  it("explicit deny wins over allow", () => {
++    const decision = evaluateAccessCandidates({
++      permission: "sales.leads.export",
++      user: { id: 1 },
++      candidates: [
++        { source: "role_permission", effect: "allow", scope: "all" },
++        { source: "user_override", effect: "deny", scope: "all" },
++      ],
++    });
++    expect(decision.allowed).toBe(false);
++    expect(decision.reason).toBe("explicit_deny");
++    expect(decision.source).toBe("user_override");
++  });
++
++  it("returns the widest scope across matching allows", () => {
++    const decision = evaluateAccessCandidates({
++      permission: "clients.records.view",
++      user: { id: 1 },
++      candidates: [
++        { source: "role_permission", effect: "allow", scope: "team" },
++        { source: "temporary_grant", effect: "allow", scope: "department" },
++      ],
++    });
++    expect(decision.allowed).toBe(true);
++    expect(decision.scope).toBe("department");
++  });
++
++  it("evaluates safe ABAC conditions against user/resource/context", () => {
++    const decision = evaluateAccessCandidates({
++      permission: "marketing.campaigns.budget_change",
++      user: { id: 1, department: "Marketing" },
++      resource: { budget: 9000 },
++      context: { emergency: false },
++      candidates: [
++        {
++          source: "role_permission",
++          effect: "allow",
++          scope: "department",
++          conditions: [
++            { left: "user.department", operator: "eq", right: "Marketing" },
++            { left: "resource.budget", operator: "lte", right: 10000 },
++          ],
++        },
++      ],
++    });
++    expect(decision.allowed).toBe(true);
++  });
++
++  it("denies when ABAC conditions do not match", () => {
++    const decision = evaluateAccessCandidates({
++      permission: "marketing.campaigns.budget_change",
++      user: { id: 1, department: "Marketing" },
++      resource: { budget: 50000 },
++      candidates: [
++        {
++          source: "role_permission",
++          effect: "allow",
++          scope: "department",
++          conditions: [
++            { left: "resource.budget", operator: "lt", right: 10000 },
++          ],
++        },
++      ],
++    });
++    expect(decision.allowed).toBe(false);
++    expect(decision.reason).toBe("conditions_not_met");
++  });
++});
