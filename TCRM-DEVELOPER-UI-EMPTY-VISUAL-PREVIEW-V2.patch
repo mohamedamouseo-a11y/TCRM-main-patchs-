@@ -1,0 +1,248 @@
+diff --git a/client/src/components/DeveloperEmptyVisual.tsx b/client/src/components/DeveloperEmptyVisual.tsx
+--- a/client/src/components/DeveloperEmptyVisual.tsx
++++ b/client/src/components/DeveloperEmptyVisual.tsx
+@@ -121,3 +121,95 @@
+     </div>
+   );
+ }
++type DeveloperTablePreviewRowsProps = {
++  columns: number;
++  rows?: number;
++};
++
++export function DeveloperTablePreviewRows({ columns, rows = 4 }: DeveloperTablePreviewRowsProps) {
++  return (
++    <>
++      {Array.from({ length: rows }).map((_, rowIndex) => (
++        <tr
++          key={`developer-preview-row-${rowIndex}`}
++          aria-hidden="true"
++          data-developer-table-preview="true"
++          className="border-b border-border/70"
++        >
++          {Array.from({ length: columns }).map((__, columnIndex) => (
++            <td key={columnIndex} className="px-4 py-3">
++              <div
++                className="h-2.5 rounded-full bg-gradient-to-r from-muted/80 via-violet-500/15 to-muted/60"
++                style={{
++                  width: `${48 + ((rowIndex * 13 + columnIndex * 17) % 42)}%`,
++                  minWidth: columnIndex === 0 ? 72 : 34,
++                }}
++              />
++            </td>
++          ))}
++        </tr>
++      ))}
++    </>
++  );
++}
++
++export function DeveloperListPreview({ rows = 3 }: { rows?: number }) {
++  return (
++    <div aria-hidden="true" data-developer-list-preview="true" className="space-y-2">
++      {Array.from({ length: rows }).map((_, index) => (
++        <div
++          key={index}
++          className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
++        >
++          <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-violet-500/45" />
++          <div className="min-w-0 flex-1 space-y-1.5">
++            <div
++              className="h-2.5 rounded-full bg-muted-foreground/15"
++              style={{ width: `${72 - index * 8}%` }}
++            />
++            <div
++              className="h-2 rounded-full bg-muted-foreground/10"
++              style={{ width: `${44 + index * 7}%` }}
++            />
++          </div>
++          <div className="h-5 w-12 rounded-full bg-violet-500/10" />
++        </div>
++      ))}
++    </div>
++  );
++}
++
++export function DeveloperStageCardsPreview() {
++  return (
++    <div
++      aria-hidden="true"
++      data-developer-stage-preview="true"
++      className="flex flex-wrap gap-3"
++    >
++      {[0, 1, 2, 3, 4].map((index) => (
++        <div
++          key={index}
++          className="flex min-w-[140px] items-center gap-2 rounded-lg border border-border bg-card p-3"
++        >
++          <div
++            className="h-8 w-2 rounded-full"
++            style={{
++              background: [
++                "rgb(99 102 241 / .55)",
++                "rgb(139 92 246 / .5)",
++                "rgb(6 182 212 / .5)",
++                "rgb(34 197 94 / .48)",
++                "rgb(245 158 11 / .48)",
++              ][index],
++            }}
++          />
++          <div className="flex-1 space-y-1.5">
++            <div className="h-2.5 w-16 rounded-full bg-muted-foreground/15" />
++            <div className="h-3 w-8 rounded-full bg-muted-foreground/20" />
++            <div className="h-2 w-12 rounded-full bg-muted-foreground/10" />
++          </div>
++        </div>
++      ))}
++    </div>
++  );
++}
+diff --git a/client/src/pages/TeamDashboard.tsx b/client/src/pages/TeamDashboard.tsx
+--- a/client/src/pages/TeamDashboard.tsx
++++ b/client/src/pages/TeamDashboard.tsx
+@@ -8,6 +8,6 @@
+ import { trpc } from "@/lib/trpc";
+ import { useAuth } from "@/_core/hooks/useAuth";
+ import { isAdminRole, normalizeUserRole } from "@/lib/roles";
+-import { DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
++import { DeveloperTablePreviewRows, DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
+ import {
+   BarChart,
+@@ -260,6 +260,8 @@
+             <CardContent>
+               {isLoading ? (
+                 <div className="h-48 bg-muted rounded animate-pulse" />
++              ) : isDeveloperVisualPreview && (stats?.dealsByAgent ?? []).length === 0 ? (
++                <DeveloperVisualPreview variant="bars" className="h-[220px]" />
+               ) : (
+                 <ResponsiveContainer width="100%" height={220}>
+                   <BarChart data={stats?.dealsByAgent ?? []} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+@@ -295,6 +295,8 @@
+             <CardContent>
+               {isLoading ? (
+                 <div className="h-48 bg-muted rounded animate-pulse" />
++              ) : isDeveloperVisualPreview && (stats?.leadsByQuality ?? []).length === 0 ? (
++                <DeveloperVisualPreview variant="donut" className="h-[220px]" />
+               ) : (
+                 <ResponsiveContainer width="100%" height={220}>
+                   <PieChart>
+@@ -360,5 +360,9 @@
+                   ) : (stats?.agentPerformance ?? []).length === 0 ? (
+-                    <tr>
+-                      <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">{t("noData")}</td>
+-                    </tr>
++                    isDeveloperVisualPreview ? (
++                      <DeveloperTablePreviewRows columns={9} rows={4} />
++                    ) : (
++                      <tr>
++                        <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">{t("noData")}</td>
++                      </tr>
++                    )
+                   ) : (
+diff --git a/client/src/pages/SalesFunnelDashboard.tsx b/client/src/pages/SalesFunnelDashboard.tsx
+--- a/client/src/pages/SalesFunnelDashboard.tsx
++++ b/client/src/pages/SalesFunnelDashboard.tsx
+@@ -37,6 +37,6 @@
+ import DateRangePicker from "@/components/DateRangePicker";
+ import { useCurrentMonthDateRange } from "@/hooks/useCurrentMonthDateRange";
+ import { toDashboardQueryDate } from "@/lib/currentMonthDateRange";
+-import { DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
++import { DeveloperListPreview, DeveloperStageCardsPreview, DeveloperTablePreviewRows, DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
+ 
+ const FUNNEL_COLORS = [
+@@ -470,3 +470,7 @@
+                     {(potentialClosings?.items ?? []).length === 0 ? (
+-                      <div className="text-xs text-muted-foreground">{isRTL ? "لا توجد تقفيلات محتملة" : "No potential closings"}</div>
++                      isDeveloperVisualPreview ? (
++                        <DeveloperListPreview rows={3} />
++                      ) : (
++                        <div className="text-xs text-muted-foreground">{isRTL ? "لا توجد تقفيلات محتملة" : "No potential closings"}</div>
++                      )
+                     ) : (
+@@ -535,7 +535,11 @@
+                   ) : (data?.campaignPerformance ?? []).length === 0 ? (
+-                    <tr>
+-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+-                        {isRTL ? "لا توجد بيانات" : "No data available"}
+-                      </td>
+-                    </tr>
++                    isDeveloperVisualPreview ? (
++                      <DeveloperTablePreviewRows columns={6} rows={4} />
++                    ) : (
++                      <tr>
++                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
++                          {isRTL ? "لا توجد بيانات" : "No data available"}
++                        </td>
++                      </tr>
++                    )
+                   ) : (
+@@ -595,5 +595,7 @@
+             {isLoading ? (
+               <Skeleton className="h-32" />
++            ) : isDeveloperVisualPreview && (data?.conversionRates ?? []).length === 0 ? (
++              <DeveloperStageCardsPreview />
+             ) : (
+               <div className="flex flex-wrap gap-3 stagger-children">
+                 {(data?.conversionRates ?? []).map((stage: any, i: number) => (
+diff --git a/client/src/pages/TaskSlaDashboard.tsx b/client/src/pages/TaskSlaDashboard.tsx
+--- a/client/src/pages/TaskSlaDashboard.tsx
++++ b/client/src/pages/TaskSlaDashboard.tsx
+@@ -8,6 +8,6 @@
+ import { trpc } from "@/lib/trpc";
+ import { useAuth } from "@/_core/hooks/useAuth";
+ import { hasAdminSurfaceAccess, normalizeUserRole } from "@/lib/roles";
+-import { DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
++import { DeveloperTablePreviewRows, DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
+ import {
+   BarChart,
+@@ -460,7 +460,11 @@
+                   ) : (data?.agentSlaPerformance ?? []).length === 0 ? (
+-                    <tr>
+-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+-                        {isRTL ? "لا توجد بيانات" : "No data available"}
+-                      </td>
+-                    </tr>
++                    isDeveloperVisualPreview ? (
++                      <DeveloperTablePreviewRows columns={6} rows={4} />
++                    ) : (
++                      <tr>
++                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
++                          {isRTL ? "لا توجد بيانات" : "No data available"}
++                        </td>
++                      </tr>
++                    )
+                   ) : (
+@@ -550,7 +550,11 @@
+                   ) : (data?.agentActivityBreakdown ?? []).length === 0 ? (
+-                    <tr>
+-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+-                        {isRTL ? "لا توجد بيانات" : "No data available"}
+-                      </td>
+-                    </tr>
++                    isDeveloperVisualPreview ? (
++                      <DeveloperTablePreviewRows columns={6} rows={4} />
++                    ) : (
++                      <tr>
++                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
++                          {isRTL ? "لا توجد بيانات" : "No data available"}
++                        </td>
++                      </tr>
++                    )
+                   ) : (
+@@ -635,7 +635,11 @@
+                   ) : (data?.breachedLeadsList ?? []).length === 0 ? (
+-                    <tr>
+-                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+-                        {isRTL ? "لا توجد تجاوزات" : "No SLA breaches"}
+-                      </td>
+-                    </tr>
++                    isDeveloperVisualPreview ? (
++                      <DeveloperTablePreviewRows columns={5} rows={3} />
++                    ) : (
++                      <tr>
++                        <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
++                          {isRTL ? "لا توجد تجاوزات" : "No SLA breaches"}
++                        </td>
++                      </tr>
++                    )
+                   ) : (
