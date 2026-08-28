@@ -1,0 +1,314 @@
+diff --git a/client/src/components/wadie/WadieLearningCandidates.tsx b/client/src/components/wadie/WadieLearningCandidates.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/wadie/WadieLearningCandidates.tsx
+@@ -0,0 +1,136 @@
++import { Activity, Brain, ShieldCheck, Sparkles } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { trpc } from "@/lib/trpc";
++
++function score(value: number | null | undefined) {
++  return value === null || value === undefined ? "—" : `${value.toFixed(1)}/100`;
++}
++
++function pct(value: number | null | undefined) {
++  return value === null || value === undefined ? "—" : `${value.toFixed(1)}%`;
++}
++
++function variantFor(disposition: string): "destructive" | "secondary" | "outline" {
++  if (disposition === "revise") return "destructive";
++  if (disposition === "promote") return "secondary";
++  return "outline";
++}
++
++export default function WadieLearningCandidates() {
++  const { isRTL } = useLanguage();
++  const text = (en: string, ar: string) => (isRTL ? ar : en);
++  const query = trpc.wadie.learningCandidates.useQuery(undefined, {
++    refetchOnWindowFocus: false,
++    refetchInterval: 60_000,
++  });
++  const data = query.data;
++
++  const kindLabel = (kind: string) => {
++    if (kind === "platform") return text("Platform", "المنصة");
++    if (kind === "priority") return text("Priority", "الأولوية");
++    if (kind === "category") return text("Category", "النوع");
++    return text("Account", "الحساب");
++  };
++
++  const dispositionLabel = (value: string) => {
++    if (value === "promote") return text("Candidate to promote", "مرشح للتعزيز");
++    if (value === "revise") return text("Revise before reuse", "يحتاج مراجعة قبل إعادة الاستخدام");
++    if (value === "observe") return text("Keep observing", "استمرار المراقبة");
++    return text("Collect more evidence", "جمع أدلة إضافية");
++  };
++
++  return (
++    <Card data-wadie-learning-candidates="phase17-v1" className="rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)]">
++      <CardHeader className="pb-3">
++        <div className="flex flex-wrap items-center justify-between gap-3">
++          <div>
++            <CardTitle className="flex items-center gap-2 text-xl">
++              <Brain className="h-5 w-5 text-fuchsia-600" />
++              {text("Human Learning Candidates", "مرشحات التعلم البشري")}
++            </CardTitle>
++            <p className="mt-1 text-xs font-semibold text-muted-foreground">
++              {text(
++                "Potential reusable lessons derived from Phase 16 guardrails. Nothing is learned or applied automatically.",
++                "دروس محتملة قابلة لإعادة الاستخدام مشتقة من ضوابط Phase 16. لا يتم تعلم أو تطبيق أي شيء تلقائياً.",
++              )}
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold">
++              <ShieldCheck className="me-1 h-3.5 w-3.5 text-emerald-500" />
++              {text("Human governed", "تحت تحكم بشري")}
++            </Badge>
++            <Button variant="outline" size="sm" className="h-9 rounded-xl font-bold" disabled={query.isFetching} onClick={() => void query.refetch()}>
++              <Activity className={`me-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />
++              {text("Refresh candidates", "تحديث المرشحات")}
++            </Button>
++          </div>
++        </div>
++      </CardHeader>
++
++      <CardContent className="space-y-4">
++        {data && (
++          <>
++            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
++              {[
++                [text("Candidates", "المرشحات"), data.totals.candidates],
++                [text("Promote", "تعزيز"), data.totals.promote],
++                [text("Revise", "مراجعة"), data.totals.revise],
++                [text("Observe", "مراقبة"), data.totals.observe],
++                [text("More evidence", "أدلة أكثر"), data.totals.collectEvidence],
++              ].map(([label, value]) => (
++                <div key={String(label)} className="rounded-xl border border-border/60 bg-background/55 p-3">
++                  <p className="text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
++                  <p className="mt-1 text-lg font-black">{value}</p>
++                </div>
++              ))}
++            </div>
++
++            <div className="grid gap-3 lg:grid-cols-2">
++              {data.candidates.slice(0, 24).map((item) => (
++                <div key={`${item.kind}:${item.key}`} className="rounded-2xl border border-border/60 bg-background/45 p-4">
++                  <div className="flex flex-wrap items-center justify-between gap-2">
++                    <div className="flex flex-wrap items-center gap-2">
++                      <Sparkles className="h-4 w-4 text-fuchsia-600" />
++                      <Badge variant="outline" className="rounded-full text-[10px]">{kindLabel(item.kind)}</Badge>
++                      <span className="text-xs font-black">{item.key}</span>
++                    </div>
++                    <Badge variant={variantFor(item.disposition)} className="rounded-full text-[10px]">
++                      {dispositionLabel(item.disposition)}
++                    </Badge>
++                  </div>
++
++                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-semibold text-muted-foreground md:grid-cols-4">
++                    <span>{text("Reviewed", "مراجعة")}: {item.reviewed}</span>
++                    <span>{text("Quality", "الجودة")}: {score(item.qualityScore)}</span>
++                    <span>{text("Improved", "التحسن")}: {pct(item.improvedRatePct)}</span>
++                    <span>{text("Worse", "الأسوأ")}: {pct(item.worseRatePct)}</span>
++                  </div>
++
++                  <p className="mt-2 text-[10px] font-semibold text-muted-foreground">{item.rationale}</p>
++                </div>
++              ))}
++            </div>
++
++            {data.candidates.length === 0 && (
++              <div className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-xs font-semibold text-muted-foreground">
++                {text("No learning candidates are available yet.", "لا توجد مرشحات تعلم متاحة حتى الآن.")}
++              </div>
++            )}
++          </>
++        )}
++
++        {query.error && <p className="text-xs font-semibold text-destructive">{query.error.message}</p>}
++        <p className="text-[10px] font-semibold text-muted-foreground">
++          {text(
++            "Phase 17 only prepares candidates for human review. It writes no learning memory, calls no MCP tools, changes no ad platform, and never changes execution policy automatically.",
++            "Phase 17 يجهز مرشحات للمراجعة البشرية فقط. لا يكتب ذاكرة تعلم، ولا يستدعي MCP، ولا يعدل منصات الإعلانات، ولا يغير سياسة التنفيذ تلقائياً.",
++          )}
++        </p>
++      </CardContent>
++    </Card>
++  );
++}
+diff --git a/server/services/wadie/wadieLearningCandidateService.ts b/server/services/wadie/wadieLearningCandidateService.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/wadie/wadieLearningCandidateService.ts
+@@ -0,0 +1,81 @@
++import { getWadieRecommendationGuardrails } from "./wadieRecommendationGuardrailService";
++
++type Disposition = "promote" | "revise" | "observe" | "collect-evidence";
++
++function dispositionFor(advisory: string): Disposition {
++  if (advisory === "promising") return "promote";
++  if (advisory === "caution") return "revise";
++  if (advisory === "mixed") return "observe";
++  return "collect-evidence";
++}
++
++function weight(disposition: Disposition) {
++  switch (disposition) {
++    case "revise": return 4;
++    case "promote": return 3;
++    case "collect-evidence": return 2;
++    case "observe": return 1;
++  }
++}
++
++function rationaleFor(disposition: Disposition, guidance: string) {
++  switch (disposition) {
++    case "promote":
++      return `Promising historical evidence. Human reviewers may consider this pattern as a future playbook candidate. ${guidance}`;
++    case "revise":
++      return `Historical outcomes indicate risk. Human reviewers should revise the pattern before any future reuse. ${guidance}`;
++    case "observe":
++      return `The evidence is mixed. Keep the pattern under observation and collect more reviewed outcomes. ${guidance}`;
++    case "collect-evidence":
++      return `There is not enough evidence to form a reusable lesson. Collect more human-reviewed outcomes first. ${guidance}`;
++  }
++}
++
++export async function getWadieLearningCandidates() {
++  const guardrails = await getWadieRecommendationGuardrails();
++
++  const candidates = guardrails.segments
++    .map((segment) => {
++      const disposition = dispositionFor(segment.advisory);
++      return {
++        kind: segment.kind,
++        key: segment.key,
++        disposition,
++        evidenceBand: segment.evidenceBand,
++        reviewed: segment.reviewed,
++        qualityScore: segment.qualityScore,
++        improvedRatePct: segment.improvedRatePct,
++        worseRatePct: segment.worseRatePct,
++        reviewCoveragePct: segment.reviewCoveragePct,
++        rationale: rationaleFor(disposition, segment.guidance),
++      };
++    })
++    .sort((a, b) =>
++      weight(b.disposition) - weight(a.disposition)
++      || b.reviewed - a.reviewed
++      || String(a.key).localeCompare(String(b.key)),
++    );
++
++  return {
++    phase: "human-learning-candidates-v1" as const,
++    mode: "read-only-human-learning-review" as const,
++    totals: {
++      candidates: candidates.length,
++      promote: candidates.filter((item) => item.disposition === "promote").length,
++      revise: candidates.filter((item) => item.disposition === "revise").length,
++      observe: candidates.filter((item) => item.disposition === "observe").length,
++      collectEvidence: candidates.filter((item) => item.disposition === "collect-evidence").length,
++    },
++    candidates: candidates.slice(0, 100),
++    priorityReview: candidates.filter((item) => item.disposition === "revise" || item.disposition === "promote").slice(0, 20),
++    generatedAt: new Date().toISOString(),
++    source: "phase16-recommendation-confidence-guardrails" as const,
++    humanReviewRequired: true as const,
++    learningMemoryWritesApplied: false as const,
++    liveMcpCallsApplied: false as const,
++    adPlatformMutationsApplied: false as const,
++    automaticOptimizationLearningApplied: false as const,
++    automaticExecutionPolicyChangesApplied: false as const,
++    executionStillRequiresHumanApproval: true as const,
++  };
++}
+diff --git a/client/src/pages/MediaBuyerPage.tsx b/client/src/pages/MediaBuyerPage.tsx
+--- a/client/src/pages/MediaBuyerPage.tsx
++++ b/client/src/pages/MediaBuyerPage.tsx
+@@ -17,6 +17,7 @@ import WadieOptimizationReviewCenter from "@/components/wadie/WadieOptimizationReviewCenter";
+ import WadieOptimizationOutcomes from "@/components/wadie/WadieOptimizationOutcomes";
+ import WadieRecommendationEffectiveness from "@/components/wadie/WadieRecommendationEffectiveness";
+ import WadieRecommendationGuardrails from "@/components/wadie/WadieRecommendationGuardrails";
++import WadieLearningCandidates from "@/components/wadie/WadieLearningCandidates";
+ import {
+   Activity,
+   BarChart3,
+@@ -211,6 +212,8 @@ export default function WadiePage() {
+ 
+         <WadieRecommendationGuardrails />
+ 
++        <WadieLearningCandidates />
++
+         <WadieMonitoringAlerts onAudit={(platform, accountId) => {
+           setAuditPlatform(platform);
+           setAuditAccountId(accountId);
+diff --git a/server/services/wadie/wadieIntegrationService.ts b/server/services/wadie/wadieIntegrationService.ts
+--- a/server/services/wadie/wadieIntegrationService.ts
++++ b/server/services/wadie/wadieIntegrationService.ts
+@@ -384,3 +384,19 @@ export function getWadiePhase16Capabilities() {
+     executionStillRequiresHumanApproval: true,
+   };
+ }
++ 
++export function getWadiePhase17Capabilities() {
++  return {
++    ...getWadiePhase16Capabilities(),
++    phase: "human-learning-candidates-v1" as const,
++    humanLearningCandidateReviewEnabled: true,
++    candidateGenerationFromGuardrailsOnly: true,
++    candidatePersistenceEnabled: false,
++    learningCandidateWritesApplied: false,
++    learningCandidateLiveMcpCallsApplied: false,
++    learningCandidateAdPlatformMutationsApplied: false,
++    automaticOptimizationLearningApplied: false,
++    automaticExecutionPolicyChangesApplied: false,
++    executionStillRequiresHumanApproval: true,
++  };
++}
+diff --git a/server/services/wadie/wadieRouter.ts b/server/services/wadie/wadieRouter.ts
+--- a/server/services/wadie/wadieRouter.ts
++++ b/server/services/wadie/wadieRouter.ts
+@@ -3,7 +3,7 @@ import { z } from "zod";
+ import { protectedProcedure, router } from "../../_core/trpc";
+ import {
+   getWadieIntegrationStatus,
+-  getWadiePhase16Capabilities,
++  getWadiePhase17Capabilities,
+   probeWadieMcp,
+ } from "./wadieIntegrationService";
+ import {
+@@ -52,6 +52,7 @@ import {
+ } from "./wadieOptimizationOutcomeService";
+ import { getWadieRecommendationEffectiveness } from "./wadieRecommendationEffectivenessService";
+ import { getWadieRecommendationGuardrails } from "./wadieRecommendationGuardrailService";
++import { getWadieLearningCandidates } from "./wadieLearningCandidateService";
+ import {
+   acknowledgeWadieMonitoringAlert,
+   dismissWadieMonitoringAlert,
+@@ -110,6 +111,6 @@ export const wadieRouter = router({
+   integrationStatus: wadieProcedure.query(() => getWadieIntegrationStatus()),
+   probeMcp: wadieProcedure.query(() => probeWadieMcp()),
+-  capabilities: wadieProcedure.query(() => getWadiePhase16Capabilities()),
++  capabilities: wadieProcedure.query(() => getWadiePhase17Capabilities()),
+   mcpSettings: wadieProcedure.query(() => getWadieMcpSettingsForUi()),
+   saveMcpSettings: wadieProcedure.input(z.object({
+     enabled: z.boolean(),
+@@ -138,6 +139,7 @@ export const wadieRouter = router({
+   optimizationOutcomes: wadieProcedure.query(() => getWadieOptimizationOutcomeSnapshot()),
+   recommendationEffectiveness: wadieProcedure.query(() => getWadieRecommendationEffectiveness()),
+   recommendationGuardrails: wadieProcedure.query(() => getWadieRecommendationGuardrails()),
++  learningCandidates: wadieProcedure.query(() => getWadieLearningCandidates()),
+   recordOptimizationOutcome: wadieProcedure.input(z.object({
+     queueItemId: z.string().uuid(),
+     outcome: z.enum(["improved", "neutral", "worse", "inconclusive"]),
+@@ -239,6 +241,7 @@ export const wadieRouter = router({
+ // Phase 14 adds a local post-execution outcome ledger only; it performs no MCP reads, ad-platform mutations, or automatic learning.
+ // Phase 15 derives read-only recommendation effectiveness analytics from Phase 14 local outcomes only; no MCP calls, mutations, or automatic learning.
+ // Phase 16 adds sample-size-aware recommendation confidence guardrails for human decision support only; it performs no writes, MCP calls, mutations, automatic learning, or execution-policy changes.
++// Phase 17 derives human-reviewed learning candidates from Phase 16 guardrails only; it writes no learning memory and changes no execution policy automatically.
+ // Phase 5 execution queue remains gated by
+ // explicit Admin approval + WADIE_EXECUTION_ENABLED + tested connection + MCP auth.
+ // Delete/destructive tools are intentionally not exposed.
