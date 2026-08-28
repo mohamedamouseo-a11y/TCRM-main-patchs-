@@ -1,0 +1,365 @@
+diff --git a/client/src/components/wadie/WadieRecommendationGuardrails.tsx b/client/src/components/wadie/WadieRecommendationGuardrails.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/wadie/WadieRecommendationGuardrails.tsx
+@@ -0,0 +1,148 @@
++import { Activity, AlertTriangle, BarChart3, ShieldCheck, Sparkles } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { trpc } from "@/lib/trpc";
++
++function score(value: number | null | undefined) {
++  return value === null || value === undefined ? "—" : `${value.toFixed(1)}/100`;
++}
++
++function pct(value: number | null | undefined) {
++  return value === null || value === undefined ? "—" : `${value.toFixed(1)}%`;
++}
++
++function variantFor(advisory: string): "destructive" | "secondary" | "outline" {
++  if (advisory === "caution") return "destructive";
++  if (advisory === "promising") return "secondary";
++  return "outline";
++}
++
++export default function WadieRecommendationGuardrails() {
++  const { isRTL } = useLanguage();
++  const text = (en: string, ar: string) => (isRTL ? ar : en);
++  const query = trpc.wadie.recommendationGuardrails.useQuery(undefined, {
++    refetchOnWindowFocus: false,
++    refetchInterval: 60_000,
++  });
++  const data = query.data;
++
++  const kindLabel = (kind: string) => {
++    if (kind === "platform") return text("Platform", "المنصة");
++    if (kind === "priority") return text("Priority", "الأولوية");
++    if (kind === "category") return text("Category", "النوع");
++    return text("Account", "الحساب");
++  };
++
++  return (
++    <Card data-wadie-recommendation-guardrails="phase16-v1" className="rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)]">
++      <CardHeader className="pb-3">
++        <div className="flex flex-wrap items-center justify-between gap-3">
++          <div>
++            <CardTitle className="flex items-center gap-2 text-xl">
++              <ShieldCheck className="h-5 w-5 text-cyan-600" />
++              {text("Recommendation Confidence Guardrails", "ضوابط الثقة في التوصيات")}
++            </CardTitle>
++            <p className="mt-1 text-xs font-semibold text-muted-foreground">
++              {text(
++                "Sample-size-aware decision support derived from Phase 15 effectiveness analytics. Advisory only.",
++                "دعم قرار يراعي حجم العينة ومشتق من تحليلات فعالية Phase 15. إرشادي فقط.",
++              )}
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold">
++              <ShieldCheck className="me-1 h-3.5 w-3.5 text-emerald-500" />
++              {text("Human decision only", "قرار بشري فقط")}
++            </Badge>
++            <Button variant="outline" size="sm" className="h-9 rounded-xl font-bold" disabled={query.isFetching} onClick={() => void query.refetch()}>
++              <Activity className={`me-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />
++              {text("Refresh guardrails", "تحديث الضوابط")}
++            </Button>
++          </div>
++        </div>
++      </CardHeader>
++
++      <CardContent className="space-y-4">
++        {data && (
++          <>
++            <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
++              {[
++                [text("Segments", "الشرائح"), data.totals.segments],
++                [text("Caution", "تحتاج حذر"), data.totals.caution],
++                [text("Mixed", "مختلطة"), data.totals.mixed],
++                [text("Promising", "واعدة"), data.totals.promising],
++                [text("Insufficient evidence", "أدلة غير كافية"), data.totals.insufficientEvidence],
++              ].map(([label, value]) => (
++                <div key={String(label)} className="rounded-xl border border-border/60 bg-background/55 p-3">
++                  <p className="text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
++                  <p className="mt-1 text-lg font-black">{value}</p>
++                </div>
++              ))}
++            </div>
++
++            {data.attention.length > 0 && (
++              <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4">
++                <p className="mb-3 flex items-center gap-2 text-sm font-black">
++                  <AlertTriangle className="h-4 w-4 text-destructive" />
++                  {text("Human attention", "تحتاج مراجعة بشرية")}
++                </p>
++                <div className="grid gap-2 lg:grid-cols-2">
++                  {data.attention.slice(0, 6).map((item) => (
++                    <div key={`${item.kind}:${item.key}`} className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
++                      <div className="flex flex-wrap items-center gap-2">
++                        <Badge variant="outline" className="rounded-full text-[10px]">{kindLabel(item.kind)}</Badge>
++                        <span className="text-xs font-black">{item.key}</span>
++                      </div>
++                      <p className="mt-1 text-[10px] font-semibold text-muted-foreground">{item.guidance}</p>
++                    </div>
++                  ))}
++                </div>
++              </div>
++            )}
++
++            <div className="grid gap-3 lg:grid-cols-2">
++              {data.segments.slice(0, 24).map((item) => (
++                <div key={`${item.kind}:${item.key}`} className="rounded-2xl border border-border/60 bg-background/45 p-4">
++                  <div className="flex flex-wrap items-center justify-between gap-2">
++                    <div className="flex flex-wrap items-center gap-2">
++                      <BarChart3 className="h-4 w-4 text-cyan-600" />
++                      <Badge variant="outline" className="rounded-full text-[10px]">{kindLabel(item.kind)}</Badge>
++                      <span className="text-xs font-black">{item.key}</span>
++                    </div>
++                    <Badge variant={variantFor(item.advisory)} className="rounded-full text-[10px]">{item.advisory}</Badge>
++                  </div>
++                  <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-semibold text-muted-foreground md:grid-cols-4">
++                    <span>{text("Reviewed", "مراجعة")}: {item.reviewed}</span>
++                    <span>{text("Quality", "الجودة")}: {score(item.qualityScore)}</span>
++                    <span>{text("Improved", "التحسن")}: {pct(item.improvedRatePct)}</span>
++                    <span>{text("Worse", "الأسوأ")}: {pct(item.worseRatePct)}</span>
++                  </div>
++                  <p className="mt-2 flex items-start gap-2 text-[10px] font-semibold text-muted-foreground">
++                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-600" />
++                    {item.guidance}
++                  </p>
++                </div>
++              ))}
++            </div>
++
++            {data.segments.length === 0 && (
++              <div className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-xs font-semibold text-muted-foreground">
++                {text("No effectiveness segments are available yet.", "لا توجد شرائح فعالية متاحة حتى الآن.")}
++              </div>
++            )}
++          </>
++        )}
++
++        {query.error && <p className="text-xs font-semibold text-destructive">{query.error.message}</p>}
++        <p className="text-[10px] font-semibold text-muted-foreground">
++          {text(
++            "Phase 16 is advisory only: no metadata writes, no MCP calls, no ad-platform mutations, no automatic learning, and no automatic execution-policy changes.",
++            "Phase 16 إرشادي فقط: بدون كتابة بيانات، أو استدعاءات MCP، أو تعديل منصات الإعلانات، أو تعلم تلقائي، أو تغيير تلقائي لسياسة التنفيذ.",
++          )}
++        </p>
++      </CardContent>
++    </Card>
++  );
++}
+diff --git a/server/services/wadie/wadieRecommendationGuardrailService.ts b/server/services/wadie/wadieRecommendationGuardrailService.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/wadie/wadieRecommendationGuardrailService.ts
+@@ -0,0 +1,127 @@
++import { getWadieRecommendationEffectiveness } from "./wadieRecommendationEffectivenessService";
++
++type SegmentKind = "platform" | "priority" | "category" | "account";
++type EvidenceBand = "insufficient" | "emerging" | "established";
++type Advisory = "insufficient-evidence" | "caution" | "mixed" | "promising";
++
++type EffectivenessRow = {
++  key: string;
++  tracked: number;
++  reviewed: number;
++  improved: number;
++  neutral: number;
++  worse: number;
++  inconclusive: number;
++  reviewCoveragePct: number;
++  qualityScore: number | null;
++  improvedRatePct: number | null;
++};
++
++function evidenceBand(reviewed: number): EvidenceBand {
++  if (reviewed < 3) return "insufficient";
++  if (reviewed < 8) return "emerging";
++  return "established";
++}
++
++function roundPct(value: number) {
++  return Math.round(value * 10) / 10;
++}
++
++function advisoryFor(row: EffectivenessRow): Advisory {
++  if (row.reviewed < 3) return "insufficient-evidence";
++  const worseRatePct = row.reviewed ? (row.worse / row.reviewed) * 100 : 0;
++  if ((row.qualityScore ?? 0) < 45 || worseRatePct >= 35) return "caution";
++  if (row.reviewed >= 5 && (row.qualityScore ?? 0) >= 75 && (row.improvedRatePct ?? 0) >= 60) return "promising";
++  return "mixed";
++}
++
++function guidanceFor(advisory: Advisory) {
++  switch (advisory) {
++    case "promising":
++      return "Outcome history is promising. Keep human review and continue collecting evidence before changing policy.";
++    case "caution":
++      return "Outcome history needs human attention. Review recommendation quality before approving similar future actions.";
++    case "mixed":
++      return "Outcome history is mixed. Keep normal human review and gather more reviewed outcomes.";
++    default:
++      return "Evidence is insufficient. Do not infer recommendation quality from this segment yet.";
++  }
++}
++
++function toSegments(kind: SegmentKind, rows: EffectivenessRow[]) {
++  return rows.map((row) => {
++    const advisory = advisoryFor(row);
++    return {
++      kind,
++      key: row.key,
++      tracked: row.tracked,
++      reviewed: row.reviewed,
++      improved: row.improved,
++      neutral: row.neutral,
++      worse: row.worse,
++      inconclusive: row.inconclusive,
++      reviewCoveragePct: row.reviewCoveragePct,
++      qualityScore: row.qualityScore,
++      improvedRatePct: row.improvedRatePct,
++      worseRatePct: row.reviewed ? roundPct((row.worse / row.reviewed) * 100) : null,
++      evidenceBand: evidenceBand(row.reviewed),
++      advisory,
++      guidance: guidanceFor(advisory),
++    };
++  });
++}
++
++function attentionWeight(advisory: Advisory) {
++  switch (advisory) {
++    case "caution": return 4;
++    case "insufficient-evidence": return 3;
++    case "mixed": return 2;
++    case "promising": return 1;
++  }
++}
++
++export async function getWadieRecommendationGuardrails() {
++  const analytics = await getWadieRecommendationEffectiveness();
++  const segments = [
++    ...toSegments("platform", analytics.byPlatform),
++    ...toSegments("priority", analytics.byPriority),
++    ...toSegments("category", analytics.byCategory),
++    ...toSegments("account", analytics.byAccount),
++  ].sort((a, b) =>
++    attentionWeight(b.advisory) - attentionWeight(a.advisory)
++    || b.reviewed - a.reviewed
++    || String(a.key).localeCompare(String(b.key)),
++  );
++
++  return {
++    phase: "recommendation-confidence-guardrails-v1" as const,
++    mode: "read-only-human-decision-support" as const,
++    thresholds: {
++      minimumReviewedForSignal: 3,
++      establishedEvidenceReviewed: 8,
++      cautionQualityScoreBelow: 45,
++      cautionWorseRatePctAtOrAbove: 35,
++      promisingQualityScoreAtOrAbove: 75,
++      promisingImprovedRatePctAtOrAbove: 60,
++      promisingMinimumReviewed: 5,
++    },
++    totals: {
++      segments: segments.length,
++      insufficientEvidence: segments.filter((item) => item.advisory === "insufficient-evidence").length,
++      caution: segments.filter((item) => item.advisory === "caution").length,
++      mixed: segments.filter((item) => item.advisory === "mixed").length,
++      promising: segments.filter((item) => item.advisory === "promising").length,
++      establishedEvidence: segments.filter((item) => item.evidenceBand === "established").length,
++    },
++    segments: segments.slice(0, 100),
++    attention: segments.filter((item) => item.advisory === "caution").slice(0, 20),
++    generatedAt: new Date().toISOString(),
++    source: "phase15-recommendation-effectiveness-analytics" as const,
++    localMetadataWritesApplied: false as const,
++    liveMcpCallsApplied: false as const,
++    adPlatformMutationsApplied: false as const,
++    automaticOptimizationLearningApplied: false as const,
++    automaticExecutionPolicyChangesApplied: false as const,
++    executionStillRequiresHumanApproval: true as const,
++  };
++}
+diff --git a/client/src/pages/MediaBuyerPage.tsx b/client/src/pages/MediaBuyerPage.tsx
+--- a/client/src/pages/MediaBuyerPage.tsx
++++ b/client/src/pages/MediaBuyerPage.tsx
+@@ -17,4 +17,5 @@
+ import WadieOptimizationReviewCenter from "@/components/wadie/WadieOptimizationReviewCenter";
+ import WadieOptimizationOutcomes from "@/components/wadie/WadieOptimizationOutcomes";
+ import WadieRecommendationEffectiveness from "@/components/wadie/WadieRecommendationEffectiveness";
++import WadieRecommendationGuardrails from "@/components/wadie/WadieRecommendationGuardrails";
+ import {
+@@ -207,5 +208,7 @@
+         <WadieOptimizationOutcomes />
+
+         <WadieRecommendationEffectiveness />
+
++        <WadieRecommendationGuardrails />
++
+         <WadieMonitoringAlerts onAudit={(platform, accountId) => {
+diff --git a/server/services/wadie/wadieIntegrationService.ts b/server/services/wadie/wadieIntegrationService.ts
+--- a/server/services/wadie/wadieIntegrationService.ts
++++ b/server/services/wadie/wadieIntegrationService.ts
+@@ -367,3 +367,20 @@
+     executionStillRequiresHumanApproval: true,
+   };
+ }
++
++export function getWadiePhase16Capabilities() {
++  return {
++    ...getWadiePhase15Capabilities(),
++    phase: "recommendation-confidence-guardrails-v1" as const,
++    recommendationConfidenceCalibrationEnabled: true,
++    sampleSizeAwareGuardrailsEnabled: true,
++    humanDecisionSupportOnly: true,
++    guardrailsDerivedFromLocalOutcomesOnly: true,
++    guardrailLocalMetadataWritesApplied: false,
++    guardrailLiveMcpCallsApplied: false,
++    guardrailAdPlatformMutationsApplied: false,
++    automaticOptimizationLearningApplied: false,
++    automaticExecutionPolicyChangesApplied: false,
++    executionStillRequiresHumanApproval: true,
++  };
++}
+diff --git a/server/services/wadie/wadieRouter.ts b/server/services/wadie/wadieRouter.ts
+--- a/server/services/wadie/wadieRouter.ts
++++ b/server/services/wadie/wadieRouter.ts
+@@ -3,7 +3,7 @@
+ import { protectedProcedure, router } from "../../_core/trpc";
+ import {
+   getWadieIntegrationStatus,
+-  getWadiePhase15Capabilities,
++  getWadiePhase16Capabilities,
+   probeWadieMcp,
+ } from "./wadieIntegrationService";
+ import {
+@@ -50,6 +50,7 @@
+ import {
+   getWadieOptimizationOutcomeSnapshot,
+   recordWadieOptimizationOutcome,
+ } from "./wadieOptimizationOutcomeService";
+ import { getWadieRecommendationEffectiveness } from "./wadieRecommendationEffectivenessService";
++import { getWadieRecommendationGuardrails } from "./wadieRecommendationGuardrailService";
+ import {
+@@ -108,5 +109,5 @@
+ export const wadieRouter = router({
+   integrationStatus: wadieProcedure.query(() => getWadieIntegrationStatus()),
+   probeMcp: wadieProcedure.query(() => probeWadieMcp()),
+-  capabilities: wadieProcedure.query(() => getWadiePhase15Capabilities()),
++  capabilities: wadieProcedure.query(() => getWadiePhase16Capabilities()),
+   mcpSettings: wadieProcedure.query(() => getWadieMcpSettingsForUi()),
+@@ -139,4 +140,5 @@
+   optimizationReview: wadieProcedure.query(() => getWadieOptimizationReviewSnapshot()),
+   optimizationOutcomes: wadieProcedure.query(() => getWadieOptimizationOutcomeSnapshot()),
+   recommendationEffectiveness: wadieProcedure.query(() => getWadieRecommendationEffectiveness()),
++  recommendationGuardrails: wadieProcedure.query(() => getWadieRecommendationGuardrails()),
+   recordOptimizationOutcome: wadieProcedure.input(z.object({
+@@ -234,4 +236,5 @@
+ // Phase 13 adds human review + execution-queue handoff only; actual ad-platform execution remains Phase 5 approval/kill-switch gated.
+ // Phase 14 adds a local post-execution outcome ledger only; it performs no MCP reads, ad-platform mutations, or automatic learning.
+ // Phase 15 derives read-only recommendation effectiveness analytics from Phase 14 local outcomes only; no MCP calls, mutations, or automatic learning.
++// Phase 16 adds sample-size-aware recommendation confidence guardrails for human decision support only; it performs no writes, MCP calls, mutations, automatic learning, or execution-policy changes.
+ // Phase 5 execution queue remains gated by
