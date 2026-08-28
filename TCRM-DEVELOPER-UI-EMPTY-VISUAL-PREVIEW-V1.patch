@@ -1,0 +1,384 @@
+diff --git a/client/src/components/DeveloperEmptyVisual.tsx b/client/src/components/DeveloperEmptyVisual.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/DeveloperEmptyVisual.tsx
+@@ -0,0 +1,123 @@
++type PreviewVariant = "funnel" | "line" | "bars" | "donut";
++
++type DeveloperVisualPreviewProps = {
++  variant: PreviewVariant;
++  className?: string;
++};
++
++const BAR_HEIGHTS = [38, 62, 48, 78, 56, 72, 44];
++const FUNNEL_WIDTHS = [92, 78, 64, 51, 39];
++
++export function DeveloperVisualPreview({ variant, className = "h-64" }: DeveloperVisualPreviewProps) {
++  return (
++    <div
++      aria-hidden="true"
++      data-developer-empty-visual={variant}
++      className={`relative overflow-hidden rounded-xl border border-dashed border-border/70 bg-gradient-to-b from-muted/25 to-background ${className}`}
++    >
++      <div
++        className="absolute inset-0 opacity-40"
++        style={{
++          backgroundImage:
++            "linear-gradient(to right, hsl(var(--border)) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border)) 1px, transparent 1px)",
++          backgroundSize: "20% 25%",
++        }}
++      />
++
++      {variant === "funnel" && (
++        <div className="relative flex h-full flex-col items-center justify-center gap-2 px-8">
++          {FUNNEL_WIDTHS.map((width, index) => (
++            <div
++              key={width}
++              className="h-7 rounded-md bg-gradient-to-r from-violet-500/55 via-indigo-500/45 to-cyan-500/45 shadow-sm"
++              style={{ width: `${width}%`, opacity: 0.9 - index * 0.1 }}
++            />
++          ))}
++        </div>
++      )}
++
++      {variant === "line" && (
++        <svg className="relative h-full w-full p-5" viewBox="0 0 420 180" preserveAspectRatio="none">
++          <path
++            d="M18 148 C60 124, 78 132, 112 102 S178 78, 214 96 S282 50, 316 66 S366 38, 402 52"
++            fill="none"
++            stroke="currentColor"
++            strokeWidth="4"
++            strokeLinecap="round"
++            className="text-violet-500/55"
++          />
++          {[18, 112, 214, 316, 402].map((cx, index) => (
++            <circle key={cx} cx={cx} cy={[148, 102, 96, 66, 52][index]} r="5" className="fill-violet-500/55" />
++          ))}
++        </svg>
++      )}
++
++      {variant === "bars" && (
++        <div className="relative flex h-full items-end justify-around gap-3 px-8 pb-7 pt-8">
++          {BAR_HEIGHTS.map((height, index) => (
++            <div
++              key={`${height}-${index}`}
++              className="w-full max-w-10 rounded-t-md bg-gradient-to-t from-indigo-500/50 to-cyan-400/55"
++              style={{ height: `${height}%`, opacity: 0.72 + (index % 3) * 0.08 }}
++            />
++          ))}
++        </div>
++      )}
++
++      {variant === "donut" && (
++        <div className="relative flex h-full items-center justify-center">
++          <div
++            className="h-32 w-32 rounded-full opacity-70"
++            style={{
++              background:
++                "conic-gradient(rgb(99 102 241 / .72) 0 32%, rgb(34 197 94 / .62) 32% 55%, rgb(245 158 11 / .62) 55% 76%, rgb(6 182 212 / .62) 76% 100%)",
++            }}
++          >
++            <div className="m-8 h-16 w-16 rounded-full border border-border/60 bg-card" />
++          </div>
++        </div>
++      )}
++
++      <div className="pointer-events-none absolute inset-x-5 bottom-3 h-px bg-border/60" />
++    </div>
++  );
++}
++
++const CALENDAR_PREVIEW_INDICES = new Set([9, 11, 16, 18, 23, 30]);
++
++export function DeveloperCalendarCellPreview({ index }: { index: number }) {
++  if (!CALENDAR_PREVIEW_INDICES.has(index)) return null;
++
++  const tone =
++    index % 3 === 0
++      ? "bg-violet-100/80 border-violet-200/80"
++      : index % 3 === 1
++        ? "bg-blue-100/80 border-blue-200/80"
++        : "bg-emerald-100/80 border-emerald-200/80";
++
++  return (
++    <div
++      aria-hidden="true"
++      data-developer-calendar-preview="true"
++      className={`pointer-events-none mt-1 h-4 rounded-md border ${tone}`}
++    >
++      <div className="mx-1.5 mt-[5px] h-1 w-2/3 rounded-full bg-slate-500/20" />
++    </div>
++  );
++}
++
++export function DeveloperUpcomingPreview() {
++  return (
++    <div aria-hidden="true" data-developer-upcoming-preview="true" className="space-y-2">
++      {[0, 1, 2].map((index) => (
++        <div key={index} className="flex items-start gap-2.5 rounded-xl border border-slate-100 p-2.5">
++          <div className="h-8 w-8 shrink-0 rounded-lg bg-violet-100/80" />
++          <div className="flex-1 space-y-2 pt-0.5">
++            <div className="h-2.5 rounded-full bg-slate-200/80" style={{ width: `${76 - index * 11}%` }} />
++            <div className="h-2 rounded-full bg-slate-100" style={{ width: `${54 + index * 8}%` }} />
++          </div>
++        </div>
++      ))}
++    </div>
++  );
++}
+diff --git a/client/src/pages/SalesFunnelDashboard.tsx b/client/src/pages/SalesFunnelDashboard.tsx
+--- a/client/src/pages/SalesFunnelDashboard.tsx
++++ b/client/src/pages/SalesFunnelDashboard.tsx
+@@ -37,5 +37,6 @@ import DateRangePicker from "@/components/DateRangePicker";
+ import { useCurrentMonthDateRange } from "@/hooks/useCurrentMonthDateRange";
+ import { toDashboardQueryDate } from "@/lib/currentMonthDateRange";
++import { DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
+ 
+ const FUNNEL_COLORS = [
+   "#6366f1", "#8b5cf6", "#3b82f6", "#06b6d4", "#f59e0b",
+@@ -61,6 +62,7 @@ export default function SalesFunnelDashboard() {
+   const userRole = user?.role ? normalizeUserRole(user.role) : "";
+   const hasAdminSurface = hasAdminSurfaceAccess(user?.role);
+   const isManager = hasAdminSurface || userRole === "SalesManager";
++  const isDeveloperVisualPreview = userRole === "Developer";
+   const isAllowed = hasAdminSurface || ["SalesManager", "SalesAgent", "ColdSalesAgent"].includes(userRole);
+ 
+   const { data, isLoading } = trpc.dashboard.salesFunnel.useQuery({
+@@ -223,9 +225,13 @@ export default function SalesFunnelDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-64" />
+               ) : funnelChartData.length === 0 ? (
+-                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="funnel" className="h-64" />
++                ) : (
++                  <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <div className="space-y-2">
+                   {(data?.funnelData ?? []).map((stage, i) => {
+@@ -272,9 +276,13 @@ export default function SalesFunnelDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-64" />
+               ) : trendData.length === 0 ? (
+-                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="line" className="h-64" />
++                ) : (
++                  <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <ResponsiveContainer width="100%" height={260}>
+                   <LineChart data={trendData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+@@ -316,9 +322,13 @@ export default function SalesFunnelDashboard() {
+             {isLoading ? (
+               <Skeleton className="h-56" />
+             ) : wonDealsByMonthData.length === 0 ? (
+-              <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
+-                {isRTL ? "لا توجد صفقات ناجحة" : "No won deals"}
+-              </div>
++              isDeveloperVisualPreview ? (
++                <DeveloperVisualPreview variant="bars" className="h-56" />
++              ) : (
++                <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
++                  {isRTL ? "لا توجد صفقات ناجحة" : "No won deals"}
++                </div>
++              )
+             ) : (
+               <ResponsiveContainer width="100%" height={240}>
+                 <BarChart data={wonDealsByMonthData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+@@ -369,9 +377,13 @@ export default function SalesFunnelDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-64" />
+               ) : campaignChartData.length === 0 ? (
+-                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="bars" className="h-64" />
++                ) : (
++                  <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <ResponsiveContainer width="100%" height={260}>
+                   <BarChart data={campaignChartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+diff --git a/client/src/pages/TeamDashboard.tsx b/client/src/pages/TeamDashboard.tsx
+--- a/client/src/pages/TeamDashboard.tsx
++++ b/client/src/pages/TeamDashboard.tsx
+@@ -8,6 +8,7 @@ import { useThemeTokens } from "@/contexts/ThemeTokenContext";
+ import { trpc } from "@/lib/trpc";
+ import { useAuth } from "@/_core/hooks/useAuth";
+-import { isAdminRole } from "@/lib/roles";
++import { isAdminRole, normalizeUserRole } from "@/lib/roles";
++import { DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
+ import {
+   BarChart,
+   Bar,
+@@ -109,4 +110,5 @@ export default function TeamDashboard() {
+   const { data: stats, isLoading } = trpc.dashboard.teamStats.useQuery(statsQueryRange);
++  const isDeveloperVisualPreview = normalizeUserRole(user?.role) === "Developer";
+ 
+   if (!isAdminRole(user?.role) && user?.role !== "SalesManager") { // TCRM_DEVELOPER_FULL_SURFACE_ZERO_DATA_V1
+     return (
+@@ -202,5 +204,7 @@ export default function TeamDashboard() {
+               {isLoading ? (
+                 <div className="h-48 bg-muted rounded animate-pulse" />
++              ) : isDeveloperVisualPreview && (stats?.leadsByAgent ?? []).length === 0 ? (
++                <DeveloperVisualPreview variant="bars" className="h-[220px]" />
+               ) : (
+                 <ResponsiveContainer width="100%" height={220}>
+                   <BarChart data={stats?.leadsByAgent ?? []} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+@@ -229,5 +233,7 @@ export default function TeamDashboard() {
+               {isLoading ? (
+                 <div className="h-48 bg-muted rounded animate-pulse" />
++              ) : isDeveloperVisualPreview && (stats?.leadsByStage ?? []).length === 0 ? (
++                <DeveloperVisualPreview variant="donut" className="h-[280px]" />
+               ) : (
+                 <ResponsiveContainer width="100%" height={280}>
+                   <PieChart>
+diff --git a/client/src/pages/TaskSlaDashboard.tsx b/client/src/pages/TaskSlaDashboard.tsx
+--- a/client/src/pages/TaskSlaDashboard.tsx
++++ b/client/src/pages/TaskSlaDashboard.tsx
+@@ -8,5 +8,6 @@ import { trpc } from "@/lib/trpc";
+ import { useAuth } from "@/_core/hooks/useAuth";
+ import { hasAdminSurfaceAccess, normalizeUserRole } from "@/lib/roles";
++import { DeveloperVisualPreview } from "@/components/DeveloperEmptyVisual";
+ import {
+   BarChart,
+   Bar,
+@@ -70,6 +71,7 @@ export default function TaskSlaDashboard() {
+   const userRole = user?.role ? normalizeUserRole(user.role) : "";
+   const hasAdminSurface = hasAdminSurfaceAccess(user?.role);
+   const isManager = hasAdminSurface || userRole === "SalesManager";
++  const isDeveloperVisualPreview = userRole === "Developer";
+   const isMediaBuyer = userRole === "MediaBuyer";
+   const isAllowed = hasAdminSurface || ["SalesManager", "SalesAgent", "ColdSalesAgent", "Viewer"].includes(userRole);
+ 
+@@ -253,9 +255,13 @@ export default function TaskSlaDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-64" />
+               ) : slaTrendData.length === 0 ? (
+-                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="line" className="h-64" />
++                ) : (
++                  <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <ResponsiveContainer width="100%" height={260}>
+                   <LineChart data={slaTrendData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+@@ -306,9 +310,13 @@ export default function TaskSlaDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-64" />
+               ) : activityTrendData.length === 0 ? (
+-                <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="line" className="h-64" />
++                ) : (
++                  <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <ResponsiveContainer width="100%" height={260}>
+                   <LineChart data={activityTrendData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+@@ -346,9 +352,13 @@ export default function TaskSlaDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-48" />
+               ) : activityTypeData.length === 0 ? (
+-                <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="donut" className="h-48" />
++                ) : (
++                  <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <ResponsiveContainer width="100%" height={220}>
+                   <PieChart>
+@@ -388,9 +396,13 @@ export default function TaskSlaDashboard() {
+               {isLoading ? (
+                 <Skeleton className="h-48" />
+               ) : outcomeData.length === 0 ? (
+-                <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+-                  {isRTL ? "لا توجد بيانات" : "No data available"}
+-                </div>
++                isDeveloperVisualPreview ? (
++                  <DeveloperVisualPreview variant="bars" className="h-48" />
++                ) : (
++                  <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
++                    {isRTL ? "لا توجد بيانات" : "No data available"}
++                  </div>
++                )
+               ) : (
+                 <ResponsiveContainer width="100%" height={220}>
+                   <BarChart data={outcomeData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+diff --git a/client/src/pages/CalendarPage.tsx b/client/src/pages/CalendarPage.tsx
+--- a/client/src/pages/CalendarPage.tsx
++++ b/client/src/pages/CalendarPage.tsx
+@@ -6,6 +6,9 @@ import { Label } from "@/components/ui/label";
+ import { Textarea } from "@/components/ui/textarea";
+ import { useLanguage } from "@/contexts/LanguageContext";
+ import { trpc } from "@/lib/trpc";
++import { useAuth } from "@/_core/hooks/useAuth";
++import { normalizeUserRole } from "@/lib/roles";
++import { DeveloperCalendarCellPreview, DeveloperUpcomingPreview } from "@/components/DeveloperEmptyVisual";
+ import { format, addHours, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, parseISO, addMonths, subMonths } from "date-fns";
+ import { ar } from "date-fns/locale";
+ import {
+@@ -62,6 +65,7 @@ const EVENT_COLORS = [
+ 
+ export default function CalendarPage() {
+   const { t, lang, isRTL } = useLanguage();
++  const { user } = useAuth();
+   const [currentMonth, setCurrentMonth] = useState(new Date());
+   const [showCreateDialog, setShowCreateDialog] = useState(false);
+   const [showEventDialog, setShowEventDialog] = useState(false);
+@@ -184,6 +188,7 @@ export default function CalendarPage() {
+   };
+ 
+   const upcomingEvents = (events ?? []).filter((e: any) => new Date(e.start) >= new Date()).slice(0, 8);
++  const isDeveloperVisualPreview = normalizeUserRole(user?.role) === "Developer" && !isLoading && (events?.length ?? 0) === 0;
+ 
+   const FormFields = ({ isEdit = false }: { isEdit?: boolean }) => (
+     <div className="px-6 py-5 flex flex-col gap-4">
+@@ -327,6 +332,9 @@ export default function CalendarPage() {
+                             +{dayEvents.length - 2} {isRTL ? "أكثر" : "more"}
+                           </div>
+                         )}
++                        {isDeveloperVisualPreview && dayEvents.length === 0 && (
++                          <DeveloperCalendarCellPreview index={idx} />
++                        )}
+                       </div>
+                     </div>
+                   );
+@@ -371,7 +379,9 @@ export default function CalendarPage() {
+                     </a>
+                   )}
+                 </div>
+-              )) : (
++              )) : isDeveloperVisualPreview ? (
++                <DeveloperUpcomingPreview />
++              ) : (
+                 <div className="text-center py-10">
+                   <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                     <CalendarIcon size={22} className="text-slate-300" />
