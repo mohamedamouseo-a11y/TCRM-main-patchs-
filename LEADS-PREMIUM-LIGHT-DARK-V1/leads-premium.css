@@ -1,0 +1,433 @@
+/* TCRM Leads — Premium Light / Dark Experience
+   UI-only layer. Scoped to the LeadsList DOM signature so CRM business logic,
+   filters, table behavior, dialogs and routing remain untouched. */
+
+:root {
+  --tcrm-leads-purple: #7047eb;
+  --tcrm-leads-purple-2: #8b5cf6;
+  --tcrm-leads-gold: #d7a63c;
+  --tcrm-leads-gold-bright: #f2c862;
+}
+
+/* LeadsList scope: hero + premium rounded filter card is unique to this page. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) {
+  --lp-page: #f7f8fc;
+  --lp-surface: rgba(255, 255, 255, 0.94);
+  --lp-surface-strong: #ffffff;
+  --lp-surface-soft: #faf9ff;
+  --lp-border: rgba(78, 62, 140, 0.12);
+  --lp-border-strong: rgba(112, 71, 235, 0.20);
+  --lp-text: #181827;
+  --lp-muted: #71778a;
+  --lp-purple: #7047eb;
+  --lp-purple-soft: #f0ebff;
+  --lp-gold: #d7a63c;
+  --lp-shadow: 0 18px 50px rgba(64, 48, 120, 0.08), 0 2px 10px rgba(20, 20, 50, 0.04);
+  --lp-shadow-hover: 0 22px 60px rgba(84, 60, 160, 0.12), 0 3px 14px rgba(20, 20, 50, 0.05);
+
+  position: relative;
+  isolation: isolate;
+  padding: 26px 28px 32px !important;
+  gap: 20px;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) {
+  --lp-page: #080b12;
+  --lp-surface: rgba(15, 20, 32, 0.92);
+  --lp-surface-strong: #0f1420;
+  --lp-surface-soft: #111725;
+  --lp-border: rgba(255, 255, 255, 0.075);
+  --lp-border-strong: rgba(134, 92, 246, 0.24);
+  --lp-text: #f6f7fb;
+  --lp-muted: #8f98aa;
+  --lp-purple: #8255f2;
+  --lp-purple-soft: rgba(124, 77, 255, 0.13);
+  --lp-gold: #e3b64e;
+  --lp-shadow: 0 22px 60px rgba(0, 0, 0, 0.26), 0 3px 14px rgba(0, 0, 0, 0.18);
+  --lp-shadow-hover: 0 24px 70px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(130, 85, 242, 0.08);
+}
+
+/* Full application surface while Leads is active. */
+body:has(.fade-in > .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .bg-background {
+  background:
+    radial-gradient(1000px 460px at 84% -8%, rgba(124, 77, 255, 0.07), transparent 58%),
+    linear-gradient(180deg, #fbfbfe 0%, #f7f8fc 45%, #f5f6fb 100%) !important;
+}
+
+.dark body:has(.fade-in > .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .bg-background,
+body.dark:has(.fade-in > .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .bg-background {
+  background:
+    radial-gradient(900px 480px at 82% -8%, rgba(109, 63, 232, 0.11), transparent 58%),
+    radial-gradient(700px 400px at 38% 110%, rgba(33, 72, 155, 0.07), transparent 65%),
+    #080b12 !important;
+}
+
+/* ───────────────────────── Hero / Page identity ───────────────────── */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up:first-child {
+  min-height: 112px;
+  padding: 24px 28px !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(112, 71, 235, 0.16);
+  background:
+    radial-gradient(520px 190px at 76% 24%, rgba(124, 77, 255, 0.18), transparent 64%),
+    radial-gradient(340px 220px at 102% 100%, rgba(215, 166, 60, 0.15), transparent 58%),
+    linear-gradient(110deg, #f8f6ff 0%, #fbfaff 50%, #f3efff 100%) !important;
+  box-shadow: 0 16px 42px rgba(83, 58, 154, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up:first-child::before {
+  content: "";
+  position: absolute;
+  width: 330px;
+  height: 120px;
+  right: 10%;
+  bottom: -82px;
+  border: 1px solid rgba(112, 71, 235, 0.15);
+  border-radius: 50%;
+  transform: rotate(-8deg);
+  pointer-events: none;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up:first-child {
+  border-color: rgba(139, 92, 246, 0.20);
+  background:
+    radial-gradient(560px 240px at 63% 22%, rgba(116, 72, 232, 0.32), transparent 64%),
+    radial-gradient(360px 220px at 100% 10%, rgba(111, 57, 212, 0.18), transparent 65%),
+    linear-gradient(112deg, #101426 0%, #11152b 46%, #17133a 100%) !important;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up h1 {
+  color: #181827 !important;
+  font-size: 28px !important;
+  line-height: 1.15;
+  font-weight: 760 !important;
+  letter-spacing: -0.03em !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up p {
+  color: #74788b !important;
+  margin-top: 6px !important;
+  font-size: 13px !important;
+  font-weight: 550;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up h1 {
+  color: #f7f7fb !important;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up p {
+  color: #a8afbf !important;
+}
+
+/* Hero actions */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button {
+  min-height: 42px;
+  border-radius: 11px !important;
+  padding-inline: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button:hover {
+  transform: translateY(-1px);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button[style*="background"] {
+  background: linear-gradient(135deg, #7047eb 0%, #5e36d7 100%) !important;
+  border: 1px solid rgba(83, 50, 190, 0.24) !important;
+  color: white !important;
+  box-shadow: 0 8px 20px rgba(112, 71, 235, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button[style*="background"]:hover {
+  box-shadow: 0 12px 26px rgba(112, 71, 235, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button[style*="background"] {
+  background: linear-gradient(135deg, #f2cf73 0%, #dba83b 100%) !important;
+  color: #17130a !important;
+  border-color: rgba(255, 223, 137, 0.42) !important;
+  box-shadow: 0 8px 24px rgba(219, 168, 59, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button:not([style*="background"]) {
+  background: rgba(255, 255, 255, 0.68) !important;
+  color: #3f365f !important;
+  border-color: rgba(112, 71, 235, 0.26) !important;
+  box-shadow: 0 5px 14px rgba(64, 48, 120, 0.06);
+  backdrop-filter: blur(12px);
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up button:not([style*="background"]) {
+  background: rgba(8, 10, 19, 0.42) !important;
+  color: #f2f1f7 !important;
+  border-color: rgba(227, 182, 78, 0.42) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+/* ───────────────────────── Filter command center ──────────────────── */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] {
+  border-radius: 18px !important;
+  border: 1px solid var(--lp-border) !important;
+  background: var(--lp-surface) !important;
+  box-shadow: var(--lp-shadow) !important;
+  padding-block: 0 !important;
+  gap: 0 !important;
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] > [data-slot="card-content"] {
+  padding: 20px !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] [data-slot="card-content"] > .flex {
+  row-gap: 14px !important;
+  column-gap: 12px !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) label {
+  color: var(--lp-text);
+  font-size: 11.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.005em;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) input,
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) button[role="combobox"] {
+  min-height: 40px;
+  border-radius: 10px !important;
+  background: var(--lp-surface-soft) !important;
+  border-color: var(--lp-border) !important;
+  color: var(--lp-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) input,
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) button[role="combobox"] {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) input:focus,
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) button[role="combobox"]:focus-visible {
+  border-color: rgba(112, 71, 235, 0.52) !important;
+  box-shadow: 0 0 0 3px rgba(112, 71, 235, 0.10) !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) input::placeholder {
+  color: var(--lp-muted) !important;
+  opacity: 0.72;
+}
+
+/* Filter utility buttons (SLA / columns / clear) */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] button:not([role="combobox"]) {
+  min-height: 38px;
+  border-radius: 10px !important;
+  padding-inline: 14px;
+  font-weight: 600;
+  border-color: var(--lp-border-strong) !important;
+  background: color-mix(in srgb, var(--lp-surface-strong) 91%, var(--lp-purple) 9%) !important;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] button:not([role="combobox"]) {
+  color: #dfe3ed !important;
+  background: rgba(18, 24, 38, 0.84) !important;
+}
+
+/* ───────────────────────── Data table ─────────────────────────────── */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] + [data-slot="card"] {
+  overflow: hidden;
+  border-radius: 18px !important;
+  border: 1px solid var(--lp-border) !important;
+  background: var(--lp-surface-strong) !important;
+  box-shadow: var(--lp-shadow) !important;
+  padding-block: 0 !important;
+  gap: 0 !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] + [data-slot="card"]:hover {
+  box-shadow: var(--lp-shadow-hover) !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) thead tr {
+  background: linear-gradient(180deg, #fafafe 0%, #f7f7fc 100%) !important;
+  border-bottom-color: var(--lp-border) !important;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) thead tr {
+  background: linear-gradient(180deg, #151b29 0%, #121824 100%) !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) th {
+  height: 46px;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  color: var(--lp-muted) !important;
+  font-size: 11.5px !important;
+  font-weight: 660 !important;
+  letter-spacing: 0.01em;
+  vertical-align: middle;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) tbody tr {
+  height: 56px;
+  border-bottom-color: var(--lp-border) !important;
+  background: transparent;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) tbody tr:hover {
+  background: rgba(112, 71, 235, 0.035) !important;
+  box-shadow: inset 3px 0 0 rgba(112, 71, 235, 0.44);
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) tbody tr:hover {
+  background: rgba(124, 77, 255, 0.055) !important;
+  box-shadow: inset 3px 0 0 rgba(139, 92, 246, 0.52);
+}
+
+[dir="rtl"] .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) tbody tr:hover {
+  box-shadow: inset -3px 0 0 rgba(112, 71, 235, 0.44);
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td {
+  color: var(--lp-text);
+  border-bottom-color: var(--lp-border) !important;
+}
+
+/* Sticky first/actions columns must visually merge with the premium surface. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) th.sticky,
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td.sticky {
+  background: color-mix(in srgb, var(--lp-surface-strong) 96%, var(--lp-purple) 4%) !important;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) th.sticky,
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td.sticky {
+  background: #101622 !important;
+}
+
+/* Lead avatar: richer premium chip. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) tbody td:first-child .rounded-full[class*="text-white"] {
+  background: linear-gradient(135deg, #6551ad 0%, #8a65db 100%) !important;
+  box-shadow: 0 4px 12px rgba(92, 69, 164, 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.20);
+}
+
+/* Fit status pills — more restrained and premium. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td .bg-yellow-50 {
+  background: rgba(218, 165, 32, 0.10) !important;
+  border-color: rgba(218, 165, 32, 0.32) !important;
+  color: #a66f00 !important;
+}
+
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td .bg-yellow-50 {
+  background: rgba(227, 182, 78, 0.10) !important;
+  border-color: rgba(227, 182, 78, 0.28) !important;
+  color: #efc65f !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td .bg-green-50 {
+  background: rgba(34, 197, 94, 0.09) !important;
+  border-color: rgba(34, 197, 94, 0.25) !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td .bg-red-50 {
+  background: rgba(239, 68, 68, 0.09) !important;
+  border-color: rgba(239, 68, 68, 0.24) !important;
+}
+
+/* Actions become compact icon controls while retaining existing behavior. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td:last-child button {
+  border-radius: 8px !important;
+}
+
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) td:last-child button:hover {
+  background: var(--lp-purple-soft) !important;
+  color: var(--lp-purple) !important;
+}
+
+/* Premium horizontal scrollbar. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .overflow-x-auto::-webkit-scrollbar {
+  height: 8px;
+}
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(112, 71, 235, 0.18);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+.dark .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) .overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.24);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Pagination / result footer separation. */
+.fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] + [data-slot="card"] [data-slot="card-content"] > :last-child:not(.overflow-x-auto) {
+  border-top-color: var(--lp-border) !important;
+}
+
+/* Keep popovers/dialogs readable in both modes when triggered from Leads. */
+[data-radix-popper-content-wrapper] [role="dialog"],
+[data-radix-popper-content-wrapper] [role="listbox"] {
+  border-radius: 12px;
+}
+
+/* ───────────────────────── Responsive polish ──────────────────────── */
+@media (max-width: 1280px) {
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) {
+    padding: 22px 20px 28px !important;
+  }
+
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up:first-child {
+    padding: 22px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) {
+    padding: 16px 12px 24px !important;
+    gap: 14px;
+  }
+
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up:first-child {
+    min-height: 0;
+    padding: 18px !important;
+    border-radius: 15px !important;
+  }
+
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up h1 {
+    font-size: 23px !important;
+  }
+
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] > [data-slot="card-content"] {
+    padding: 16px !important;
+  }
+
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"],
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) > .slide-up + [data-slot="card"] + [data-slot="card"] {
+    border-radius: 15px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) *,
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) *::before,
+  .fade-in:has(> .slide-up:first-child + [data-slot="card"][class*="rounded-[24px]"]) *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
