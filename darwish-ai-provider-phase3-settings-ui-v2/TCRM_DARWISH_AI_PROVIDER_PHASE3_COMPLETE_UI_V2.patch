@@ -1,0 +1,474 @@
+diff --git a/server/services/darwish/aiProviders/darwishAiProviderSettingsService.ts b/server/services/darwish/aiProviders/darwishAiProviderSettingsService.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/darwish/aiProviders/darwishAiProviderSettingsService.ts
+@@ -0,0 +1,370 @@
++import mysql, { type Pool, type ResultSetHeader } from "mysql2/promise";
++import {
++  encryptDarwishAiProviderSecret,
++  normalizeDarwishAiProviderDraft,
++  normalizeDarwishAiProviderModelDraft,
++} from "./darwishAiProviderFoundationService";
++
++type JsonRecord = Record<string, unknown> | null;
++
++type ProviderInput = {
++  providerKey: string;
++  displayName: string;
++  adapterType: string;
++  baseUrl?: string | null;
++  enabled?: boolean;
++  config?: Record<string, unknown> | null;
++};
++
++type ModelInput = {
++  providerId: number;
++  modelKey: string;
++  displayName?: string | null;
++  enabled?: boolean;
++  config?: Record<string, unknown> | null;
++};
++
++type PolicyInput = {
++  routeKey: string;
++  displayName: string;
++  selectionStrategy: "priority" | "weighted_random";
++  enabled?: boolean;
++  maxAttempts: number;
++  timeoutMs: number;
++  config?: Record<string, unknown> | null;
++};
++
++type TargetInput = {
++  policyId: number;
++  providerId: number;
++  modelId: number;
++  priority: number;
++  weight: number;
++  enabled?: boolean;
++  timeoutMs?: number | null;
++  config?: Record<string, unknown> | null;
++};
++
++let pool: Pool | null = null;
++
++function getPool() {
++  const databaseUrl = process.env.DATABASE_URL?.trim();
++  if (!databaseUrl) throw new Error("DATABASE_URL is required");
++  if (!pool) pool = mysql.createPool(databaseUrl);
++  return pool;
++}
++
++function id(value: unknown, field = "id") {
++  const parsed = Number(value);
++  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${field} must be a positive integer`);
++  return parsed;
++}
++
++function int(value: unknown, field: string, min: number, max: number) {
++  const parsed = Number(value);
++  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
++    throw new Error(`${field} must be an integer between ${min} and ${max}`);
++  }
++  return parsed;
++}
++
++function text(value: unknown, field: string, max: number) {
++  if (typeof value !== "string") throw new Error(`${field} must be a string`);
++  const normalized = value.trim();
++  if (!normalized || normalized.length > max) throw new Error(`${field} must be 1-${max} characters`);
++  return normalized;
++}
++
++function json(value: unknown): JsonRecord {
++  if (value == null) return null;
++  if (typeof value !== "object" || Array.isArray(value)) throw new Error("config must be an object");
++  return value as Record<string, unknown>;
++}
++
++function decodeJson(value: unknown): JsonRecord {
++  if (value == null) return null;
++  if (typeof value === "object") return value as Record<string, unknown>;
++  try {
++    const parsed = JSON.parse(String(value));
++    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
++  } catch {
++    return null;
++  }
++}
++
++function bool(value: unknown, fallback = true) {
++  return value == null ? fallback : Boolean(value);
++}
++
++export async function getDarwishAiProviderSettingsSnapshot() {
++  const db = getPool();
++  const [providersRaw] = await db.query<any[]>(
++    `SELECT id, provider_key, display_name, adapter_type, base_url, enabled, config_json
++       FROM darwish_ai_providers ORDER BY display_name, id`
++  );
++  const [modelsRaw] = await db.query<any[]>(
++    `SELECT id, provider_id, model_key, display_name, enabled, config_json
++       FROM darwish_ai_provider_models ORDER BY provider_id, display_name, model_key, id`
++  );
++  const [secretsRaw] = await db.query<any[]>(
++    `SELECT provider_id, secret_key FROM darwish_ai_provider_secrets ORDER BY provider_id, secret_key`
++  );
++  const [policiesRaw] = await db.query<any[]>(
++    `SELECT id, route_key, display_name, selection_strategy, enabled, max_attempts, timeout_ms, config_json
++       FROM darwish_ai_routing_policies ORDER BY route_key, id`
++  );
++  const [targetsRaw] = await db.query<any[]>(
++    `SELECT id, policy_id, provider_id, model_id, priority, weight, enabled, timeout_ms, config_json
++       FROM darwish_ai_routing_targets ORDER BY policy_id, priority, id`
++  );
++
++  return {
++    providers: providersRaw.map((row) => ({
++      id: Number(row.id),
++      providerKey: row.provider_key,
++      displayName: row.display_name,
++      adapterType: row.adapter_type,
++      baseUrl: row.base_url,
++      enabled: Boolean(row.enabled),
++      config: decodeJson(row.config_json),
++      configuredSecretKeys: secretsRaw
++        .filter((secret) => Number(secret.provider_id) === Number(row.id))
++        .map((secret) => String(secret.secret_key)),
++    })),
++    models: modelsRaw.map((row) => ({
++      id: Number(row.id),
++      providerId: Number(row.provider_id),
++      modelKey: row.model_key,
++      displayName: row.display_name,
++      enabled: Boolean(row.enabled),
++      config: decodeJson(row.config_json),
++    })),
++    policies: policiesRaw.map((row) => ({
++      id: Number(row.id),
++      routeKey: row.route_key,
++      displayName: row.display_name,
++      selectionStrategy: row.selection_strategy,
++      enabled: Boolean(row.enabled),
++      maxAttempts: Number(row.max_attempts),
++      timeoutMs: Number(row.timeout_ms),
++      config: decodeJson(row.config_json),
++    })),
++    targets: targetsRaw.map((row) => ({
++      id: Number(row.id),
++      policyId: Number(row.policy_id),
++      providerId: Number(row.provider_id),
++      modelId: Number(row.model_id),
++      priority: Number(row.priority),
++      weight: Number(row.weight),
++      enabled: Boolean(row.enabled),
++      timeoutMs: row.timeout_ms == null ? null : Number(row.timeout_ms),
++      config: decodeJson(row.config_json),
++    })),
++    secretsReturnedInPlaintext: false,
++    providersHardcoded: false,
++    modelsHardcoded: false,
++  };
++}
++
++export async function createDarwishAiProvider(input: ProviderInput) {
++  const normalized = normalizeDarwishAiProviderDraft(input);
++  const [result] = await getPool().execute<ResultSetHeader>(
++    `INSERT INTO darwish_ai_providers
++      (provider_key, display_name, adapter_type, base_url, enabled, config_json)
++     VALUES (?, ?, ?, ?, ?, ?)`,
++    [normalized.providerKey, normalized.displayName, normalized.adapterType, normalized.baseUrl, normalized.enabled ? 1 : 0, normalized.config ? JSON.stringify(normalized.config) : null],
++  );
++  return { id: Number(result.insertId) };
++}
++
++export async function updateDarwishAiProvider(providerId: number, input: ProviderInput) {
++  const normalized = normalizeDarwishAiProviderDraft(input);
++  await getPool().execute(
++    `UPDATE darwish_ai_providers SET provider_key=?, display_name=?, adapter_type=?, base_url=?, enabled=?, config_json=? WHERE id=?`,
++    [normalized.providerKey, normalized.displayName, normalized.adapterType, normalized.baseUrl, normalized.enabled ? 1 : 0, normalized.config ? JSON.stringify(normalized.config) : null, id(providerId)],
++  );
++}
++
++export async function deleteDarwishAiProvider(providerId: number) {
++  const db = getPool();
++  const provider = id(providerId);
++  const [targetRows] = await db.query<any[]>("SELECT COUNT(*) AS count FROM darwish_ai_routing_targets WHERE provider_id=?", [provider]);
++  if (Number(targetRows[0]?.count || 0) > 0) throw new Error("Provider is used by routing targets");
++  await db.execute("DELETE FROM darwish_ai_provider_secrets WHERE provider_id=?", [provider]);
++  await db.execute("DELETE FROM darwish_ai_provider_models WHERE provider_id=?", [provider]);
++  await db.execute("DELETE FROM darwish_ai_providers WHERE id=?", [provider]);
++}
++
++export async function saveDarwishAiProviderSecret(providerId: number, secretKey: string, plaintext: string) {
++  const provider = id(providerId, "providerId");
++  const encrypted = encryptDarwishAiProviderSecret(text(secretKey, "secretKey", 128), text(plaintext, "secret", 20000));
++  await getPool().execute(
++    `INSERT INTO darwish_ai_provider_secrets (provider_id, secret_key, encrypted_value, key_version)
++     VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE encrypted_value=VALUES(encrypted_value), key_version=VALUES(key_version)`,
++    [provider, encrypted.secretKey, encrypted.encryptedValue, encrypted.keyVersion],
++  );
++}
++
++export async function deleteDarwishAiProviderSecret(providerId: number, secretKey: string) {
++  await getPool().execute("DELETE FROM darwish_ai_provider_secrets WHERE provider_id=? AND secret_key=?", [id(providerId, "providerId"), text(secretKey, "secretKey", 128)]);
++}
++
++export async function createDarwishAiProviderModel(input: ModelInput) {
++  const normalized = normalizeDarwishAiProviderModelDraft(input);
++  const [result] = await getPool().execute<ResultSetHeader>(
++    `INSERT INTO darwish_ai_provider_models (provider_id, model_key, display_name, enabled, config_json) VALUES (?, ?, ?, ?, ?)`,
++    [id(input.providerId, "providerId"), normalized.modelKey, normalized.displayName, normalized.enabled ? 1 : 0, normalized.config ? JSON.stringify(normalized.config) : null],
++  );
++  return { id: Number(result.insertId) };
++}
++
++export async function updateDarwishAiProviderModel(modelId: number, input: ModelInput) {
++  const normalized = normalizeDarwishAiProviderModelDraft(input);
++  await getPool().execute(
++    `UPDATE darwish_ai_provider_models SET provider_id=?, model_key=?, display_name=?, enabled=?, config_json=? WHERE id=?`,
++    [id(input.providerId, "providerId"), normalized.modelKey, normalized.displayName, normalized.enabled ? 1 : 0, normalized.config ? JSON.stringify(normalized.config) : null, id(modelId)],
++  );
++}
++
++export async function deleteDarwishAiProviderModel(modelId: number) {
++  const model = id(modelId, "modelId");
++  const [targetRows] = await getPool().query<any[]>("SELECT COUNT(*) AS count FROM darwish_ai_routing_targets WHERE model_id=?", [model]);
++  if (Number(targetRows[0]?.count || 0) > 0) throw new Error("Model is used by routing targets");
++  await getPool().execute("DELETE FROM darwish_ai_provider_models WHERE id=?", [model]);
++}
++
++export async function createDarwishAiRoutingPolicy(input: PolicyInput) {
++  const routeKey = text(input.routeKey, "routeKey", 128).toLowerCase();
++  if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(routeKey)) throw new Error("routeKey contains unsupported characters");
++  if (!["priority", "weighted_random"].includes(input.selectionStrategy)) throw new Error("Unsupported selectionStrategy");
++  const [result] = await getPool().execute<ResultSetHeader>(
++    `INSERT INTO darwish_ai_routing_policies (route_key, display_name, selection_strategy, enabled, max_attempts, timeout_ms, config_json) VALUES (?, ?, ?, ?, ?, ?, ?)`,
++    [routeKey, text(input.displayName, "displayName", 191), input.selectionStrategy, bool(input.enabled) ? 1 : 0, int(input.maxAttempts, "maxAttempts", 1, 100), int(input.timeoutMs, "timeoutMs", 100, 600000), json(input.config) ? JSON.stringify(input.config) : null],
++  );
++  return { id: Number(result.insertId) };
++}
++
++export async function updateDarwishAiRoutingPolicy(policyId: number, input: PolicyInput) {
++  const routeKey = text(input.routeKey, "routeKey", 128).toLowerCase();
++  if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(routeKey)) throw new Error("routeKey contains unsupported characters");
++  if (!["priority", "weighted_random"].includes(input.selectionStrategy)) throw new Error("Unsupported selectionStrategy");
++  await getPool().execute(
++    `UPDATE darwish_ai_routing_policies SET route_key=?, display_name=?, selection_strategy=?, enabled=?, max_attempts=?, timeout_ms=?, config_json=? WHERE id=?`,
++    [routeKey, text(input.displayName, "displayName", 191), input.selectionStrategy, bool(input.enabled) ? 1 : 0, int(input.maxAttempts, "maxAttempts", 1, 100), int(input.timeoutMs, "timeoutMs", 100, 600000), json(input.config) ? JSON.stringify(input.config) : null, id(policyId)],
++  );
++}
++
++export async function deleteDarwishAiRoutingPolicy(policyId: number) {
++  const policy = id(policyId, "policyId");
++  await getPool().execute("DELETE FROM darwish_ai_routing_targets WHERE policy_id=?", [policy]);
++  await getPool().execute("DELETE FROM darwish_ai_routing_policies WHERE id=?", [policy]);
++}
++
++export async function createDarwishAiRoutingTarget(input: TargetInput) {
++  const [result] = await getPool().execute<ResultSetHeader>(
++    `INSERT INTO darwish_ai_routing_targets (policy_id, provider_id, model_id, priority, weight, enabled, timeout_ms, config_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
++    [id(input.policyId, "policyId"), id(input.providerId, "providerId"), id(input.modelId, "modelId"), int(input.priority, "priority", 0, 1000000), int(input.weight, "weight", 1, 1000000), bool(input.enabled) ? 1 : 0, input.timeoutMs == null ? null : int(input.timeoutMs, "timeoutMs", 100, 600000), json(input.config) ? JSON.stringify(input.config) : null],
++  );
++  return { id: Number(result.insertId) };
++}
++
++export async function updateDarwishAiRoutingTarget(targetId: number, input: TargetInput) {
++  await getPool().execute(
++    `UPDATE darwish_ai_routing_targets SET policy_id=?, provider_id=?, model_id=?, priority=?, weight=?, enabled=?, timeout_ms=?, config_json=? WHERE id=?`,
++    [id(input.policyId, "policyId"), id(input.providerId, "providerId"), id(input.modelId, "modelId"), int(input.priority, "priority", 0, 1000000), int(input.weight, "weight", 1, 1000000), bool(input.enabled) ? 1 : 0, input.timeoutMs == null ? null : int(input.timeoutMs, "timeoutMs", 100, 600000), json(input.config) ? JSON.stringify(input.config) : null, id(targetId)],
++  );
++}
++
++export async function deleteDarwishAiRoutingTarget(targetId: number) {
++  await getPool().execute("DELETE FROM darwish_ai_routing_targets WHERE id=?", [id(targetId, "targetId")]);
++}
++diff --git a/server/routes/darwishAiProviders.ts b/server/routes/darwishAiProviders.ts
++new file mode 100644
++--- /dev/null
+++++ b/server/routes/darwishAiProviders.ts
++@@ -0,0 +1,124 @@
++import { Router, type NextFunction, type Request, type Response } from "express";
++import { authenticateRequest } from "../auth";
++import { normalizeUserRole } from "../roleUtils";
++import {
++  createDarwishAiProvider,
++  createDarwishAiProviderModel,
++  createDarwishAiRoutingPolicy,
++  createDarwishAiRoutingTarget,
++  deleteDarwishAiProvider,
++  deleteDarwishAiProviderModel,
++  deleteDarwishAiProviderSecret,
++  deleteDarwishAiRoutingPolicy,
++  deleteDarwishAiRoutingTarget,
++  getDarwishAiProviderSettingsSnapshot,
++  saveDarwishAiProviderSecret,
++  updateDarwishAiProvider,
++  updateDarwishAiProviderModel,
++  updateDarwishAiRoutingPolicy,
++  updateDarwishAiRoutingTarget,
++} from "../services/darwish/aiProviders/darwishAiProviderSettingsService";
++import { getDarwishAiProviderFoundationState } from "../services/darwish/aiProviders/darwishAiProviderFoundationService";
++import { getDarwishAiProviderRoutingState } from "../services/darwish/aiProviders/darwishAiProviderRoutingService";
++
++type AsyncHandler = (req: Request, res: Response) => Promise<void>;
++
++function guarded(handler: AsyncHandler) {
++  return async (req: Request, res: Response, next: NextFunction) => {
++    try {
++      const user = await authenticateRequest(req);
++      if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
++      const role = normalizeUserRole(user.role ?? "");
++      if (role !== "Admin" && role !== "Developer") {
++        res.status(403).json({ error: "Darwish AI provider settings require Admin or Developer role" });
++        return;
++      }
++      await handler(req, res);
++    } catch (error) { next(error); }
++  };
++}
++
++function body(req: Request) { return req.body && typeof req.body === "object" ? req.body : {}; }
++
++export function createDarwishAiProvidersRouter() {
++  const router = Router();
++  router.get("/settings", guarded(async (_req, res) => { res.json(await getDarwishAiProviderSettingsSnapshot()); }));
++  router.get("/health", guarded(async (_req, res) => { res.json({ foundation: getDarwishAiProviderFoundationState(), routing: getDarwishAiProviderRoutingState(), phase: 3, darwishRuntimeIntegrated: false }); }));
++  router.post("/providers", guarded(async (req, res) => { res.status(201).json(await createDarwishAiProvider(body(req) as any)); }));
++  router.put("/providers/:id", guarded(async (req, res) => { await updateDarwishAiProvider(Number(req.params.id), body(req) as any); res.json({ ok: true }); }));
++  router.delete("/providers/:id", guarded(async (req, res) => { await deleteDarwishAiProvider(Number(req.params.id)); res.json({ ok: true }); }));
++  router.put("/providers/:id/secrets/:secretKey", guarded(async (req, res) => { await saveDarwishAiProviderSecret(Number(req.params.id), req.params.secretKey, String(body(req).value ?? "")); res.json({ ok: true }); }));
++  router.delete("/providers/:id/secrets/:secretKey", guarded(async (req, res) => { await deleteDarwishAiProviderSecret(Number(req.params.id), req.params.secretKey); res.json({ ok: true }); }));
++  router.post("/models", guarded(async (req, res) => { res.status(201).json(await createDarwishAiProviderModel(body(req) as any)); }));
++  router.put("/models/:id", guarded(async (req, res) => { await updateDarwishAiProviderModel(Number(req.params.id), body(req) as any); res.json({ ok: true }); }));
++  router.delete("/models/:id", guarded(async (req, res) => { await deleteDarwishAiProviderModel(Number(req.params.id)); res.json({ ok: true }); }));
++  router.post("/routing/policies", guarded(async (req, res) => { res.status(201).json(await createDarwishAiRoutingPolicy(body(req) as any)); }));
++  router.put("/routing/policies/:id", guarded(async (req, res) => { await updateDarwishAiRoutingPolicy(Number(req.params.id), body(req) as any); res.json({ ok: true }); }));
++  router.delete("/routing/policies/:id", guarded(async (req, res) => { await deleteDarwishAiRoutingPolicy(Number(req.params.id)); res.json({ ok: true }); }));
++  router.post("/routing/targets", guarded(async (req, res) => { res.status(201).json(await createDarwishAiRoutingTarget(body(req) as any)); }));
++  router.put("/routing/targets/:id", guarded(async (req, res) => { await updateDarwishAiRoutingTarget(Number(req.params.id), body(req) as any); res.json({ ok: true }); }));
++  router.delete("/routing/targets/:id", guarded(async (req, res) => { await deleteDarwishAiRoutingTarget(Number(req.params.id)); res.json({ ok: true }); }));
++  return router;
++}
++diff --git a/client/src/components/DarwishAiProvidersSettingsTab.tsx b/client/src/components/DarwishAiProvidersSettingsTab.tsx
++new file mode 100644
++--- /dev/null
+++++ b/client/src/components/DarwishAiProvidersSettingsTab.tsx
++@@ -0,0 +1,386 @@
++import { useEffect, useMemo, useState } from "react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
++import { Input } from "@/components/ui/input";
++import { Label } from "@/components/ui/label";
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
++import { Switch } from "@/components/ui/switch";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { Bot, ChevronDown, KeyRound, RefreshCw, Route, ServerCog, Trash2 } from "lucide-react";
++import { toast } from "sonner";
++
++type Provider = { id:number; providerKey:string; displayName:string; adapterType:string; baseUrl:string|null; enabled:boolean; config:Record<string,unknown>|null; configuredSecretKeys:string[] };
++type Model = { id:number; providerId:number; modelKey:string; displayName:string|null; enabled:boolean; config:Record<string,unknown>|null };
++type Policy = { id:number; routeKey:string; displayName:string; selectionStrategy:"priority"|"weighted_random"; enabled:boolean; maxAttempts:number; timeoutMs:number; config:Record<string,unknown>|null };
++type Target = { id:number; policyId:number; providerId:number; modelId:number; priority:number; weight:number; enabled:boolean; timeoutMs:number|null; config:Record<string,unknown>|null };
++type Snapshot = { providers:Provider[]; models:Model[]; policies:Policy[]; targets:Target[]; secretsReturnedInPlaintext:false };
++const API = "/api/darwish/ai-providers";
++
++async function api(path:string, init?:RequestInit) {
++  const response = await fetch(`${API}${path}`, { credentials:"include", headers:{"Content-Type":"application/json", ...(init?.headers||{})}, ...init });
++  const payload = await response.json().catch(() => ({}));
++  if (!response.ok) throw new Error(payload?.error || payload?.message || `Request failed (${response.status})`);
++  return payload;
++}
++
++export default function DarwishAiProvidersSettingsTab() {
++  const { isRTL } = useLanguage();
++  const [data,setData] = useState<Snapshot|null>(null);
++  const [loading,setLoading] = useState(true);
++  const [busy,setBusy] = useState<string|null>(null);
++  const [editingProviderId,setEditingProviderId] = useState<number|null>(null);
++  const [providerForm,setProviderForm] = useState({providerKey:"",displayName:"",adapterType:"",baseUrl:"",enabled:true});
++  const [modelForm,setModelForm] = useState({providerId:"",modelKey:"",displayName:""});
++  const [secretForm,setSecretForm] = useState({providerId:"",secretKey:"",value:""});
++  const [policyForm,setPolicyForm] = useState({routeKey:"",displayName:"",selectionStrategy:"priority" as "priority"|"weighted_random",maxAttempts:"3",timeoutMs:"60000"});
++  const [targetForm,setTargetForm] = useState({policyId:"",providerId:"",modelId:"",priority:"100",weight:"1",timeoutMs:""});
++
++  const refresh = async () => { setLoading(true); try { setData(await api("/settings")); } catch(error:any) { toast.error(error?.message||"Unable to load AI provider settings"); } finally { setLoading(false); } };
++  useEffect(() => { void refresh(); }, []);
++  const providers=data?.providers||[], models=data?.models||[], policies=data?.policies||[], targets=data?.targets||[];
++  const modelsForProvider = useMemo(() => models.filter(m => String(m.providerId)===targetForm.providerId), [models,targetForm.providerId]);
++  const run = async (key:string, action:()=>Promise<void>, success:string) => { setBusy(key); try { await action(); toast.success(success); await refresh(); } catch(error:any) { toast.error(error?.message||"Operation failed"); } finally { setBusy(null); } };
++  const resetProviderForm=()=>{setEditingProviderId(null);setProviderForm({providerKey:"",displayName:"",adapterType:"",baseUrl:"",enabled:true});};
++  const saveProvider=()=>run("provider",async()=>{const payload={...providerForm,baseUrl:providerForm.baseUrl.trim()||null,config:null}; if(editingProviderId) await api(`/providers/${editingProviderId}`,{method:"PUT",body:JSON.stringify(payload)}); else await api("/providers",{method:"POST",body:JSON.stringify(payload)}); resetProviderForm();},editingProviderId?(isRTL?"تم تحديث المزود":"Provider updated"):(isRTL?"تم إضافة المزود":"Provider added"));
++  const saveModel=()=>run("model",async()=>{await api("/models",{method:"POST",body:JSON.stringify({providerId:Number(modelForm.providerId),modelKey:modelForm.modelKey,displayName:modelForm.displayName||null,enabled:true,config:null})});setModelForm({...modelForm,modelKey:"",displayName:""});},isRTL?"تم إضافة الموديل":"Model added");
++  const saveSecret=()=>run("secret",async()=>{await api(`/providers/${Number(secretForm.providerId)}/secrets/${encodeURIComponent(secretForm.secretKey)}`,{method:"PUT",body:JSON.stringify({value:secretForm.value})});setSecretForm({...secretForm,secretKey:"",value:""});},isRTL?"تم حفظ المفتاح بشكل مشفر":"Secret saved encrypted");
++  const savePolicy=()=>run("policy",async()=>{await api("/routing/policies",{method:"POST",body:JSON.stringify({routeKey:policyForm.routeKey,displayName:policyForm.displayName,selectionStrategy:policyForm.selectionStrategy,enabled:true,maxAttempts:Number(policyForm.maxAttempts),timeoutMs:Number(policyForm.timeoutMs),config:null})});setPolicyForm({...policyForm,routeKey:"",displayName:""});},isRTL?"تم إضافة سياسة التوجيه":"Routing policy added");
++  const saveTarget=()=>run("target",async()=>{await api("/routing/targets",{method:"POST",body:JSON.stringify({policyId:Number(targetForm.policyId),providerId:Number(targetForm.providerId),modelId:Number(targetForm.modelId),priority:Number(targetForm.priority),weight:Number(targetForm.weight),enabled:true,timeoutMs:targetForm.timeoutMs?Number(targetForm.timeoutMs):null,config:null})});},isRTL?"تم إضافة هدف التوجيه":"Routing target added");
++
++  if (loading && !data) return <Card><CardContent className="flex min-h-48 items-center justify-center text-muted-foreground"><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Loading...</CardContent></Card>;
++
++  return <div className="space-y-5" dir={isRTL?"rtl":"ltr"}>
++    <Card className="overflow-hidden border-primary/15"><CardHeader className="bg-gradient-to-br from-primary/10 via-background to-background"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-start gap-3"><div className="rounded-2xl bg-primary p-3 text-primary-foreground shadow-sm"><Bot size={20}/></div><div><CardTitle>{isRTL?"بوابة مزودي الذكاء الاصطناعي — درويش":"Darwish AI Provider Gateway"}</CardTitle><CardDescription className="mt-1">{isRTL?"مزودون وموديلات ديناميكية بالكامل. الربط النهائي بمكالمات درويش في Phase 4.":"Fully dynamic providers and models. Darwish runtime calls stay untouched until Phase 4."}</CardDescription></div></div><div className="flex flex-wrap gap-2"><Badge variant="secondary">{providers.length} {isRTL?"مزود":"providers"}</Badge><Badge variant="secondary">{models.length} {isRTL?"موديل":"models"}</Badge><Badge variant="outline">{isRTL?"الأسرار لا تُعرض":"Secrets never displayed"}</Badge><Button variant="outline" size="sm" onClick={()=>void refresh()}><RefreshCw size={14}/></Button></div></div></CardHeader></Card>
++    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
++      <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><ServerCog size={17}/>{isRTL?"المزودون":"Providers"}</CardTitle><CardDescription>{isRTL?"القائمة من قاعدة البيانات فقط؛ لا توجد قائمة مزودين ثابتة.":"The list comes only from the database; no provider list is hardcoded."}</CardDescription></CardHeader><CardContent className="space-y-3">{providers.length===0?<div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{isRTL?"لا يوجد مزودون حتى الآن.":"No providers configured yet."}</div>:providers.map(p=><div key={p.id} className="rounded-2xl border bg-muted/10 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><p className="font-semibold">{p.displayName}</p><Badge variant={p.enabled?"default":"secondary"}>{p.enabled?(isRTL?"نشط":"Active"):(isRTL?"متوقف":"Disabled")}</Badge></div><p className="mt-1 text-xs text-muted-foreground" dir="ltr">{p.providerKey} · {p.adapterType}</p>{p.baseUrl?<p className="mt-1 break-all text-xs text-muted-foreground" dir="ltr">{p.baseUrl}</p>:null}</div><div className="flex gap-2"><Button size="sm" variant="outline" onClick={()=>{setEditingProviderId(p.id);setProviderForm({providerKey:p.providerKey,displayName:p.displayName,adapterType:p.adapterType,baseUrl:p.baseUrl||"",enabled:p.enabled});}}>{isRTL?"تعديل":"Edit"}</Button><Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={()=>run(`delete-provider-${p.id}`,async()=>{await api(`/providers/${p.id}`,{method:"DELETE"});},isRTL?"تم حذف المزود":"Provider deleted")}><Trash2 size={14}/></Button></div></div><div className="mt-3 flex flex-wrap gap-2">{models.filter(m=>m.providerId===p.id).map(m=><Badge key={m.id} variant="outline" className="gap-1.5">{m.displayName||m.modelKey}<button type="button" onClick={()=>run(`delete-model-${m.id}`,async()=>{await api(`/models/${m.id}`,{method:"DELETE"});},isRTL?"تم حذف الموديل":"Model deleted")}>×</button></Badge>)}{p.configuredSecretKeys.map(k=><Badge key={k} variant="secondary"><KeyRound size={11} className="mr-1"/>{k}</Badge>)}</div></div>)}</CardContent></Card>
++      <Card><CardHeader><CardTitle className="text-base">{editingProviderId?(isRTL?"تعديل المزود":"Edit provider"):(isRTL?"إضافة مزود":"Add provider")}</CardTitle><CardDescription>{isRTL?"أي API خاص أو OpenAI-compatible من خلال القيم التي تدخلها.":"Custom/private or OpenAI-compatible APIs using values you enter."}</CardDescription></CardHeader><CardContent className="space-y-3"><div><Label>{isRTL?"معرّف المزود":"Provider key"}</Label><Input dir="ltr" value={providerForm.providerKey} onChange={e=>setProviderForm({...providerForm,providerKey:e.target.value})}/></div><div><Label>{isRTL?"الاسم الظاهر":"Display name"}</Label><Input value={providerForm.displayName} onChange={e=>setProviderForm({...providerForm,displayName:e.target.value})}/></div><div><Label>{isRTL?"نوع Adapter":"Adapter type"}</Label><Input dir="ltr" value={providerForm.adapterType} onChange={e=>setProviderForm({...providerForm,adapterType:e.target.value})}/></div><div><Label>Base URL</Label><Input dir="ltr" value={providerForm.baseUrl} onChange={e=>setProviderForm({...providerForm,baseUrl:e.target.value})}/></div><div className="flex items-center justify-between rounded-xl border p-3"><Label>{isRTL?"نشط":"Enabled"}</Label><Switch checked={providerForm.enabled} onCheckedChange={enabled=>setProviderForm({...providerForm,enabled})}/></div><div className="flex gap-2"><Button className="flex-1" onClick={()=>void saveProvider()} disabled={busy==="provider"||!providerForm.providerKey||!providerForm.displayName||!providerForm.adapterType}>{editingProviderId?(isRTL?"حفظ":"Save"):(isRTL?"إضافة":"Add")}</Button>{editingProviderId?<Button variant="outline" onClick={resetProviderForm}>{isRTL?"إلغاء":"Cancel"}</Button>:null}</div></CardContent></Card>
++    </div>
++    <details className="group rounded-3xl border bg-background shadow-sm"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5"><div><p className="font-semibold">{isRTL?"الإعدادات المتقدمة":"Advanced settings"}</p><p className="mt-1 text-sm text-muted-foreground">{isRTL?"الموديلات، الأسرار المشفرة، وسياسات Routing/Fallback.":"Models, encrypted secrets, and Routing/Fallback policies."}</p></div><ChevronDown className="transition-transform group-open:rotate-180" size={18}/></summary><div className="grid gap-5 border-t p-5 xl:grid-cols-2">
++      <Card><CardHeader><CardTitle className="text-sm">{isRTL?"إضافة موديل":"Add model"}</CardTitle></CardHeader><CardContent className="space-y-3"><Select value={modelForm.providerId} onValueChange={providerId=>setModelForm({...modelForm,providerId})}><SelectTrigger><SelectValue placeholder={isRTL?"اختر المزود":"Select provider"}/></SelectTrigger><SelectContent>{providers.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.displayName}</SelectItem>)}</SelectContent></Select><Input dir="ltr" placeholder="model-key" value={modelForm.modelKey} onChange={e=>setModelForm({...modelForm,modelKey:e.target.value})}/><Input placeholder={isRTL?"الاسم الظاهر (اختياري)":"Display name (optional)"} value={modelForm.displayName} onChange={e=>setModelForm({...modelForm,displayName:e.target.value})}/><Button onClick={()=>void saveModel()} disabled={!modelForm.providerId||!modelForm.modelKey||busy==="model"}>{isRTL?"إضافة موديل":"Add model"}</Button></CardContent></Card>
++      <Card><CardHeader><CardTitle className="flex items-center gap-2 text-sm"><KeyRound size={15}/>{isRTL?"الأسرار / API Keys":"Secrets / API keys"}</CardTitle><CardDescription>{isRTL?"القيمة تحفظ مشفرة ولا ترجع للواجهة.":"Values are stored encrypted and never returned to the UI."}</CardDescription></CardHeader><CardContent className="space-y-3"><Select value={secretForm.providerId} onValueChange={providerId=>setSecretForm({...secretForm,providerId})}><SelectTrigger><SelectValue placeholder={isRTL?"اختر المزود":"Select provider"}/></SelectTrigger><SelectContent>{providers.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.displayName}</SelectItem>)}</SelectContent></Select><Input dir="ltr" placeholder="secret-key-name" value={secretForm.secretKey} onChange={e=>setSecretForm({...secretForm,secretKey:e.target.value})}/><Input dir="ltr" type="password" autoComplete="new-password" placeholder={isRTL?"القيمة السرية":"Secret value"} value={secretForm.value} onChange={e=>setSecretForm({...secretForm,value:e.target.value})}/><Button onClick={()=>void saveSecret()} disabled={!secretForm.providerId||!secretForm.secretKey||!secretForm.value||busy==="secret"}>{isRTL?"حفظ مشفر":"Save encrypted"}</Button></CardContent></Card>
++      <Card><CardHeader><CardTitle className="flex items-center gap-2 text-sm"><Route size={15}/>{isRTL?"سياسة Routing":"Routing policy"}</CardTitle></CardHeader><CardContent className="space-y-3"><Input dir="ltr" placeholder="darwish.default" value={policyForm.routeKey} onChange={e=>setPolicyForm({...policyForm,routeKey:e.target.value})}/><Input placeholder={isRTL?"الاسم الظاهر":"Display name"} value={policyForm.displayName} onChange={e=>setPolicyForm({...policyForm,displayName:e.target.value})}/><Select value={policyForm.selectionStrategy} onValueChange={(selectionStrategy:"priority"|"weighted_random")=>setPolicyForm({...policyForm,selectionStrategy})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="priority">priority</SelectItem><SelectItem value="weighted_random">weighted_random</SelectItem></SelectContent></Select><div className="grid grid-cols-2 gap-2"><Input dir="ltr" type="number" value={policyForm.maxAttempts} onChange={e=>setPolicyForm({...policyForm,maxAttempts:e.target.value})}/><Input dir="ltr" type="number" value={policyForm.timeoutMs} onChange={e=>setPolicyForm({...policyForm,timeoutMs:e.target.value})}/></div><Button onClick={()=>void savePolicy()} disabled={!policyForm.routeKey||!policyForm.displayName||busy==="policy"}>{isRTL?"إضافة السياسة":"Add policy"}</Button><div className="space-y-2 pt-2">{policies.map(p=><div key={p.id} className="flex items-center justify-between rounded-xl border p-2 text-xs"><span>{p.displayName} · {p.selectionStrategy}</span><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={()=>run(`delete-policy-${p.id}`,async()=>{await api(`/routing/policies/${p.id}`,{method:"DELETE"});},isRTL?"تم حذف السياسة":"Policy deleted")}><Trash2 size={12}/></Button></div>)}</div></CardContent></Card>
++      <Card><CardHeader><CardTitle className="text-sm">{isRTL?"هدف Routing / Fallback":"Routing / fallback target"}</CardTitle></CardHeader><CardContent className="space-y-3"><Select value={targetForm.policyId} onValueChange={policyId=>setTargetForm({...targetForm,policyId})}><SelectTrigger><SelectValue placeholder={isRTL?"اختر السياسة":"Select policy"}/></SelectTrigger><SelectContent>{policies.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.displayName}</SelectItem>)}</SelectContent></Select><Select value={targetForm.providerId} onValueChange={providerId=>setTargetForm({...targetForm,providerId,modelId:""})}><SelectTrigger><SelectValue placeholder={isRTL?"اختر المزود":"Select provider"}/></SelectTrigger><SelectContent>{providers.map(p=><SelectItem key={p.id} value={String(p.id)}>{p.displayName}</SelectItem>)}</SelectContent></Select><Select value={targetForm.modelId} onValueChange={modelId=>setTargetForm({...targetForm,modelId})}><SelectTrigger><SelectValue placeholder={isRTL?"اختر الموديل":"Select model"}/></SelectTrigger><SelectContent>{modelsForProvider.map(m=><SelectItem key={m.id} value={String(m.id)}>{m.displayName||m.modelKey}</SelectItem>)}</SelectContent></Select><div className="grid grid-cols-3 gap-2"><Input dir="ltr" type="number" value={targetForm.priority} onChange={e=>setTargetForm({...targetForm,priority:e.target.value})}/><Input dir="ltr" type="number" value={targetForm.weight} onChange={e=>setTargetForm({...targetForm,weight:e.target.value})}/><Input dir="ltr" type="number" value={targetForm.timeoutMs} onChange={e=>setTargetForm({...targetForm,timeoutMs:e.target.value})}/></div><Button onClick={()=>void saveTarget()} disabled={!targetForm.policyId||!targetForm.providerId||!targetForm.modelId||busy==="target"}>{isRTL?"إضافة الهدف":"Add target"}</Button><div className="space-y-2 pt-2">{targets.map(t=><div key={t.id} className="flex items-center justify-between rounded-xl border p-2 text-xs"><span>{policies.find(p=>p.id===t.policyId)?.displayName||t.policyId} → {providers.find(p=>p.id===t.providerId)?.displayName||t.providerId} / {models.find(m=>m.id===t.modelId)?.displayName||models.find(m=>m.id===t.modelId)?.modelKey||t.modelId} · P{t.priority}</span><Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={()=>run(`delete-target-${t.id}`,async()=>{await api(`/routing/targets/${t.id}`,{method:"DELETE"});},isRTL?"تم حذف الهدف":"Target deleted")}><Trash2 size={12}/></Button></div>)}</div></CardContent></Card>
++    </div></details>
++  </div>;
++}
++diff --git a/server/_core/index.ts b/server/_core/index.ts
++--- a/server/_core/index.ts
+++++ b/server/_core/index.ts
++@@ -58,2 +58,3 @@
++ import { developerHubRouter } from "../routes/developerHub";
+++import { createDarwishAiProvidersRouter } from "../routes/darwishAiProviders";
++ import { createTcrmDbBackupRouter } from "../routes/tcrmDatabaseBackup";
++@@ -470,4 +471,6 @@
++   registerShawkyOAuthRoutes(app);
++   // Developer Hub routes (Super Admin only)
++   app.use("/api", developerHubRouter);
+++  // Darwish AI Provider Gateway settings (Admin / Developer only)
+++  app.use("/api/darwish/ai-providers", createDarwishAiProvidersRouter());
++   // Landing Page Public Lead Intake
++diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
++--- a/client/src/pages/AdminSettings.tsx
+++++ b/client/src/pages/AdminSettings.tsx
++@@ -24,3 +24,4 @@
++ import CurrencySettingsTab from "@/components/CurrencySettingsTab";
++ import RakanSettingsTab from "@/components/RakanSettingsTab";
+++import DarwishAiProvidersSettingsTab from "@/components/DarwishAiProvidersSettingsTab";
++ import TamaraSettingsTab from "@/components/TamaraSettingsTab";
++@@ -126,4 +127,4 @@
++     "tfsIntegration", "thrsIntegration", "meta", "tiktok", "googleAds", "snapchat", "linkedin", "metaLeadgen",
++-    "rakan", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
+++    "rakan", "darwishAiProviders", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
++     "dynamicServices", "packages",
++   ];
++@@ -892,4 +893,5 @@
++       icon: <Sparkles size={16} />,
++       tabs: [
++         { value: "rakan", label: isRTL ? "راكان AI" : "Rakan AI", description: isRTL ? "مساعد النظام الذكي" : "AI assistant settings", icon: <Sparkles size={14} />, visible: true, badge: "AI" },
+++        { value: "darwishAiProviders", label: isRTL ? "مزودو درويش AI" : "Darwish AI Providers", description: isRTL ? "المزودون والموديلات والتوجيه" : "Providers, models, and routing", icon: <Bot size={14} />, visible: isAdmin || isDeveloper, badge: "AI" },
++         { value: "demoSync", label: isRTL ? "مزامنة الديمو" : "Demo Sync", description: isRTL ? "مزامنة نسخة العرض" : "Demo environment sync", icon: <RefreshCw size={14} />, visible: isSuperAdmin, badge: "Admin" },
++@@ -948,5 +950,5 @@
++       id: "development",
++       label: isRTL ? "التطوير" : "Development",
++       icon: <Terminal size={15} />,
++-      values: ["developerHub", "rakan"],
+++      values: ["developerHub", "rakan", "darwishAiProviders"],
++     },
++@@ -1594,5 +1596,9 @@
++           <TabsContent value="rakan" className="mt-4">
++             <RakanSettingsTab />
++           </TabsContent>
+++
+++          {(isAdmin || isDeveloper) && <TabsContent value="darwishAiProviders" className="mt-4">
+++            <DarwishAiProvidersSettingsTab />
+++          </TabsContent>}
++ 
++          {/* ── Currency / Exchange Rates Tab ── */}
