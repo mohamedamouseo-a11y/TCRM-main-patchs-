@@ -1,0 +1,494 @@
+diff --git a/drizzle/migrations/20260829_darwish_ai_provider_phase2_routing_fallback.sql b/drizzle/migrations/20260829_darwish_ai_provider_phase2_routing_fallback.sql
+new file mode 100644
+--- /dev/null
++++ b/drizzle/migrations/20260829_darwish_ai_provider_phase2_routing_fallback.sql
+@@ -0,0 +1,38 @@
++CREATE TABLE IF NOT EXISTS darwish_ai_routing_policies (
++  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++  route_key VARCHAR(128) NOT NULL,
++  display_name VARCHAR(191) NOT NULL,
++  selection_strategy VARCHAR(64) NOT NULL DEFAULT 'priority',
++  enabled BOOLEAN NOT NULL DEFAULT TRUE,
++  max_attempts INT UNSIGNED NOT NULL DEFAULT 3,
++  timeout_ms INT UNSIGNED NOT NULL DEFAULT 60000,
++  config_json JSON NULL,
++  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++  PRIMARY KEY (id),
++  UNIQUE KEY uq_darwish_ai_routing_policy_route (route_key),
++  KEY idx_darwish_ai_routing_policy_enabled (enabled)
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
++
++--> statement-breakpoint
++
++CREATE TABLE IF NOT EXISTS darwish_ai_routing_targets (
++  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
++  policy_id BIGINT UNSIGNED NOT NULL,
++  provider_id BIGINT UNSIGNED NOT NULL,
++  model_id BIGINT UNSIGNED NOT NULL,
++  priority INT UNSIGNED NOT NULL DEFAULT 100,
++  weight INT UNSIGNED NOT NULL DEFAULT 1,
++  enabled BOOLEAN NOT NULL DEFAULT TRUE,
++  timeout_ms INT UNSIGNED NULL,
++  config_json JSON NULL,
++  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++  PRIMARY KEY (id),
++  UNIQUE KEY uq_darwish_ai_routing_target (policy_id, provider_id, model_id),
++  KEY idx_darwish_ai_routing_target_order (policy_id, enabled, priority),
++  KEY idx_darwish_ai_routing_target_provider (provider_id),
++  KEY idx_darwish_ai_routing_target_model (model_id)
++) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
++
+diff --git a/scripts/apply-darwish-ai-provider-phase2-migration.ts b/scripts/apply-darwish-ai-provider-phase2-migration.ts
+new file mode 100644
+--- /dev/null
++++ b/scripts/apply-darwish-ai-provider-phase2-migration.ts
+@@ -0,0 +1,113 @@
++import fs from "node:fs";
++import path from "node:path";
++import mysql, { type RowDataPacket } from "mysql2/promise";
++
++const MIGRATION_FILE = "drizzle/migrations/20260829_darwish_ai_provider_phase2_routing_fallback.sql";
++const PHASE1_TABLES = [
++  "darwish_ai_providers",
++  "darwish_ai_provider_secrets",
++  "darwish_ai_provider_models",
++] as const;
++const REQUIRED_TABLES = [
++  "darwish_ai_routing_policies",
++  "darwish_ai_routing_targets",
++] as const;
++const REQUIRED_CONFIRMATION = "APPLY_DARWISH_AI_PROVIDER_PHASE2";
++const apply = process.argv.includes("--apply");
++
++function stripComments(sql: string) {
++  return sql.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n").trim();
++}
++
++function splitStatements(sql: string) {
++  return sql
++    .split(/-->\s*statement-breakpoint/g)
++    .map(stripComments)
++    .filter(Boolean)
++    .map((statement) => statement.replace(/;\s*$/, "").trim());
++}
++
++function validateStatements(statements: string[]) {
++  if (statements.length !== REQUIRED_TABLES.length) {
++    throw new Error(`Expected exactly ${REQUIRED_TABLES.length} CREATE TABLE statements`);
++  }
++  const forbidden = /(?:^|;)\s*(DROP|ALTER|INSERT|UPDATE|DELETE|TRUNCATE|REPLACE|GRANT|REVOKE)\b/im;
++  for (const [index, statement] of statements.entries()) {
++    if (forbidden.test(statement)) throw new Error(`Forbidden SQL keyword in statement ${index + 1}`);
++    const expected = new RegExp(`^CREATE\\s+TABLE\\s+IF\\s+NOT\\s+EXISTS\\s+${REQUIRED_TABLES[index]}\\b`, "i");
++    if (!expected.test(statement)) throw new Error(`Unexpected statement ${index + 1}`);
++  }
++}
++
++async function tableExists(conn: mysql.Connection, table: string) {
++  const [rows] = await conn.execute<RowDataPacket[]>(
++    "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1",
++    [table],
++  );
++  return rows.length > 0;
++}
++
++async function rowCount(conn: mysql.Connection, table: string) {
++  const [rows] = await conn.query<RowDataPacket[]>(`SELECT COUNT(*) AS cnt FROM \`${table}\``);
++  return Number(rows[0]?.cnt ?? 0);
++}
++
++async function main() {
++  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
++  if (apply && process.env.DARWISH_AI_PROVIDER_PHASE2_CONFIRM !== REQUIRED_CONFIRMATION) {
++    throw new Error(`Set DARWISH_AI_PROVIDER_PHASE2_CONFIRM=${REQUIRED_CONFIRMATION}`);
++  }
++
++  const fullPath = path.join(process.cwd(), MIGRATION_FILE);
++  const statements = splitStatements(fs.readFileSync(fullPath, "utf8"));
++  validateStatements(statements);
++
++  const conn = await mysql.createConnection(process.env.DATABASE_URL);
++  try {
++    const phase1 = Object.fromEntries(
++      await Promise.all(PHASE1_TABLES.map(async (table) => [table, await tableExists(conn, table)])),
++    );
++    if (Object.values(phase1).some((exists) => !exists)) {
++      throw new Error("Darwish AI provider Phase 1 foundation is incomplete; refusing Phase 2");
++    }
++
++    const before = Object.fromEntries(
++      await Promise.all(REQUIRED_TABLES.map(async (table) => [table, await tableExists(conn, table)])),
++    );
++    const existingCount = Object.values(before).filter(Boolean).length;
++    if (existingCount > 0 && existingCount < REQUIRED_TABLES.length) {
++      throw new Error("Partial Darwish AI provider Phase 2 schema detected; refusing automatic repair");
++    }
++
++    console.log(JSON.stringify({
++      mode: apply ? "apply" : "dry-run",
++      migrationFile: MIGRATION_FILE,
++      phase1,
++      before,
++      validatedStatements: statements.length,
++      plannedAction: existingCount === REQUIRED_TABLES.length
++        ? "verify_existing_phase2_only"
++        : "create_exact_phase2_routing_tables_only",
++      dbPushUsed: false,
++      drizzleGenerateUsed: false,
++      drizzleMigrateUsed: false,
++      seededPolicies: 0,
++      seededTargets: 0,
++    }, null, 2));
++
++    if (!apply || existingCount === REQUIRED_TABLES.length) return;
++
++    for (const statement of statements) await conn.query(statement);
++
++    const after = Object.fromEntries(
++      await Promise.all(REQUIRED_TABLES.map(async (table) => [table, await tableExists(conn, table)])),
++    );
++    if (Object.values(after).some((exists) => !exists)) throw new Error("Phase 2 table verification failed");
++
++    const counts = Object.fromEntries(
++      await Promise.all(REQUIRED_TABLES.map(async (table) => [table, await rowCount(conn, table)])),
++    );
++    if (Object.values(counts).some((count) => count !== 0)) {
++      throw new Error("Phase 2 migration must not seed routing policies or targets");
++    }
++
++    console.log(JSON.stringify({ migrationApplied: true, schemaWrites: REQUIRED_TABLES.length, after, counts, dataWrites: 0 }, null, 2));
++  } finally {
++    await conn.end();
++  }
++}
++
++main().catch((error) => {
++  console.error("[darwish-ai-provider-phase2] failed", error instanceof Error ? error.message : error);
++  process.exit(1);
++});
++
+diff --git a/server/services/darwish/aiProviders/darwishAiProviderRoutingService.ts b/server/services/darwish/aiProviders/darwishAiProviderRoutingService.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/darwish/aiProviders/darwishAiProviderRoutingService.ts
+@@ -0,0 +1,222 @@
++export const DARWISH_AI_PROVIDER_ROUTING_STATUS = "routing_fallback_ready_not_integrated" as const;
++
++export type DarwishAiSelectionStrategy = "priority" | "weighted_random";
++
++export type DarwishAiRoutingPolicy = {
++  id: number;
++  routeKey: string;
++  displayName: string;
++  selectionStrategy: DarwishAiSelectionStrategy;
++  enabled: boolean;
++  maxAttempts: number;
++  timeoutMs: number;
++  config?: Record<string, unknown> | null;
++};
++
++export type DarwishAiRoutingTarget = {
++  id: number;
++  policyId: number;
++  providerId: number;
++  modelId: number;
++  priority: number;
++  weight: number;
++  enabled: boolean;
++  providerEnabled: boolean;
++  modelEnabled: boolean;
++  timeoutMs?: number | null;
++  config?: Record<string, unknown> | null;
++};
++
++export type DarwishAiRoutePlanTarget = DarwishAiRoutingTarget & {
++  effectiveTimeoutMs: number;
++  attemptNumber: number;
++};
++
++export type DarwishAiRoutePlan = {
++  routeKey: string;
++  policyId: number;
++  selectionStrategy: DarwishAiSelectionStrategy;
++  maxAttempts: number;
++  targets: DarwishAiRoutePlanTarget[];
++};
++
++export type DarwishAiRouteAttempt = {
++  targetId: number;
++  providerId: number;
++  modelId: number;
++  attemptNumber: number;
++  durationMs: number;
++  outcome: "success" | "error" | "timeout";
++};
++
++export class DarwishAiRouteExhaustedError extends Error {
++  readonly attempts: DarwishAiRouteAttempt[];
++
++  constructor(attempts: DarwishAiRouteAttempt[]) {
++    super("Darwish AI route exhausted without a successful target");
++    this.name = "DarwishAiRouteExhaustedError";
++    this.attempts = attempts;
++  }
++}
++
++function requireInteger(value: unknown, field: string, minimum: number, maximum: number): number {
++  if (!Number.isInteger(value) || Number(value) < minimum || Number(value) > maximum) {
++    throw new Error(`${field} must be an integer between ${minimum} and ${maximum}`);
++  }
++  return Number(value);
++}
++
++function normalizeRouteKey(value: unknown): string {
++  if (typeof value !== "string") throw new Error("routeKey must be a string");
++  const routeKey = value.trim().toLowerCase();
++  if (!/^[a-z0-9][a-z0-9._-]{0,127}$/.test(routeKey)) {
++    throw new Error("routeKey contains unsupported characters");
++  }
++  return routeKey;
++}
++
++function assertPolicy(policy: DarwishAiRoutingPolicy) {
++  normalizeRouteKey(policy.routeKey);
++  if (!policy.enabled) throw new Error(`Darwish AI route ${policy.routeKey} is disabled`);
++  if (!(["priority", "weighted_random"] as string[]).includes(policy.selectionStrategy)) {
++    throw new Error("Unsupported Darwish AI selection strategy");
++  }
++  requireInteger(policy.maxAttempts, "maxAttempts", 1, 100);
++  requireInteger(policy.timeoutMs, "timeoutMs", 100, 600000);
++}
++
++function weightedOrder(targets: DarwishAiRoutingTarget[], random: () => number) {
++  const remaining = [...targets];
++  const ordered: DarwishAiRoutingTarget[] = [];
++  while (remaining.length > 0) {
++    const totalWeight = remaining.reduce((sum, item) => sum + Math.max(1, item.weight), 0);
++    let cursor = Math.min(Math.max(random(), 0), 0.999999999999) * totalWeight;
++    let selectedIndex = remaining.length - 1;
++    for (let index = 0; index < remaining.length; index += 1) {
++      cursor -= Math.max(1, remaining[index].weight);
++      if (cursor < 0) {
++        selectedIndex = index;
++        break;
++      }
++    }
++    ordered.push(remaining.splice(selectedIndex, 1)[0]);
++  }
++  return ordered;
++}
++
++export function buildDarwishAiRoutePlan(
++  policy: DarwishAiRoutingPolicy,
++  targets: DarwishAiRoutingTarget[],
++  random: () => number = Math.random,
++): DarwishAiRoutePlan {
++  assertPolicy(policy);
++
++  const eligible = targets
++    .filter((target) => target.policyId === policy.id && target.enabled && target.providerEnabled && target.modelEnabled)
++    .map((target) => ({
++      ...target,
++      priority: requireInteger(target.priority, "priority", 0, 1000000),
++      weight: requireInteger(target.weight, "weight", 1, 1000000),
++      timeoutMs: target.timeoutMs == null
++        ? null
++        : requireInteger(target.timeoutMs, "target.timeoutMs", 100, 600000),
++    }));
++
++  const priorities = [...new Set(eligible.map((target) => target.priority))].sort((a, b) => a - b);
++  const ordered: DarwishAiRoutingTarget[] = [];
++  for (const priority of priorities) {
++    const tier = eligible.filter((target) => target.priority === priority);
++    ordered.push(...(policy.selectionStrategy === "weighted_random"
++      ? weightedOrder(tier, random)
++      : tier.sort((a, b) => a.id - b.id)));
++  }
++
++  const selected = ordered.slice(0, policy.maxAttempts);
++  if (selected.length === 0) throw new Error(`Darwish AI route ${policy.routeKey} has no eligible targets`);
++
++  return {
++    routeKey: normalizeRouteKey(policy.routeKey),
++    policyId: policy.id,
++    selectionStrategy: policy.selectionStrategy,
++    maxAttempts: policy.maxAttempts,
++    targets: selected.map((target, index) => ({
++      ...target,
++      effectiveTimeoutMs: target.timeoutMs ?? policy.timeoutMs,
++      attemptNumber: index + 1,
++    })),
++  };
++}
++
++function timeoutError() {
++  const error = new Error("Darwish AI provider attempt timed out");
++  error.name = "DarwishAiProviderTimeoutError";
++  return error;
++}
++
++async function executeWithTimeout<T>(
++  target: DarwishAiRoutePlanTarget,
++  execute: (target: DarwishAiRoutePlanTarget, signal: AbortSignal) => Promise<T>,
++) {
++  const controller = new AbortController();
++  let timer: NodeJS.Timeout | undefined;
++  try {
++    return await Promise.race([
++      execute(target, controller.signal),
++      new Promise<T>((_, reject) => {
++        timer = setTimeout(() => {
++          controller.abort();
++          reject(timeoutError());
++        }, target.effectiveTimeoutMs);
++      }),
++    ]);
++  } finally {
++    if (timer) clearTimeout(timer);
++  }
++}
++
++export async function executeDarwishAiRoute<T>(
++  plan: DarwishAiRoutePlan,
++  execute: (target: DarwishAiRoutePlanTarget, signal: AbortSignal) => Promise<T>,
++  isRetryable: (error: unknown, target: DarwishAiRoutePlanTarget) => boolean,
++): Promise<{ value: T; selectedTarget: DarwishAiRoutePlanTarget; attempts: DarwishAiRouteAttempt[] }> {
++  const attempts: DarwishAiRouteAttempt[] = [];
++
++  for (const target of plan.targets) {
++    const startedAt = Date.now();
++    try {
++      const value = await executeWithTimeout(target, execute);
++      attempts.push({
++        targetId: target.id,
++        providerId: target.providerId,
++        modelId: target.modelId,
++        attemptNumber: target.attemptNumber,
++        durationMs: Date.now() - startedAt,
++        outcome: "success",
++      });
++      return { value, selectedTarget: target, attempts };
++    } catch (error) {
++      const timedOut = error instanceof Error && error.name === "DarwishAiProviderTimeoutError";
++      attempts.push({
++        targetId: target.id,
++        providerId: target.providerId,
++        modelId: target.modelId,
++        attemptNumber: target.attemptNumber,
++        durationMs: Date.now() - startedAt,
++        outcome: timedOut ? "timeout" : "error",
++      });
++      if (!isRetryable(error, target)) throw error;
++    }
++  }
++
++  throw new DarwishAiRouteExhaustedError(attempts);
++}
++
++export function getDarwishAiProviderRoutingState() {
++  return {
++    status: DARWISH_AI_PROVIDER_ROUTING_STATUS,
++    routingEnabled: true,
++    fallbackEnabled: true,
++    policiesHardcoded: false,
++    targetsHardcoded: false,
++    selectionStrategies: ["priority", "weighted_random"],
++    perPolicyTimeoutSupported: true,
++    perTargetTimeoutSupported: true,
++    disabledProviderFilteringSupported: true,
++    disabledModelFilteringSupported: true,
++    darwishAiCallsRoutedThroughRegistry: false,
++    providerAdaptersInvokedByThisPhase: false,
++    usageTrackingEnabled: false,
++    costTrackingEnabled: false,
++    outboundActions: 0,
++  } as const;
++}
++
+diff --git a/server/services/darwish/aiProviders/darwishAiProviderRoutingService.test.ts b/server/services/darwish/aiProviders/darwishAiProviderRoutingService.test.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/darwish/aiProviders/darwishAiProviderRoutingService.test.ts
+@@ -0,0 +1,88 @@
++import { describe, expect, it } from "vitest";
++import {
++  buildDarwishAiRoutePlan,
++  DarwishAiRouteExhaustedError,
++  executeDarwishAiRoute,
++  type DarwishAiRoutingPolicy,
++  type DarwishAiRoutingTarget,
++} from "./darwishAiProviderRoutingService";
++
++const policy: DarwishAiRoutingPolicy = {
++  id: 10,
++  routeKey: "darwish.default",
++  displayName: "Default",
++  selectionStrategy: "priority",
++  enabled: true,
++  maxAttempts: 3,
++  timeoutMs: 1000,
++};
++
++const targets: DarwishAiRoutingTarget[] = [
++  { id: 3, policyId: 10, providerId: 3, modelId: 30, priority: 20, weight: 1, enabled: true, providerEnabled: true, modelEnabled: true },
++  { id: 2, policyId: 10, providerId: 2, modelId: 20, priority: 10, weight: 1, enabled: true, providerEnabled: true, modelEnabled: true },
++  { id: 1, policyId: 10, providerId: 1, modelId: 10, priority: 10, weight: 1, enabled: true, providerEnabled: true, modelEnabled: true },
++];
++
++describe("Darwish AI provider routing", () => {
++  it("builds deterministic priority fallback order", () => {
++    const plan = buildDarwishAiRoutePlan(policy, targets);
++    expect(plan.targets.map((item) => item.id)).toEqual([1, 2, 3]);
++  });
++
++  it("filters disabled providers and models", () => {
++    const plan = buildDarwishAiRoutePlan(policy, [
++      { ...targets[0], providerEnabled: false },
++      { ...targets[1], modelEnabled: false },
++      targets[2],
++    ]);
++    expect(plan.targets.map((item) => item.id)).toEqual([1]);
++  });
++
++  it("uses weighted ordering only inside the same priority tier", () => {
++    const plan = buildDarwishAiRoutePlan({ ...policy, selectionStrategy: "weighted_random" }, [
++      { ...targets[0], priority: 1, weight: 1 },
++      { ...targets[1], priority: 1, weight: 9 },
++      { ...targets[2], priority: 2, weight: 100 },
++    ], () => 0.5);
++    expect(plan.targets[0].priority).toBe(1);
++    expect(plan.targets[1].priority).toBe(1);
++    expect(plan.targets[2].priority).toBe(2);
++  });
++
++  it("falls back after retryable failures", async () => {
++    const plan = buildDarwishAiRoutePlan(policy, targets);
++    const result = await executeDarwishAiRoute(
++      plan,
++      async (target) => {
++        if (target.id !== 3) throw new Error("retryable");
++        return "ok";
++      },
++      () => true,
++    );
++    expect(result.value).toBe("ok");
++    expect(result.selectedTarget.id).toBe(3);
++    expect(result.attempts.map((item) => item.outcome)).toEqual(["error", "error", "success"]);
++  });
++
++  it("stops immediately on non-retryable errors", async () => {
++    const plan = buildDarwishAiRoutePlan(policy, targets);
++    await expect(executeDarwishAiRoute(plan, async () => {
++      throw new Error("auth");
++    }, () => false)).rejects.toThrow("auth");
++  });
++
++  it("throws an exhausted error after all fallback targets fail", async () => {
++    const plan = buildDarwishAiRoutePlan(policy, targets);
++    await expect(executeDarwishAiRoute(plan, async () => {
++      throw new Error("retryable");
++    }, () => true)).rejects.toBeInstanceOf(DarwishAiRouteExhaustedError);
++  });
++});
