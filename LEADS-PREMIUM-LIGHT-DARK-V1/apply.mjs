@@ -37,7 +37,7 @@ function validateProjectShape() {
   requireFile(LEADS_PAGE, "TCRM Leads page");
 
   const leads = read(LEADS_PAGE);
-  const requiredMarkers = ["slide-up", "rounded-[24px]", "data-slot=\"card\""];
+  const requiredMarkers = ["export default function LeadsList", "slide-up", "rounded-[24px]"];
   const missing = requiredMarkers.filter((marker) => !leads.includes(marker));
   if (missing.length) {
     fail(`Leads DOM signature drift detected. Missing marker(s): ${missing.join(", ")}. Stop; do not force-apply.`);
