@@ -1,0 +1,421 @@
+diff --git a/client/src/components/wadie/WadieRecommendationReuse.tsx b/client/src/components/wadie/WadieRecommendationReuse.tsx
+new file mode 100644
+index 0000000..7331f29
+--- /dev/null
++++ b/client/src/components/wadie/WadieRecommendationReuse.tsx
+@@ -0,0 +1,156 @@
++import { useState } from "react";
++import { Activity, BookOpenCheck, CheckCircle2, CirclePause, ShieldCheck, XCircle } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import { Input } from "@/components/ui/input";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { trpc } from "@/lib/trpc";
++
++type ReuseDecision = "approved-reference" | "hold" | "rejected";
++
++function variantFor(status: string): "destructive" | "secondary" | "outline" {
++  if (status === "rejected") return "destructive";
++  if (status === "approved-reference") return "secondary";
++  return "outline";
++}
++
++export default function WadieRecommendationReuse() {
++  const { isRTL } = useLanguage();
++  const text = (en: string, ar: string) => (isRTL ? ar : en);
++  const [notes, setNotes] = useState<Record<string, string>>({});
++  const query = trpc.wadie.recommendationReuse.useQuery(undefined, {
++    refetchOnWindowFocus: false,
++    refetchInterval: 60_000,
++  });
++  const review = trpc.wadie.recordRecommendationReuseReview.useMutation({
++    onSuccess: () => void query.refetch(),
++  });
++  const data = query.data;
++
++  const statusLabel = (value: string) => {
++    if (value === "approved-reference") return text("Approved reference", "مرجع معتمد");
++    if (value === "hold") return text("On hold", "معلّق");
++    if (value === "rejected") return text("Rejected", "مرفوض");
++    return text("Pending review", "بانتظار المراجعة");
++  };
++
++  const submit = (item: any, decision: ReuseDecision) => {
++    review.mutate({
++      registryId: item.registryId,
++      decision,
++      note: notes[item.registryId]?.trim() || undefined,
++    });
++  };
++
++  return (
++    <Card data-wadie-recommendation-reuse="phase21-v1" className="rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)]">
++      <CardHeader className="pb-3">
++        <div className="flex flex-wrap items-center justify-between gap-3">
++          <div>
++            <CardTitle className="flex items-center gap-2 text-xl">
++              <BookOpenCheck className="h-5 w-5 text-cyan-600" />
++              {text("Guardrailed Recommendation Reuse", "إعادة استخدام التوصيات بضوابط")}
++            </CardTitle>
++            <p className="mt-1 text-xs font-semibold text-muted-foreground">
++              {text(
++                "Human-review Phase 20 playbooks before they can be used as advisory references. Approval never injects, executes, or applies a recommendation automatically.",
++                "راجع Playbooks من Phase 20 بشرياً قبل السماح باستخدامها كمراجع استشارية. الاعتماد لا يحقن أو ينفذ أو يطبق أي توصية تلقائياً.",
++              )}
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold">
++              <ShieldCheck className="me-1 h-3.5 w-3.5 text-emerald-500" />
++              {text("Reference only", "مرجع فقط")}
++            </Badge>
++            <Button variant="outline" size="sm" className="h-9 rounded-xl font-bold" disabled={query.isFetching} onClick={() => void query.refetch()}>
++              <Activity className={`me-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />
++              {text("Refresh reuse review", "تحديث مراجعة إعادة الاستخدام")}
++            </Button>
++          </div>
++        </div>
++      </CardHeader>
++
++      <CardContent className="space-y-4">
++        {data && (
++          <>
++            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
++              {[
++                [text("Ready playbooks", "Playbooks الجاهزة"), data.totals.readyPlaybooks],
++                [text("Pending", "قيد المراجعة"), data.totals.pending],
++                [text("Approved references", "مراجع معتمدة"), data.totals.approvedReference],
++                [text("Held / Rejected", "معلق / مرفوض"), data.totals.hold + data.totals.rejected],
++              ].map(([label, value]) => (
++                <div key={String(label)} className="rounded-xl border border-border/60 bg-background/55 p-3">
++                  <p className="text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
++                  <p className="mt-1 text-lg font-black">{value}</p>
++                </div>
++              ))}
++            </div>
++
++            <div className="space-y-3">
++              {data.candidates.slice(0, 24).map((item) => (
++                <div key={item.registryId} className="rounded-2xl border border-border/60 bg-background/45 p-4">
++                  <div className="flex flex-wrap items-center justify-between gap-2">
++                    <div className="min-w-0">
++                      <div className="flex flex-wrap items-center gap-2">
++                        <Badge variant="outline" className="rounded-full text-[10px]">{item.kind}</Badge>
++                        <span className="truncate text-xs font-black">{item.title}</span>
++                        <Badge variant={variantFor(item.reuseReviewStatus)} className="rounded-full text-[10px]">{statusLabel(item.reuseReviewStatus)}</Badge>
++                      </div>
++                      <p className="mt-1 text-[10px] font-semibold text-muted-foreground">{item.objective}</p>
++                    </div>
++                    <div className="text-end text-[10px] font-semibold text-muted-foreground">
++                      <div>{text("Reference", "المرجع")}: {item.humanRecommendationReferenceEnabled ? text("Available", "متاح") : text("Inactive", "غير مفعل")}</div>
++                      <div>{text("Execution", "التنفيذ")}: {text("Not executable", "غير قابل للتنفيذ")}</div>
++                    </div>
++                  </div>
++
++                  {item.instructions && <p className="mt-2 rounded-lg border border-border/50 bg-card px-3 py-2 text-[10px] font-semibold text-muted-foreground">{item.instructions}</p>}
++                  {item.guardrailNotes && <p className="mt-2 text-[10px] font-semibold text-amber-700 dark:text-amber-300">{text("Guardrails", "الضوابط")}: {item.guardrailNotes}</p>}
++
++                  <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
++                    <Input
++                      value={notes[item.registryId] ?? item.reuseReviewNote ?? ""}
++                      onChange={(event) => setNotes((current) => ({ ...current, [item.registryId]: event.target.value }))}
++                      maxLength={600}
++                      placeholder={text("Optional human reuse-review note", "ملاحظة بشرية اختيارية لمراجعة إعادة الاستخدام")}
++                      className="h-9 rounded-xl text-xs"
++                    />
++                    <div className="flex flex-wrap gap-2">
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-emerald-500/30 text-emerald-700 dark:text-emerald-300" disabled={review.isPending} onClick={() => submit(item, "approved-reference")}>
++                        <CheckCircle2 className="me-1.5 h-3.5 w-3.5" />{text("Approve as reference", "اعتماد كمرجع")}
++                      </Button>
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-amber-500/30 text-amber-700 dark:text-amber-300" disabled={review.isPending} onClick={() => submit(item, "hold")}>
++                        <CirclePause className="me-1.5 h-3.5 w-3.5" />{text("Hold", "تعليق")}
++                      </Button>
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-destructive/30 text-destructive" disabled={review.isPending} onClick={() => submit(item, "rejected")}>
++                        <XCircle className="me-1.5 h-3.5 w-3.5" />{text("Reject", "رفض")}
++                      </Button>
++                    </div>
++                  </div>
++                </div>
++              ))}
++            </div>
++
++            {data.candidates.length === 0 && (
++              <div className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-xs font-semibold text-muted-foreground">
++                {text("No Phase 20 playbooks are ready for reuse review yet.", "لا توجد Playbooks من Phase 20 جاهزة لمراجعة إعادة الاستخدام حتى الآن.")}
++              </div>
++            )}
++          </>
++        )}
++
++        {review.error && <p className="text-xs font-semibold text-destructive">{review.error.message}</p>}
++        {query.error && <p className="text-xs font-semibold text-destructive">{query.error.message}</p>}
++        <p className="text-[10px] font-semibold text-muted-foreground">
++          {text(
++            "Phase 21 approves playbooks for human advisory reference only. It performs no automatic recommendation injection, no execution, no MCP calls, no ad-platform mutations, no learning-memory writes, and no execution-policy changes.",
++            "Phase 21 يعتمد Playbooks كمراجع استشارية بشرية فقط. لا يقوم بحقن توصيات تلقائياً أو التنفيذ أو استدعاء MCP أو تعديل منصات الإعلانات أو كتابة ذاكرة تعلم أو تغيير سياسة التنفيذ.",
++          )}
++        </p>
++      </CardContent>
++    </Card>
++  );
++}
++diff --git a/client/src/pages/MediaBuyerPage.tsx b/client/src/pages/MediaBuyerPage.tsx
++index 4f7a431..d132ba5 100644
++--- a/client/src/pages/MediaBuyerPage.tsx
+++++ b/client/src/pages/MediaBuyerPage.tsx
++@@ -5,6 +5,7 @@ import WadieLearningCandidates from "@/components/wadie/WadieLearningCandidates"
++ import WadieLearningReview from "@/components/wadie/WadieLearningReview";
++ import WadieApprovedLearningRegistry from "@/components/wadie/WadieApprovedLearningRegistry";
++ import WadiePlaybookCuration from "@/components/wadie/WadiePlaybookCuration";
+++import WadieRecommendationReuse from "@/components/wadie/WadieRecommendationReuse";
++ import {
++   Activity,
++   BarChart3,
++@@ -39,6 +40,8 @@ import {
++ 
++         <WadiePlaybookCuration />
++ 
+++        <WadieRecommendationReuse />
+++
++         <WadieMonitoringAlerts onAudit={(platform, accountId) => {
++           setAuditPlatform(platform);
++           setAuditAccountId(accountId);
++diff --git a/server/services/wadie/wadieIntegrationService.ts b/server/services/wadie/wadieIntegrationService.ts
++index 742e509..9698501 100644
++--- a/server/services/wadie/wadieIntegrationService.ts
+++++ b/server/services/wadie/wadieIntegrationService.ts
++@@ -20,3 +20,24 @@ export function getWadiePhase20Capabilities() {
++     executionStillRequiresHumanApproval: true,
++   };
++ }
+++
+++export function getWadiePhase21Capabilities() {
+++  return {
+++    ...getWadiePhase20Capabilities(),
+++    phase: "guardrailed-recommendation-reuse-v1" as const,
+++    guardrailedRecommendationReuseReviewEnabled: true,
+++    reuseCandidatesDerivedFromPhase20ReadyOnly: true,
+++    humanReuseApprovalRequired: true,
+++    humanRecommendationReferenceEnabled: true,
+++    reuseReviewPersistenceLocalOnly: true,
+++    automaticRecommendationInjectionEnabled: false,
+++    recommendationExecutionEnabled: false,
+++    learningMemoryWritesApplied: false,
+++    reuseLiveMcpCallsApplied: false,
+++    reuseAdPlatformMutationsApplied: false,
+++    automaticOptimizationLearningApplied: false,
+++    automaticRecommendationReuseApplied: false,
+++    automaticExecutionPolicyChangesApplied: false,
+++    executionStillRequiresHumanApproval: true,
+++  };
+++}
++diff --git a/server/services/wadie/wadieRecommendationReuseService.ts b/server/services/wadie/wadieRecommendationReuseService.ts
++new file mode 100644
++index 0000000..f90ce92
++--- /dev/null
+++++ b/server/services/wadie/wadieRecommendationReuseService.ts
++@@ -0,0 +1,149 @@
+++import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+++import os from "node:os";
+++import path from "node:path";
+++import { getWadiePlaybookCurationSnapshot } from "./wadiePlaybookCurationService";
+++
+++export type WadieRecommendationReuseDecision = "approved-reference" | "hold" | "rejected";
+++
+++type ReuseReviewEntry = {
+++  registryId: string;
+++  decision: WadieRecommendationReuseDecision;
+++  note: string;
+++  reviewedAt: string;
+++  reviewedBy: string;
+++};
+++
+++type ReuseReviewFile = {
+++  version: 1;
+++  items: ReuseReviewEntry[];
+++};
+++
+++function storagePath() {
+++  const configured = String(process.env.WADIE_RECOMMENDATION_REUSE_FILE || "").trim();
+++  if (configured) return path.resolve(configured);
+++  return path.join(os.homedir(), ".tcrm", "wadie-recommendation-reuse.json");
+++}
+++
+++function cleanText(value: unknown, max: number) {
+++  return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
+++}
+++
+++async function readStore(): Promise<ReuseReviewFile> {
+++  try {
+++    const parsed = JSON.parse(await readFile(storagePath(), "utf8"));
+++    return { version: 1, items: Array.isArray(parsed?.items) ? parsed.items : [] };
+++  } catch (error: any) {
+++    if (error?.code === "ENOENT") return { version: 1, items: [] };
+++    throw error;
+++  }
+++}
+++
+++async function writeStore(store: ReuseReviewFile) {
+++  const file = storagePath();
+++  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+++  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
+++  await writeFile(temp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+++  await rename(temp, file);
+++}
+++
+++export async function getWadieRecommendationReuseSnapshot() {
+++  const [playbooks, store] = await Promise.all([
+++    getWadiePlaybookCurationSnapshot(),
+++    readStore(),
+++  ]);
+++  const reviewByRegistryId = new Map(store.items.map((item) => [item.registryId, item]));
+++
+++  const candidates = playbooks.entries
+++    .filter((item) => item.curationStatus === "ready-for-reuse-review" && item.eligibleForPhase21ReuseReview)
+++    .map((item) => {
+++      const review = reviewByRegistryId.get(item.registryId) ?? null;
+++      const approved = review?.decision === "approved-reference";
+++      return {
+++        ...item,
+++        reuseReviewStatus: review?.decision ?? "pending-review" as const,
+++        reuseReviewNote: review?.note ?? "",
+++        reuseReviewedAt: review?.reviewedAt ?? null,
+++        reuseReviewedBy: review?.reviewedBy ?? null,
+++        humanRecommendationReferenceEnabled: approved,
+++        referenceStatus: approved ? "available-for-human-reference" as const : "inactive" as const,
+++        activationStatus: "inactive" as const,
+++        executionStatus: "not-executable" as const,
+++      };
+++    });
+++
+++  return {
+++    phase: "guardrailed-recommendation-reuse-v1" as const,
+++    mode: "human-approved-advisory-reference-only" as const,
+++    totals: {
+++      readyPlaybooks: candidates.length,
+++      pending: candidates.filter((item) => item.reuseReviewStatus === "pending-review").length,
+++      approvedReference: candidates.filter((item) => item.reuseReviewStatus === "approved-reference").length,
+++      hold: candidates.filter((item) => item.reuseReviewStatus === "hold").length,
+++      rejected: candidates.filter((item) => item.reuseReviewStatus === "rejected").length,
+++    },
+++    candidates: candidates.slice(0, 100),
+++    approvedReferences: candidates.filter((item) => item.reuseReviewStatus === "approved-reference").slice(0, 100),
+++    generatedAt: new Date().toISOString(),
+++    source: "phase20-human-curated-playbooks" as const,
+++    phase20ReadyOnly: true as const,
+++    humanReuseApprovalRequired: true as const,
+++    reuseReviewPersistenceLocalOnly: true as const,
+++    humanRecommendationReferenceEnabled: true as const,
+++    automaticRecommendationInjectionEnabled: false as const,
+++    recommendationExecutionEnabled: false as const,
+++    learningMemoryWritesApplied: false as const,
+++    liveMcpCallsApplied: false as const,
+++    adPlatformMutationsApplied: false as const,
+++    automaticOptimizationLearningApplied: false as const,
+++    automaticRecommendationReuseApplied: false as const,
+++    automaticExecutionPolicyChangesApplied: false as const,
+++    executionStillRequiresHumanApproval: true as const,
+++  };
+++}
+++
+++export async function recordWadieRecommendationReuseReview(input: {
+++  registryId: string;
+++  decision: WadieRecommendationReuseDecision;
+++  note?: string;
+++}, actorUserId: string) {
+++  const [playbooks, store] = await Promise.all([
+++    getWadiePlaybookCurationSnapshot(),
+++    readStore(),
+++  ]);
+++  const registryId = cleanText(input.registryId, 240);
+++  const playbook = playbooks.entries.find((item) =>
+++    item.registryId === registryId
+++    && item.curationStatus === "ready-for-reuse-review"
+++    && item.eligibleForPhase21ReuseReview,
+++  );
+++  if (!playbook) throw new Error("Wadie Phase 20 playbook is not currently eligible for reuse review");
+++
+++  const entry: ReuseReviewEntry = {
+++    registryId,
+++    decision: input.decision,
+++    note: cleanText(input.note, 600),
+++    reviewedAt: new Date().toISOString(),
+++    reviewedBy: String(actorUserId || "unknown"),
+++  };
+++
+++  const existing = store.items.findIndex((item) => item.registryId === registryId);
+++  if (existing >= 0) store.items[existing] = entry;
+++  else store.items.push(entry);
+++  store.items = store.items.slice(-1000);
+++  await writeStore(store);
+++
+++  return getWadieRecommendationReuseSnapshot();
+++}
+++
+++export function getWadieRecommendationReuseStorageInfo() {
+++  return {
+++    path: storagePath(),
+++    containsCredentials: false,
+++    localMetadataOnly: true,
+++    humanReferenceOnly: true,
+++    automaticRecommendationInjectionEnabled: false,
+++    recommendationExecutionEnabled: false,
+++    learningMemoryWritesApplied: false,
+++    adPlatformMutationsApplied: false,
+++  };
+++}
++diff --git a/server/services/wadie/wadieRouter.ts b/server/services/wadie/wadieRouter.ts
++index 99c8681..6763040 100644
++--- a/server/services/wadie/wadieRouter.ts
+++++ b/server/services/wadie/wadieRouter.ts
++@@ -3,7 +3,7 @@ import { z } from "zod";
++ import { protectedProcedure, router } from "../../_core/trpc";
++ import {
++   getWadieIntegrationStatus,
++-  getWadiePhase20Capabilities,
+++  getWadiePhase21Capabilities,
++   probeWadieMcp,
++ } from "./wadieIntegrationService";
++ import {
++@@ -30,6 +30,10 @@ import {
++   getWadiePlaybookCurationSnapshot,
++   saveWadiePlaybookDraft,
++ } from "./wadiePlaybookCurationService";
+++import {
+++  getWadieRecommendationReuseSnapshot,
+++  recordWadieRecommendationReuseReview,
+++} from "./wadieRecommendationReuseService";
++ import {
++   acknowledgeWadieMonitoringAlert,
++   dismissWadieMonitoringAlert,
++@@ -57,7 +61,7 @@ function mapWadieReadError(error: unknown): never {
++ export const wadieRouter = router({
++   integrationStatus: wadieProcedure.query(() => getWadieIntegrationStatus()),
++   probeMcp: wadieProcedure.query(() => probeWadieMcp()),
++-  capabilities: wadieProcedure.query(() => getWadiePhase20Capabilities()),
+++  capabilities: wadieProcedure.query(() => getWadiePhase21Capabilities()),
++   mcpSettings: wadieProcedure.query(() => getWadieMcpSettingsForUi()),
++   saveMcpSettings: wadieProcedure.input(z.object({
++     enabled: z.boolean(),
++@@ -81,6 +85,12 @@ export const wadieRouter = router({
++     guardrailNotes: z.string().trim().max(800).optional(),
++     curationStatus: z.enum(["draft", "ready-for-reuse-review"]),
++   })).mutation(({ input, ctx }) => saveWadiePlaybookDraft(input, String(ctx.user.id))),
+++  recommendationReuse: wadieProcedure.query(() => getWadieRecommendationReuseSnapshot()),
+++  recordRecommendationReuseReview: wadieProcedure.input(z.object({
+++    registryId: z.string().trim().min(1).max(240),
+++    decision: z.enum(["approved-reference", "hold", "rejected"]),
+++    note: z.string().trim().max(600).optional(),
+++  })).mutation(({ input, ctx }) => recordWadieRecommendationReuseReview(input, String(ctx.user.id))),
++   recordLearningReview: wadieProcedure.input(z.object({
++     kind: z.enum(["platform", "priority", "category", "account"]),
++     key: z.string().trim().min(1).max(160),
++@@ -98,6 +108,7 @@ export const wadieRouter = router({
++ // Phase 18 persists human review decisions for Phase 17 candidates as local metadata only; approval does not write learning memory, call MCP, mutate ad platforms, or change execution policy.
++ // Phase 19 derives a read-only approved-learning registry from Phase 18 human approvals and stages entries for future human playbook curation; nothing is activated or reused automatically.
++ // Phase 20 stores human-curated playbook drafts from Phase 19 approved entries as local metadata only; ready-for-reuse-review does not activate reuse, learning, MCP calls, ad mutations, or execution-policy changes.
+++// Phase 21 lets humans approve Phase 20 ready playbooks as advisory references only; it never injects or executes recommendations automatically and adds no MCP calls, ad mutations, learning writes, or execution-policy changes.
++ // Phase 5 execution queue remains gated by
++ // explicit Admin approval + WADIE_EXECUTION_ENABLED + tested connection + MCP auth.
++ // Delete/destructive tools are intentionally not exposed.
