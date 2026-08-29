@@ -1,0 +1,113 @@
+You are applying ONE approved UI-only patch to the production TCRM working copy on this server.
+
+TARGET APP
+- Working directory: /var/www/TCRM
+- Expected branch: main
+- App repository: mohamedamouseo-a11y/TCRM-MAIN-Tamiyouz-CRM-
+
+OFFICIAL PATCH SOURCE
+- Patch repository: https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+- Branch: main
+- Exact approved patch commit: 35a1c284d324f8cd093051de5a9c0da62d82586b
+- Patch directory: LEADS-PREMIUM-LIGHT-DARK-V1
+- Applicator: LEADS-PREMIUM-LIGHT-DARK-V1/apply.mjs
+
+GOAL
+Apply the approved Premium Leads UX/UI for BOTH Light and Dark modes to /leads. This is strictly UI-only. Do not change business logic, backend, API, database, auth, permissions, lead queries, filters, routing, export behavior, New Lead behavior, dialogs, or unrelated pages.
+
+NON-NEGOTIABLE RULES
+1. Do NOT invent, rewrite, improve, refactor, or reinterpret the patch.
+2. Do NOT modify unrelated files.
+3. Do NOT run database migrations.
+4. Do NOT commit and do NOT push anything to GitHub. Leave the approved changes local on the server after validation.
+5. Never reset, clean, stash, or discard existing user work.
+6. If there are conflicting uncommitted changes in any target file, STOP and report them instead of overwriting them.
+7. Use the exact patch commit above. Do not use latest/main implicitly.
+
+EXECUTION
+
+A) Inspect target safely
+cd /var/www/TCRM
+pwd
+git branch --show-current
+git rev-parse HEAD
+git status --short
+
+Confirm this is the expected TCRM repo and branch main. If not, STOP.
+
+Target files are:
+- client/index.html
+- client/src/leads-premium.css
+The patch also reads client/src/pages/LeadsList.tsx only to validate the expected DOM signature.
+
+If client/index.html or client/src/leads-premium.css has conflicting local edits, STOP. Do not overwrite them.
+
+B) Fetch the exact official patch into a temporary directory
+PATCH_TMP=$(mktemp -d /tmp/tcrm-leads-premium-v1-XXXXXX)
+git clone --no-checkout https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git "$PATCH_TMP"
+cd "$PATCH_TMP"
+git checkout --detach 35a1c284d324f8cd093051de5a9c0da62d82586b
+git rev-parse HEAD
+
+Verify HEAD is exactly:
+35a1c284d324f8cd093051de5a9c0da62d82586b
+
+C) Preflight only
+node LEADS-PREMIUM-LIGHT-DARK-V1/apply.mjs --check --root=/var/www/TCRM
+
+If preflight fails, STOP. Do not force-apply or manually recreate the patch.
+
+D) Apply the official patch
+node LEADS-PREMIUM-LIGHT-DARK-V1/apply.mjs --apply --root=/var/www/TCRM
+
+The applicator must create a backup under:
+/var/www/TCRM/.patch-backups/LEADS-PREMIUM-LIGHT-DARK-V1/
+
+E) Verify patch integrity
+node LEADS-PREMIUM-LIGHT-DARK-V1/apply.mjs --verify --root=/var/www/TCRM
+
+Then:
+cd /var/www/TCRM
+git diff --check
+git diff -- client/index.html client/src/leads-premium.css
+git status --short
+
+Confirm only the approved target files changed because of this patch.
+
+F) Validation gates
+From /var/www/TCRM run:
+npm run check
+npm run build
+npm test
+
+Do not run any DB migration commands.
+
+G) UI smoke validation
+Verify /leads in both Light and Dark modes. Confirm:
+- page loads without console-breaking errors
+- Premium Light and Premium Dark styling both render
+- Leads count/data still loads
+- search and existing filters still work
+- Export Excel button behavior is unchanged
+- New Lead button/dialog behavior is unchanged
+- table horizontal scrolling and sticky columns still work
+- no unrelated TCRM page is visually restyled by this patch
+
+H) Final report
+Return a short report containing:
+- target repo path, branch, and HEAD before patch
+- exact patch repo commit used
+- backup directory created
+- exact changed files
+- --check result
+- --verify result
+- npm run check result
+- npm run build result
+- npm test result
+- Light mode smoke result
+- Dark mode smoke result
+- git diff --check result
+- final git status --short
+- explicit confirmation: NO COMMIT, NO PUSH, NO DB/API/BACKEND/BUSINESS-LOGIC CHANGES
+
+Do not commit or push at the end.
