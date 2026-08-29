@@ -1,0 +1,56 @@
+diff --git a/server/services/developerHubGitHubSecurity.ts b/server/services/developerHubGitHubSecurity.ts
+--- a/server/services/developerHubGitHubSecurity.ts
++++ b/server/services/developerHubGitHubSecurity.ts
+@@ -204,7 +204,6 @@ const BLOCKED_EXACT_NAMES = new Set([
+   "ecosystem.config.cjs",
+   "developer-hub.json",
+   ".developer-hub.key",
+-  ".gitmodules",
+ ]);
+ 
+ function isBackupLikeSegment(segment: string) {
+@@ -373,7 +372,7 @@ const SECRET_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
+   { name: "JWT", pattern: /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\b/ },
+   {
+     name: "database URL with credentials",
+-    pattern: /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis):\/\/[^\s:/@]+:[^\s/@]+@[^\s]+/i,
++    pattern: /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis):\/\/[^\s:/@]+:(?!\$\{)[^\s/@{]+@[^\s]+/i,
+   },
+   { name: "credential embedded in GitHub URL", pattern: /https:\/\/[^\s/@:]+(?::[^\s/@]+)?@github\.com/i },
+ ];
+diff --git a/server/services/developerHubGitHubSecurity.test.ts b/server/services/developerHubGitHubSecurity.test.ts
+--- a/server/services/developerHubGitHubSecurity.test.ts
++++ b/server/services/developerHubGitHubSecurity.test.ts
+@@ -34,6 +34,7 @@ describe("Developer Hub GitHub security", () => {
+       expect(getBlockedGitPathReason(filePath)).toBeTruthy();
+     }
+     expect(getBlockedGitPathReason("server/routes/developerHub.ts")).toBeNull();
++    expect(getBlockedGitPathReason(".gitmodules")).toBeNull();
+   });
+ 
+ 
+@@ -123,6 +124,15 @@ describe("Developer Hub GitHub security", () => {
+       "database URL with credentials",
+       "JWT",
+     ]));
++    expect(scanTextForHighConfidenceSecrets([
++      "DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db.example.com/app",
++      "MYSQL_URL=mysql://app:${MYSQL_PASSWORD}@mysql.example.com/app",
++    ].join("\n"))).not.toContain("database URL with credentials");
++    expect(scanTextForHighConfidenceSecrets([
++      "[submodule \"postiz\"]",
++      "path = services/shawky/postiz",
++      "url = https://github.com/gitroomhq/postiz-app.git",
++    ].join("\n"))).toEqual([]);
+     const redacted = redactGitSecrets([
+       ["https://user", "secret@github.com/owner/repo.git"].join(":"),
+       ["xoxb", "123456789012", "abcdefghijklmnopqrstuvwxyz"].join("-"),
+@@ -174,7 +184,7 @@ describe("Developer Hub GitHub security", () => {
+     expect(getBlockedGitObjectModeReason(symlink!)).toContain("symbolic links");
+     expect(getBlockedGitObjectModeReason(submodule!)).toContain("submodules");
+     expect(getBlockedGitObjectModeReason(regular!)).toBeNull();
+-    expect(getBlockedGitPathReason(".gitmodules")).toBeTruthy();
++    expect(getBlockedGitPathReason(".gitmodules")).toBeNull();
+   });
+ 
+   it("preserves every committed path even when files share the same blob", () => {
