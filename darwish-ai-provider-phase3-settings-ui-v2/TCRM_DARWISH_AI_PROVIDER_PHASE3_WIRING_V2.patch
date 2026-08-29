@@ -1,0 +1,123 @@
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -35,3 +35,17 @@
+ } from "./darwishActionService";
++import {
++  deleteDarwishAiProvider,
++  deleteDarwishAiProviderModel,
++  deleteDarwishAiProviderSecret,
++  deleteDarwishAiRoutingPolicy,
++  deleteDarwishAiRoutingTarget,
++  getDarwishAiProviderSettings,
++  getDarwishAiProviderSettingsState,
++  saveDarwishAiProvider,
++  saveDarwishAiProviderModel,
++  saveDarwishAiRoutingPolicy,
++  saveDarwishAiRoutingTarget,
++  setDarwishAiProviderSecret,
++} from "../aiProviders/darwishAiProviderSettingsService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+@@ -60,2 +75,63 @@
+   integrationHealth: darwishProcedure.query(() => getDarwishIntegrationHealth()),
++  aiProviderSettingsState: darwishProcedure.query(() => getDarwishAiProviderSettingsState()),
++  aiProviderSettings: darwishProcedure.query(() => getDarwishAiProviderSettings()),
++  saveAiProvider: darwishProcedure.input(z.object({
++    id: z.number().int().positive().optional(),
++    providerKey: z.string().trim().min(1).max(128),
++    displayName: z.string().trim().min(1).max(191),
++    adapterType: z.string().trim().min(1).max(64),
++    baseUrl: z.string().trim().max(1024).nullable().optional(),
++    enabled: z.boolean().default(true),
++    config: z.record(z.unknown()).nullable().optional(),
++  })).mutation(({ input }) => saveDarwishAiProvider(input)),
++  deleteAiProvider: darwishProcedure.input(z.object({
++    id: z.number().int().positive(),
++  })).mutation(({ input }) => deleteDarwishAiProvider(input.id)),
++  saveAiProviderModel: darwishProcedure.input(z.object({
++    id: z.number().int().positive().optional(),
++    providerId: z.number().int().positive(),
++    modelKey: z.string().trim().min(1).max(191),
++    displayName: z.string().trim().max(191).nullable().optional(),
++    enabled: z.boolean().default(true),
++    config: z.record(z.unknown()).nullable().optional(),
++  })).mutation(({ input }) => saveDarwishAiProviderModel(input)),
++  deleteAiProviderModel: darwishProcedure.input(z.object({
++    id: z.number().int().positive(),
++  })).mutation(({ input }) => deleteDarwishAiProviderModel(input.id)),
++  setAiProviderSecret: darwishProcedure.input(z.object({
++    providerId: z.number().int().positive(),
++    secretKey: z.string().trim().min(1).max(128),
++    value: z.string().min(1).max(20000),
++  })).mutation(({ input }) => setDarwishAiProviderSecret(input)),
++  deleteAiProviderSecret: darwishProcedure.input(z.object({
++    providerId: z.number().int().positive(),
++    secretKey: z.string().trim().min(1).max(128),
++  })).mutation(({ input }) => deleteDarwishAiProviderSecret(input)),
++  saveAiRoutingPolicy: darwishProcedure.input(z.object({
++    id: z.number().int().positive().optional(),
++    routeKey: z.string().trim().min(1).max(128),
++    displayName: z.string().trim().min(1).max(191),
++    selectionStrategy: z.enum(["priority", "weighted_random"]),
++    enabled: z.boolean().default(true),
++    maxAttempts: z.number().int().min(1).max(100),
++    timeoutMs: z.number().int().min(100).max(600000),
++    config: z.record(z.unknown()).nullable().optional(),
++  })).mutation(({ input }) => saveDarwishAiRoutingPolicy(input)),
++  deleteAiRoutingPolicy: darwishProcedure.input(z.object({
++    id: z.number().int().positive(),
++  })).mutation(({ input }) => deleteDarwishAiRoutingPolicy(input.id)),
++  saveAiRoutingTarget: darwishProcedure.input(z.object({
++    id: z.number().int().positive().optional(),
++    policyId: z.number().int().positive(),
++    providerId: z.number().int().positive(),
++    modelId: z.number().int().positive(),
++    priority: z.number().int().min(0).max(1000000),
++    weight: z.number().int().min(1).max(1000000),
++    enabled: z.boolean().default(true),
++    timeoutMs: z.number().int().min(100).max(600000).nullable().optional(),
++    config: z.record(z.unknown()).nullable().optional(),
++  })).mutation(({ input }) => saveDarwishAiRoutingTarget(input)),
++  deleteAiRoutingTarget: darwishProcedure.input(z.object({
++    id: z.number().int().positive(),
++  })).mutation(({ input }) => deleteDarwishAiRoutingTarget(input.id)),
+   chatwootInboxes: darwishProcedure.query(() => listDarwishChatwootInboxes()),
+diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
+--- a/client/src/pages/AdminSettings.tsx
++++ b/client/src/pages/AdminSettings.tsx
+@@ -30,3 +30,4 @@
+ import CurrencySettingsTab from "@/components/CurrencySettingsTab";
+ import RakanSettingsTab from "@/components/RakanSettingsTab";
++import DarwishAiProvidersSettingsTab from "@/components/DarwishAiProvidersSettingsTab";
+ import TamaraSettingsTab from "@/components/TamaraSettingsTab";
+@@ -145,2 +146,2 @@
+-    "rakan", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
++    "rakan", "darwishAiProviders", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
+     "dynamicServices", "packages",
+@@ -720,3 +721,4 @@
+       tabs: [
+         { value: "rakan", label: isRTL ? "راكان AI" : "Rakan AI", description: isRTL ? "مساعد النظام الذكي" : "AI assistant settings", icon: <Sparkles size={14} />, visible: true, badge: "AI" },
++        { value: "darwishAiProviders", label: isRTL ? "مزودو درويش AI" : "Darwish AI Providers", description: isRTL ? "المزودون والموديلات والتوجيه" : "Providers, models, secrets, and routing", icon: <Sparkles size={14} />, visible: isAdmin || isDeveloper, badge: "AI" },
+         { value: "demoSync", label: isRTL ? "مزامنة الديمو" : "Demo Sync", description: isRTL ? "مزامنة نسخة العرض" : "Demo environment sync", icon: <RefreshCw size={14} />, visible: isSuperAdmin, badge: "Admin" },
+@@ -786,7 +788,7 @@
+     {
+       id: "development",
+       label: isRTL ? "التطوير" : "Development",
+       icon: <Terminal size={15} />,
+-      values: ["developerHub", "rakan"],
++      values: ["developerHub", "rakan", "darwishAiProviders"],
+     },
+     {
+@@ -1880,6 +1882,11 @@
+           {/* ── Rakan AI Tab (visible to all roles) ── */}
+           <TabsContent value="rakan" className="mt-4">
+             <RakanSettingsTab />
+           </TabsContent>
+ 
++          {/* ── Darwish AI Providers (Admin / Developer) ── */}
++          {(isAdmin || isDeveloper) && <TabsContent value="darwishAiProviders" className="mt-4">
++            <DarwishAiProvidersSettingsTab />
++          </TabsContent>}
++
+           {/* ── Currency / Exchange Rates Tab ── */}
