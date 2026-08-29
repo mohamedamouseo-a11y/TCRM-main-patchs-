@@ -1,0 +1,304 @@
+diff --git a/client/src/components/wadie/WadieGovernanceAudit.tsx b/client/src/components/wadie/WadieGovernanceAudit.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/wadie/WadieGovernanceAudit.tsx
+@@ -0,0 +1,99 @@
++import { Activity, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { trpc } from "@/lib/trpc";
++
++export default function WadieGovernanceAudit() {
++  const { isRTL } = useLanguage();
++  const text = (en: string, ar: string) => (isRTL ? ar : en);
++  const query = trpc.wadie.governanceAudit.useQuery(undefined, {
++    refetchOnWindowFocus: false,
++    refetchInterval: 60_000,
++  });
++  const data = query.data;
++  const passed = data?.status === "pass";
++
++  return (
++    <Card data-wadie-governance-audit="phase22-v1" className="rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)]">
++      <CardHeader className="pb-3">
++        <div className="flex flex-wrap items-center justify-between gap-3">
++          <div>
++            <CardTitle className="flex items-center gap-2 text-xl">
++              <ShieldCheck className="h-5 w-5 text-emerald-600" />
++              {text("Governance Audit & Final Hardening", "تدقيق الحوكمة والتأمين النهائي")}
++            </CardTitle>
++            <p className="mt-1 text-xs font-semibold text-muted-foreground">
++              {text(
++                "Final Wadie v1 safety audit across human approval, advisory reuse, kill-switch protection and automatic-action invariants.",
++                "التدقيق النهائي لسلامة Wadie v1 عبر الاعتماد البشري وإعادة الاستخدام الاستشارية وحماية مفتاح الإيقاف وضوابط منع الإجراءات التلقائية.",
++              )}
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold">
++              {passed ? <CheckCircle2 className="me-1 h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="me-1 h-3.5 w-3.5 text-amber-500" />}
++              {passed ? text("Governance PASS", "الحوكمة سليمة") : text("Needs attention", "يحتاج مراجعة")}
++            </Badge>
++            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold">
++              {text("Read-only audit", "تدقيق للقراءة فقط")}
++            </Badge>
++            <Button variant="outline" size="sm" className="h-9 rounded-xl font-bold" disabled={query.isFetching} onClick={() => void query.refetch()}>
++              <Activity className={`me-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />
++              {text("Run audit", "تشغيل التدقيق")}
++            </Button>
++          </div>
++        </div>
++      </CardHeader>
++
++      <CardContent className="space-y-4">
++        {data && (
++          <>
++            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
++              {[
++                [text("Checks", "الفحوصات"), data.totals.checks],
++                [text("Passed", "ناجح"), data.totals.passed],
++                [text("Critical failures", "إخفاقات حرجة"), data.totals.criticalFailures],
++                [text("Approved references", "مراجع معتمدة"), data.approvedReferences],
++              ].map(([label, value]) => (
++                <div key={String(label)} className="rounded-xl border border-border/60 bg-background/55 p-3">
++                  <p className="text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
++                  <p className="mt-1 text-lg font-black">{value}</p>
++                </div>
++              ))}
++            </div>
++
++            <div className="grid gap-2 md:grid-cols-2">
++              {data.checks.map((check) => (
++                <div key={check.id} className="rounded-xl border border-border/60 bg-background/45 p-3">
++                  <div className="flex items-center justify-between gap-2">
++                    <p className="text-xs font-black">{check.label}</p>
++                    <Badge variant={check.passed ? "secondary" : check.critical ? "destructive" : "outline"} className="rounded-full text-[10px]">
++                      {check.passed ? text("PASS", "ناجح") : text("FAIL", "فشل")}
++                    </Badge>
++                  </div>
++                  <p className="mt-1 text-[10px] font-semibold text-muted-foreground">{check.detail}</p>
++                </div>
++              ))}
++            </div>
++
++            <div className="rounded-xl border border-border/60 bg-background/45 p-3 text-[10px] font-semibold text-muted-foreground">
++              <div>{text("Execution kill switch", "مفتاح إيقاف التنفيذ")}: {data.executionSafety.killSwitch}</div>
++              <div>{text("Human approval required", "الاعتماد البشري مطلوب")}: {data.executionSafety.humanApprovalRequired ? text("Yes", "نعم") : text("No", "لا")}</div>
++              <div>{text("Destructive delete tools", "أدوات الحذف التدميرية")}: {data.executionSafety.destructiveDeleteToolsAllowed ? text("Allowed", "مسموحة") : text("Blocked", "محظورة")}</div>
++            </div>
++          </>
++        )}
++
++        {query.error && <p className="text-xs font-semibold text-destructive">{query.error.message}</p>}
++        <p className="text-[10px] font-semibold text-muted-foreground">
++          {text(
++            "Phase 22 is read-only governance verification. It adds no learning activation, automatic recommendation injection, execution path, MCP call, ad-platform mutation or execution-policy change.",
++            "Phase 22 تحقق حوكمة للقراءة فقط. لا يضيف تفعيل تعلم أو حقن توصيات تلقائياً أو مسار تنفيذ أو استدعاء MCP أو تعديل منصات الإعلانات أو تغيير سياسة التنفيذ.",
++          )}
++        </p>
++      </CardContent>
++    </Card>
++  );
++}
+diff --git a/client/src/pages/MediaBuyerPage.tsx b/client/src/pages/MediaBuyerPage.tsx
+--- a/client/src/pages/MediaBuyerPage.tsx
++++ b/client/src/pages/MediaBuyerPage.tsx
+@@ -22,4 +22,5 @@
+ import WadieApprovedLearningRegistry from "@/components/wadie/WadieApprovedLearningRegistry";
+ import WadiePlaybookCuration from "@/components/wadie/WadiePlaybookCuration";
+ import WadieRecommendationReuse from "@/components/wadie/WadieRecommendationReuse";
++import WadieGovernanceAudit from "@/components/wadie/WadieGovernanceAudit";
+ import {
+@@ -223,4 +224,6 @@
+ 
+         <WadieRecommendationReuse />
+ 
++        <WadieGovernanceAudit />
++
+         <WadieMonitoringAlerts onAudit={(platform, accountId) => {
+diff --git a/server/services/wadie/wadieIntegrationService.ts b/server/services/wadie/wadieIntegrationService.ts
+--- a/server/services/wadie/wadieIntegrationService.ts
++++ b/server/services/wadie/wadieIntegrationService.ts
+@@ -477,3 +477,27 @@
+     executionStillRequiresHumanApproval: true,
+   };
+ }
++
++export function getWadiePhase22Capabilities() {
++  return {
++    ...getWadiePhase21Capabilities(),
++    phase: "governance-audit-final-hardening-v1" as const,
++    governanceAuditEnabled: true,
++    runtimeSafetyInvariantChecksEnabled: true,
++    executionKillSwitchAuditEnabled: true,
++    humanApprovalInvariantAuditEnabled: true,
++    advisoryReferenceInvariantAuditEnabled: true,
++    v1FinalHardeningEnabled: true,
++    governancePersistenceEnabled: false,
++    learningActivationEnabled: false,
++    automaticRecommendationInjectionEnabled: false,
++    recommendationExecutionEnabled: false,
++    learningMemoryWritesApplied: false,
++    governanceLiveMcpCallsApplied: false,
++    governanceAdPlatformMutationsApplied: false,
++    automaticOptimizationLearningApplied: false,
++    automaticRecommendationReuseApplied: false,
++    automaticExecutionPolicyChangesApplied: false,
++    executionStillRequiresHumanApproval: true,
++  };
++}
+diff --git a/server/services/wadie/wadieGovernanceAuditService.ts b/server/services/wadie/wadieGovernanceAuditService.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/wadie/wadieGovernanceAuditService.ts
+@@ -0,0 +1,117 @@
++import { getWadieExecutionSafety } from "./wadieExecutionQueueService";
++import { getWadiePhase21Capabilities } from "./wadieIntegrationService";
++import { getWadieRecommendationReuseSnapshot } from "./wadieRecommendationReuseService";
++
++type GovernanceCheck = {
++  id: string;
++  label: string;
++  passed: boolean;
++  critical: boolean;
++  detail: string;
++};
++
++export async function getWadieGovernanceAuditSnapshot() {
++  const capabilities = getWadiePhase21Capabilities();
++  const executionSafety = getWadieExecutionSafety();
++  const reuse = await getWadieRecommendationReuseSnapshot();
++
++  const approvedReferencesSafe = reuse.approvedReferences.every((item) =>
++    item.humanRecommendationReferenceEnabled === true
++    && item.referenceStatus === "available-for-human-reference"
++    && item.activationStatus === "inactive"
++    && item.executionStatus === "not-executable"
++  );
++
++  const automaticPathsBlocked =
++    capabilities.automaticRecommendationInjectionEnabled === false
++    && capabilities.recommendationExecutionEnabled === false
++    && capabilities.learningMemoryWritesApplied === false
++    && capabilities.reuseLiveMcpCallsApplied === false
++    && capabilities.reuseAdPlatformMutationsApplied === false
++    && capabilities.automaticOptimizationLearningApplied === false
++    && capabilities.automaticRecommendationReuseApplied === false
++    && capabilities.automaticExecutionPolicyChangesApplied === false;
++
++  const checks: GovernanceCheck[] = [
++    {
++      id: "human-approval-invariant",
++      label: "Human approval remains mandatory",
++      passed: capabilities.executionStillRequiresHumanApproval === true
++        && capabilities.humanReuseApprovalRequired === true
++        && executionSafety.humanApprovalRequired === true,
++      critical: true,
++      detail: "Phase 21 reference review and Phase 5 execution both remain human-gated.",
++    },
++    {
++      id: "execution-kill-switch",
++      label: "Execution kill switch remains enforced",
++      passed: executionSafety.killSwitch === "WADIE_EXECUTION_ENABLED",
++      critical: true,
++      detail: "Execution remains controlled by WADIE_EXECUTION_ENABLED.",
++    },
++    {
++      id: "destructive-tools-blocked",
++      label: "Destructive delete tools remain blocked",
++      passed: executionSafety.destructiveDeleteToolsAllowed === false,
++      critical: true,
++      detail: "No destructive delete tool is exposed through the execution queue.",
++    },
++    {
++      id: "advisory-reference-only",
++      label: "Approved reuse remains advisory only",
++      passed: approvedReferencesSafe,
++      critical: true,
++      detail: "Approved references stay inactive and not executable.",
++    },
++    {
++      id: "automatic-paths-blocked",
++      label: "Automatic learning/reuse/execution paths remain blocked",
++      passed: automaticPathsBlocked,
++      critical: true,
++      detail: "No automatic injection, execution, learning, MCP mutation path or policy change is enabled.",
++    },
++    {
++      id: "local-review-metadata",
++      label: "Reuse review metadata remains local-only",
++      passed: reuse.reuseReviewPersistenceLocalOnly === true,
++      critical: false,
++      detail: "Phase 21 reuse review state remains local metadata.",
++    },
++  ];
++
++  const criticalFailures = checks.filter((check) => check.critical && !check.passed).length;
++
++  return {
++    phase: "governance-audit-final-hardening-v1" as const,
++    mode: "read-only-runtime-governance-verification" as const,
++    status: criticalFailures === 0 ? "pass" as const : "attention" as const,
++    totals: {
++      checks: checks.length,
++      passed: checks.filter((check) => check.passed).length,
++      failed: checks.filter((check) => !check.passed).length,
++      criticalFailures,
++    },
++    checks,
++    approvedReferences: reuse.approvedReferences.length,
++    executionSafety: {
++      executionEnabled: executionSafety.executionEnabled,
++      killSwitch: executionSafety.killSwitch,
++      humanApprovalRequired: executionSafety.humanApprovalRequired,
++      destructiveDeleteToolsAllowed: executionSafety.destructiveDeleteToolsAllowed,
++    },
++    generatedAt: new Date().toISOString(),
++    source: "phase21-guardrailed-recommendation-reuse" as const,
++    readOnlyAudit: true as const,
++    governancePersistenceEnabled: false as const,
++    learningActivationEnabled: false as const,
++    automaticRecommendationInjectionEnabled: false as const,
++    recommendationExecutionEnabled: false as const,
++    learningMemoryWritesApplied: false as const,
++    liveMcpCallsApplied: false as const,
++    adPlatformMutationsApplied: false as const,
++    automaticOptimizationLearningApplied: false as const,
++    automaticRecommendationReuseApplied: false as const,
++    automaticExecutionPolicyChangesApplied: false as const,
++    executionStillRequiresHumanApproval: true as const,
++  };
++}
+diff --git a/server/services/wadie/wadieRouter.ts b/server/services/wadie/wadieRouter.ts
+--- a/server/services/wadie/wadieRouter.ts
++++ b/server/services/wadie/wadieRouter.ts
+@@ -4,5 +4,5 @@
+ import {
+   getWadieIntegrationStatus,
+-  getWadiePhase21Capabilities,
++  getWadiePhase22Capabilities,
+   probeWadieMcp,
+ } from "./wadieIntegrationService";
+@@ -63,3 +63,4 @@
+ import { getWadieRecommendationReuseSnapshot, recordWadieRecommendationReuseReview } from "./wadieRecommendationReuseService";
++import { getWadieGovernanceAuditSnapshot } from "./wadieGovernanceAuditService";
+ import {
+   acknowledgeWadieMonitoringAlert,
+@@ -120,4 +120,4 @@
+   integrationStatus: wadieProcedure.query(() => getWadieIntegrationStatus()),
+   probeMcp: wadieProcedure.query(() => probeWadieMcp()),
+-  capabilities: wadieProcedure.query(() => getWadiePhase21Capabilities()),
++  capabilities: wadieProcedure.query(() => getWadiePhase22Capabilities()),
+   mcpSettings: wadieProcedure.query(() => getWadieMcpSettingsForUi()),
+@@ -165,3 +165,4 @@
+   recommendationReuse: wadieProcedure.query(() => getWadieRecommendationReuseSnapshot()),
+   recordRecommendationReuseReview: wadieProcedure.input(z.object({ registryId: z.string().trim().min(1).max(240), decision: z.enum(["approved-reference", "hold", "rejected"]) })).mutation(({ input, ctx }) => recordWadieRecommendationReuseReview(input, String(ctx.user.id))),
++  governanceAudit: wadieProcedure.query(() => getWadieGovernanceAuditSnapshot()),
+   recordLearningReview: wadieProcedure.input(z.object({
+@@ -275,3 +275,4 @@
+ // Phase 20 stores human-curated playbook drafts from Phase 19 approved entries as local metadata only; ready-for-reuse-review does not activate reuse, learning, MCP calls, ad mutations, or execution-policy changes.
+ // Phase 21 approves Phase 20 ready playbooks for human advisory reference only; no automatic recommendation injection, execution, MCP calls, ad mutations, learning writes, or policy changes are enabled.
++// Phase 22 performs read-only runtime governance verification and final Wadie v1 hardening; it adds no activation, automatic execution, MCP mutation, ad mutation, learning write, or policy change.
+ // Phase 5 execution queue remains gated by
