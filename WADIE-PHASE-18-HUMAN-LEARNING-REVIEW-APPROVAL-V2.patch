@@ -1,0 +1,414 @@
+diff --git a/client/src/components/wadie/WadieLearningReview.tsx b/client/src/components/wadie/WadieLearningReview.tsx
+new file mode 100644
+--- /dev/null
++++ b/client/src/components/wadie/WadieLearningReview.tsx
+@@ -0,0 +1,163 @@
++import { useState } from "react";
++import { Activity, Brain, CheckCircle2, Eye, RotateCcw, ShieldCheck, XCircle } from "lucide-react";
++import { Badge } from "@/components/ui/badge";
++import { Button } from "@/components/ui/button";
++import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
++import { Input } from "@/components/ui/input";
++import { useLanguage } from "@/contexts/LanguageContext";
++import { trpc } from "@/lib/trpc";
++
++type ReviewDecision = "approved" | "rejected" | "needs-revision" | "observing";
++
++function variantFor(status: string): "destructive" | "secondary" | "outline" {
++  if (status === "rejected") return "destructive";
++  if (status === "approved") return "secondary";
++  return "outline";
++}
++
++export default function WadieLearningReview() {
++  const { isRTL } = useLanguage();
++  const text = (en: string, ar: string) => (isRTL ? ar : en);
++  const [notes, setNotes] = useState<Record<string, string>>({});
++  const query = trpc.wadie.learningReview.useQuery(undefined, {
++    refetchOnWindowFocus: false,
++    refetchInterval: 60_000,
++  });
++  const recordReview = trpc.wadie.recordLearningReview.useMutation({
++    onSuccess: () => void query.refetch(),
++  });
++  const data = query.data;
++
++  const decisionLabel = (value: string) => {
++    if (value === "approved") return text("Approved", "معتمد");
++    if (value === "rejected") return text("Rejected", "مرفوض");
++    if (value === "needs-revision") return text("Needs revision", "يحتاج تعديل");
++    if (value === "observing") return text("Keep observing", "استمرار المراقبة");
++    return text("Pending review", "بانتظار المراجعة");
++  };
++
++  const submit = (item: any, decision: ReviewDecision) => {
++    recordReview.mutate({
++      kind: item.kind,
++      key: item.key,
++      decision,
++      note: notes[item.candidateId]?.trim() || undefined,
++    });
++  };
++
++  return (
++    <Card data-wadie-learning-review="phase18-v1" className="rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)]">
++      <CardHeader className="pb-3">
++        <div className="flex flex-wrap items-center justify-between gap-3">
++          <div>
++            <CardTitle className="flex items-center gap-2 text-xl">
++              <Brain className="h-5 w-5 text-violet-600" />
++              {text("Human Learning Review & Approval", "مراجعة واعتماد التعلم البشري")}
++            </CardTitle>
++            <p className="mt-1 text-xs font-semibold text-muted-foreground">
++              {text(
++                "Review Phase 17 candidates and record a human disposition. Approval does not activate learning or change execution behavior.",
++                "راجع مرشحات Phase 17 وسجّل القرار البشري. الاعتماد لا يفعّل التعلم ولا يغيّر سلوك التنفيذ.",
++              )}
++            </p>
++          </div>
++          <div className="flex flex-wrap gap-2">
++            <Badge variant="outline" className="rounded-full px-3 py-1 font-bold">
++              <ShieldCheck className="me-1 h-3.5 w-3.5 text-emerald-500" />
++              {text("Human decision only", "قرار بشري فقط")}
++            </Badge>
++            <Button variant="outline" size="sm" className="h-9 rounded-xl font-bold" disabled={query.isFetching} onClick={() => void query.refetch()}>
++              <Activity className={`me-2 h-4 w-4 ${query.isFetching ? "animate-spin" : ""}`} />
++              {text("Refresh review", "تحديث المراجعة")}
++            </Button>
++          </div>
++        </div>
++      </CardHeader>
++
++      <CardContent className="space-y-4">
++        {data && (
++          <>
++            <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
++              {[
++                [text("Candidates", "المرشحات"), data.totals.candidates],
++                [text("Pending", "قيد المراجعة"), data.totals.pending],
++                [text("Approved", "معتمد"), data.totals.approved],
++                [text("Rejected", "مرفوض"), data.totals.rejected],
++                [text("Needs revision", "يحتاج تعديل"), data.totals.needsRevision],
++                [text("Observing", "مراقبة"), data.totals.observing],
++              ].map(([label, value]) => (
++                <div key={String(label)} className="rounded-xl border border-border/60 bg-background/55 p-3">
++                  <p className="text-[10px] font-black uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
++                  <p className="mt-1 text-lg font-black">{value}</p>
++                </div>
++              ))}
++            </div>
++
++            <div className="space-y-3">
++              {data.candidates.slice(0, 24).map((item) => (
++                <div key={item.candidateId} className="rounded-2xl border border-border/60 bg-background/45 p-4">
++                  <div className="flex flex-wrap items-center justify-between gap-2">
++                    <div className="min-w-0">
++                      <div className="flex flex-wrap items-center gap-2">
++                        <Badge variant="outline" className="rounded-full text-[10px]">{item.kind}</Badge>
++                        <span className="truncate text-xs font-black">{item.key}</span>
++                        <Badge variant={variantFor(item.reviewStatus)} className="rounded-full text-[10px]">
++                          {decisionLabel(item.reviewStatus)}
++                        </Badge>
++                      </div>
++                      <p className="mt-1 text-[10px] font-semibold text-muted-foreground">{item.rationale}</p>
++                    </div>
++                    <div className="text-end text-[10px] font-semibold text-muted-foreground">
++                      <div>{text("Reviewed outcomes", "نتائج تمت مراجعتها")}: {item.reviewed}</div>
++                      {item.reviewedAt && <div>{text("Human review recorded", "تم تسجيل المراجعة البشرية")}</div>}
++                    </div>
++                  </div>
++
++                  <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
++                    <Input
++                      value={notes[item.candidateId] ?? item.reviewNote ?? ""}
++                      onChange={(event) => setNotes((current) => ({ ...current, [item.candidateId]: event.target.value }))}
++                      maxLength={600}
++                      placeholder={text("Optional human review note", "ملاحظة مراجعة بشرية اختيارية")}
++                      className="h-9 rounded-xl text-xs"
++                    />
++                    <div className="flex flex-wrap gap-2">
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-emerald-500/30 text-emerald-700 dark:text-emerald-300" disabled={recordReview.isPending} onClick={() => submit(item, "approved")}>
++                        <CheckCircle2 className="me-1.5 h-3.5 w-3.5" />{text("Approve", "اعتماد")}
++                      </Button>
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-amber-500/30 text-amber-700 dark:text-amber-300" disabled={recordReview.isPending} onClick={() => submit(item, "needs-revision")}>
++                        <RotateCcw className="me-1.5 h-3.5 w-3.5" />{text("Needs revision", "يحتاج تعديل")}
++                      </Button>
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-sky-500/30 text-sky-700 dark:text-sky-300" disabled={recordReview.isPending} onClick={() => submit(item, "observing")}>
++                        <Eye className="me-1.5 h-3.5 w-3.5" />{text("Observe", "مراقبة")}
++                      </Button>
++                      <Button size="sm" variant="outline" className="h-9 rounded-xl border-destructive/30 text-destructive" disabled={recordReview.isPending} onClick={() => submit(item, "rejected")}>
++                        <XCircle className="me-1.5 h-3.5 w-3.5" />{text("Reject", "رفض")}
++                      </Button>
++                    </div>
++                  </div>
++                </div>
++              ))}
++            </div>
++
++            {data.candidates.length === 0 && (
++              <div className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-xs font-semibold text-muted-foreground">
++                {text("No Phase 17 learning candidates are available for review yet.", "لا توجد مرشحات Phase 17 متاحة للمراجعة حتى الآن.")}
++              </div>
++            )}
++          </>
++        )}
++
++        {recordReview.error && <p className="text-xs font-semibold text-destructive">{recordReview.error.message}</p>}
++        {query.error && <p className="text-xs font-semibold text-destructive">{query.error.message}</p>}
++
++        <p className="text-[10px] font-semibold text-muted-foreground">
++          {text(
++            "Phase 18 stores only the human review decision as local metadata. Approved candidates are not written to learning memory, are not applied to optimization, call no MCP tools, change no ad platform, and never change execution policy automatically.",
++            "Phase 18 يحفظ قرار المراجعة البشرية كبيانات محلية فقط. المرشحات المعتمدة لا تُكتب في ذاكرة تعلم، ولا تُطبق على التحسين، ولا تستدعي MCP، ولا تعدل منصات الإعلانات، ولا تغيّر سياسة التنفيذ تلقائياً.",
++          )}
++        </p>
++      </CardContent>
++    </Card>
++  );
++}
+diff --git a/server/services/wadie/wadieLearningReviewService.ts b/server/services/wadie/wadieLearningReviewService.ts
+new file mode 100644
+--- /dev/null
++++ b/server/services/wadie/wadieLearningReviewService.ts
+@@ -0,0 +1,146 @@
++import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
++import os from "node:os";
++import path from "node:path";
++import { getWadieLearningCandidates } from "./wadieLearningCandidateService";
++
++export type WadieLearningReviewDecision = "approved" | "rejected" | "needs-revision" | "observing";
++
++type WadieLearningReviewEntry = {
++  candidateId: string;
++  kind: "platform" | "priority" | "category" | "account";
++  key: string;
++  decision: WadieLearningReviewDecision;
++  note: string;
++  reviewedAt: string;
++  reviewedBy: string;
++};
++
++type LearningReviewFile = {
++  version: 1;
++  items: WadieLearningReviewEntry[];
++};
++
++function storagePath() {
++  const configured = String(process.env.WADIE_LEARNING_REVIEW_FILE || "").trim();
++  if (configured) return path.resolve(configured);
++  return path.join(os.homedir(), ".tcrm", "wadie-learning-reviews.json");
++}
++
++function candidateId(kind: string, key: string) {
++  return `${kind}:${key}`;
++}
++
++function cleanText(value: unknown, max: number) {
++  return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
++}
++
++async function readStore(): Promise<LearningReviewFile> {
++  try {
++    const parsed = JSON.parse(await readFile(storagePath(), "utf8"));
++    return { version: 1, items: Array.isArray(parsed?.items) ? parsed.items : [] };
++  } catch (error: any) {
++    if (error?.code === "ENOENT") return { version: 1, items: [] };
++    throw error;
++  }
++}
++
++async function writeStore(store: LearningReviewFile) {
++  const file = storagePath();
++  await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
++  const temp = `${file}.${process.pid}.${Date.now()}.tmp`;
++  await writeFile(temp, `${JSON.stringify(store, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
++  await rename(temp, file);
++}
++
++export async function getWadieLearningReviewSnapshot() {
++  const [source, store] = await Promise.all([
++    getWadieLearningCandidates(),
++    readStore(),
++  ]);
++  const reviewById = new Map(store.items.map((item) => [item.candidateId, item]));
++
++  const candidates = source.candidates.map((candidate) => {
++    const id = candidateId(candidate.kind, candidate.key);
++    const review = reviewById.get(id) ?? null;
++    return {
++      ...candidate,
++      candidateId: id,
++      reviewStatus: review?.decision ?? "pending" as const,
++      reviewNote: review?.note ?? "",
++      reviewedAt: review?.reviewedAt ?? null,
++      reviewedBy: review?.reviewedBy ?? null,
++    };
++  });
++
++  return {
++    phase: "human-learning-review-approval-v1" as const,
++    mode: "local-human-governed-learning-review" as const,
++    totals: {
++      candidates: candidates.length,
++      pending: candidates.filter((item) => item.reviewStatus === "pending").length,
++      approved: candidates.filter((item) => item.reviewStatus === "approved").length,
++      rejected: candidates.filter((item) => item.reviewStatus === "rejected").length,
++      needsRevision: candidates.filter((item) => item.reviewStatus === "needs-revision").length,
++      observing: candidates.filter((item) => item.reviewStatus === "observing").length,
++    },
++    candidates: candidates.slice(0, 100),
++    priorityReview: candidates
++      .filter((item) => item.reviewStatus === "pending" || item.reviewStatus === "needs-revision")
++      .slice(0, 24),
++    generatedAt: new Date().toISOString(),
++    source: "phase17-human-learning-candidates" as const,
++    humanReviewRequired: true as const,
++    reviewPersistenceLocalOnly: true as const,
++    learningMemoryWritesApplied: false as const,
++    approvedCandidatesAppliedToOptimization: false as const,
++    liveMcpCallsApplied: false as const,
++    adPlatformMutationsApplied: false as const,
++    automaticOptimizationLearningApplied: false as const,
++    automaticExecutionPolicyChangesApplied: false as const,
++    executionStillRequiresHumanApproval: true as const,
++  };
++}
++
++export async function recordWadieLearningReview(input: {
++  kind: "platform" | "priority" | "category" | "account";
++  key: string;
++  decision: WadieLearningReviewDecision;
++  note?: string;
++}, actorUserId: string) {
++  const [source, store] = await Promise.all([
++    getWadieLearningCandidates(),
++    readStore(),
++  ]);
++  const key = cleanText(input.key, 160);
++  const candidate = source.candidates.find((item) => item.kind === input.kind && item.key === key);
++  if (!candidate) throw new Error("Wadie learning candidate not found in current Phase 17 snapshot");
++
++  const id = candidateId(input.kind, key);
++  const entry: WadieLearningReviewEntry = {
++    candidateId: id,
++    kind: input.kind,
++    key,
++    decision: input.decision,
++    note: cleanText(input.note, 600),
++    reviewedAt: new Date().toISOString(),
++    reviewedBy: String(actorUserId || "unknown"),
++  };
++
++  const existing = store.items.findIndex((item) => item.candidateId === id);
++  if (existing >= 0) store.items[existing] = entry;
++  else store.items.push(entry);
++  store.items = store.items.slice(-1000);
++  await writeStore(store);
++
++  return getWadieLearningReviewSnapshot();
++}
++
++export function getWadieLearningReviewStorageInfo() {
++  return {
++    path: storagePath(),
++    containsCredentials: false,
++    localMetadataOnly: true,
++    learningMemoryWritesApplied: false,
++    adPlatformMutationsApplied: false,
++  };
++}
+diff --git a/client/src/pages/MediaBuyerPage.tsx b/client/src/pages/MediaBuyerPage.tsx
+--- a/client/src/pages/MediaBuyerPage.tsx
++++ b/client/src/pages/MediaBuyerPage.tsx
+@@ -18,6 +18,7 @@ import WadieOptimizationOutcomes from "@/components/wadie/WadieOptimizationOut
+ import WadieRecommendationEffectiveness from "@/components/wadie/WadieRecommendationEffectiveness";
+ import WadieRecommendationGuardrails from "@/components/wadie/WadieRecommendationGuardrails";
+ import WadieLearningCandidates from "@/components/wadie/WadieLearningCandidates";
++import WadieLearningReview from "@/components/wadie/WadieLearningReview";
+ import {
+   Activity,
+   BarChart3,
+@@ -205,6 +206,8 @@ export default function WadiePage() {
+ 
+         <WadieLearningCandidates />
+ 
++        <WadieLearningReview />
++
+         <WadieMonitoringAlerts onAudit={(platform, accountId) => {
+           setAuditPlatform(platform);
+           setAuditAccountId(accountId);
+diff --git a/server/services/wadie/wadieIntegrationService.ts b/server/services/wadie/wadieIntegrationService.ts
+--- a/server/services/wadie/wadieIntegrationService.ts
++++ b/server/services/wadie/wadieIntegrationService.ts
+@@ -334,3 +334,19 @@ export function getWadiePhase17Capabilities() {
+     executionStillRequiresHumanApproval: true,
+   };
+ }
++
++export function getWadiePhase18Capabilities() {
++  return {
++    ...getWadiePhase17Capabilities(),
++    phase: "human-learning-review-approval-v1" as const,
++    humanLearningReviewApprovalEnabled: true,
++    learningReviewPersistenceLocalOnly: true,
++    approvedCandidateActivationEnabled: false,
++    learningMemoryWritesApplied: false,
++    learningReviewLiveMcpCallsApplied: false,
++    learningReviewAdPlatformMutationsApplied: false,
++    automaticOptimizationLearningApplied: false,
++    automaticExecutionPolicyChangesApplied: false,
++    executionStillRequiresHumanApproval: true,
++  };
++}
+diff --git a/server/services/wadie/wadieRouter.ts b/server/services/wadie/wadieRouter.ts
+--- a/server/services/wadie/wadieRouter.ts
++++ b/server/services/wadie/wadieRouter.ts
+@@ -3,6 +3,6 @@ import { protectedProcedure, router } from "../../_core/trpc";
+ import {
+   getWadieIntegrationStatus,
+-  getWadiePhase17Capabilities,
++  getWadiePhase18Capabilities,
+   probeWadieMcp,
+ } from "./wadieIntegrationService";
+ import {
+@@ -48,6 +48,10 @@ import {
+ import { getWadieRecommendationEffectiveness } from "./wadieRecommendationEffectivenessService";
+ import { getWadieRecommendationGuardrails } from "./wadieRecommendationGuardrailService";
+ import { getWadieLearningCandidates } from "./wadieLearningCandidateService";
++import {
++  getWadieLearningReviewSnapshot,
++  recordWadieLearningReview,
++} from "./wadieLearningReviewService";
+ import {
+   acknowledgeWadieMonitoringAlert,
+   dismissWadieMonitoringAlert,
+@@ -101,6 +105,6 @@ export const wadieRouter = router({
+   integrationStatus: wadieProcedure.query(() => getWadieIntegrationStatus()),
+   probeMcp: wadieProcedure.query(() => probeWadieMcp()),
+-  capabilities: wadieProcedure.query(() => getWadiePhase17Capabilities()),
++  capabilities: wadieProcedure.query(() => getWadiePhase18Capabilities()),
+   mcpSettings: wadieProcedure.query(() => getWadieMcpSettingsForUi()),
+   saveMcpSettings: wadieProcedure.input(z.object({
+     enabled: z.boolean(),
+@@ -134,6 +138,13 @@ export const wadieRouter = router({
+   recommendationEffectiveness: wadieProcedure.query(() => getWadieRecommendationEffectiveness()),
+   recommendationGuardrails: wadieProcedure.query(() => getWadieRecommendationGuardrails()),
+   learningCandidates: wadieProcedure.query(() => getWadieLearningCandidates()),
++  learningReview: wadieProcedure.query(() => getWadieLearningReviewSnapshot()),
++  recordLearningReview: wadieProcedure.input(z.object({
++    kind: z.enum(["platform", "priority", "category", "account"]),
++    key: z.string().trim().min(1).max(160),
++    decision: z.enum(["approved", "rejected", "needs-revision", "observing"]),
++    note: z.string().trim().max(600).optional(),
++  })).mutation(({ input, ctx }) => recordWadieLearningReview(input, String(ctx.user.id))),
+   recordOptimizationOutcome: wadieProcedure.input(z.object({
+     queueItemId: z.string().uuid(),
+     outcome: z.enum(["improved", "neutral", "worse", "inconclusive"]),
+@@ -218,6 +229,7 @@ export const wadieRouter = router({
+ // Phase 15 derives read-only recommendation effectiveness analytics from Phase 14 local outcomes only; no MCP calls, mutations, or automatic learning.
+ // Phase 16 adds sample-size-aware recommendation confidence guardrails for human decision support only; it performs no writes, MCP calls, mutations, automatic learning, or execution-policy changes.
+ // Phase 17 derives human-reviewed learning candidates from Phase 16 guardrails only; it writes no learning memory and changes no execution policy automatically.
++// Phase 18 persists human review decisions for Phase 17 candidates as local metadata only; approval does not write learning memory, call MCP, mutate ad platforms, or change execution policy.
+ // Phase 5 execution queue remains gated by
+ // explicit Admin approval + WADIE_EXECUTION_ENABLED + tested connection + MCP auth.
+ // Delete/destructive tools are intentionally not exposed.
