@@ -1,0 +1,10 @@
+*** Begin Patch
+*** Update File: client/src/components/QuotationsTab.tsx
+@@
+   function detectQuotationLibraryCategory(q: Quotation): QuotationServiceCategory | null {
+     const source = [
++      getServiceTitle(q),
+       q.title || "",
+       ...q.items.map((item) => item.service || ""),
+       q.servicesDescription || "",
+*** End Patch
