@@ -1,0 +1,25 @@
+*** Begin Patch
+*** Update File: client/src/components/QuotationsTab.tsx
+@@
+   function detectQuotationLibraryCategory(q: Quotation): QuotationServiceCategory | null {
+     const source = [
++      getServiceTitle(q),
+       q.title || "",
+       ...q.items.map((item) => item.service || ""),
+       q.servicesDescription || "",
+@@
+-                    {/* 1. Template */}
+-                    <div id="quotation-editor-line-items" className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
++                    {/* 1. Template */}
++                    <div id="quotation-editor-template" className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+@@
+-                    {/* 2. Services */}
+-                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
++                    {/* 2. Services */}
++                    <div id="quotation-editor-services" className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+@@
+-                    {/* 3. Line Items */}
+-                    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
++                    {/* 3. Line Items */}
++                    <div id="quotation-editor-line-items" className="scroll-mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+*** End Patch
