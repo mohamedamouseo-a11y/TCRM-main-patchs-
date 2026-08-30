@@ -1,0 +1,325 @@
+From 94ba7de90032767ebe97a12da51094bfa9925d57 Mon Sep 17 00:00:00 2001
+From: mohamedamouseo-a11y <mohamedamou.seo@gmail.com>
+Date: Sun, 30 Aug 2026 17:30:55 +0300
+Subject: [PATCH 1/2] Add focused dark UI polish for client profile
+
+---
+ client/src/client-profile-dark-polish.css | 287 ++++++++++++++++++++++
+ 1 file changed, 287 insertions(+)
+ create mode 100644 client/src/client-profile-dark-polish.css
+
+diff --git a/client/src/client-profile-dark-polish.css b/client/src/client-profile-dark-polish.css
+new file mode 100644
+index 0000000..dbadbfe
+--- /dev/null
++++ b/client/src/client-profile-dark-polish.css
+@@ -0,0 +1,287 @@
++/* TCRM Client Profile — Dark UI Polish v2
++   Scoped to the Client Profile only. No layout, data, or behavior changes. */
++
++.dark .tcrm-client-profile-polish {
++  --cp-bg: #06101b;
++  --cp-surface: #0a1625;
++  --cp-surface-2: #0d1b2d;
++  --cp-surface-3: #102238;
++  --cp-border: rgba(125, 158, 205, 0.16);
++  --cp-border-strong: rgba(126, 164, 220, 0.26);
++  --cp-text: #f4f8ff;
++  --cp-text-2: #b4c1d2;
++  --cp-text-3: #8ea0b6;
++  --cp-blue: #5f86ff;
++  --cp-violet: #8b70ff;
++  --cp-teal: #23c7a4;
++  --cp-amber: #f5ad3d;
++  --cp-danger: #ff7070;
++  background:
++    radial-gradient(circle at 10% -4%, rgba(80, 119, 255, 0.10), transparent 28rem),
++    radial-gradient(circle at 94% 12%, rgba(29, 199, 164, 0.055), transparent 24rem),
++    linear-gradient(180deg, #06101b 0%, #07121f 45%, #06101b 100%);
++  color: var(--cp-text);
++}
++
++/* Neutral surfaces: remove washed-out gray blocks in dark mode. */
++.dark .tcrm-client-profile-polish :where(
++  .bg-white,
++  [class~="bg-white/95"],
++  [class~="bg-white/90"],
++  [class~="bg-white/80"],
++  [class~="bg-white/70"],
++  [class~="bg-white/60"],
++  .bg-slate-50,
++  [class~="bg-slate-50/80"],
++  [class~="bg-slate-50/70"],
++  [class~="bg-slate-50/60"],
++  [class~="bg-slate-50/50"],
++  .bg-slate-100,
++  .bg-zinc-50,
++  [class~="bg-zinc-50/80"],
++  [class~="bg-zinc-50/70"],
++  .bg-zinc-100,
++  .bg-gray-50,
++  .bg-gray-100,
++  [class~="bg-muted/35"]
++) {
++  background-color: var(--cp-surface-2) !important;
++  color: var(--cp-text);
++}
++
++/* Primary card / section treatment. */
++.dark .tcrm-client-profile-polish :where(section:not(.client-profile-hero), .client-profile-info-card, .client-profile-metric-card) {
++  border-color: var(--cp-border) !important;
++  box-shadow:
++    0 14px 36px -28px rgba(0, 0, 0, 0.92),
++    inset 0 1px 0 rgba(255, 255, 255, 0.025);
++}
++
++.dark .tcrm-client-profile-polish section:not(.client-profile-hero) {
++  background-image: linear-gradient(180deg, rgba(13, 27, 45, 0.96), rgba(8, 19, 32, 0.98));
++}
++
++.dark .tcrm-client-profile-polish .client-profile-info-card {
++  background:
++    radial-gradient(circle at 100% 0%, rgba(95, 134, 255, 0.06), transparent 9rem),
++    linear-gradient(180deg, #0f1d30 0%, #0a1727 100%) !important;
++  border-color: rgba(124, 158, 207, 0.18) !important;
++  min-height: 4.25rem;
++}
++
++.dark .tcrm-client-profile-polish .client-profile-info-card:hover {
++  border-color: rgba(95, 134, 255, 0.34) !important;
++  background:
++    radial-gradient(circle at 100% 0%, rgba(95, 134, 255, 0.10), transparent 10rem),
++    linear-gradient(180deg, #11223a 0%, #0b192b 100%) !important;
++  box-shadow: 0 16px 36px -26px rgba(28, 72, 150, 0.65);
++}
++
++.dark .tcrm-client-profile-polish .client-profile-info-card > div:first-child {
++  color: #8fa3bc !important;
++  letter-spacing: 0.055em;
++}
++
++.dark .tcrm-client-profile-polish .client-profile-info-card > div:nth-child(2) {
++  color: #f4f8ff !important;
++  line-height: 1.55;
++}
++
++.dark .tcrm-client-profile-polish .client-profile-metric-card {
++  background: linear-gradient(180deg, rgba(14, 30, 49, 0.98), rgba(8, 19, 32, 0.99)) !important;
++  border-color: rgba(112, 150, 202, 0.18) !important;
++}
++
++.dark .tcrm-client-profile-polish .client-profile-metric-card:hover {
++  border-color: rgba(95, 134, 255, 0.32) !important;
++  box-shadow: 0 18px 42px -30px rgba(65, 105, 225, 0.72);
++}
++
++/* Operational Command Center semantic panels. */
++.dark .tcrm-client-profile-polish article[class~="bg-violet-50/35"] {
++  background: linear-gradient(145deg, rgba(139, 92, 246, 0.115), rgba(9, 20, 34, 0.98) 52%) !important;
++  border-color: rgba(167, 139, 250, 0.22) !important;
++}
++
++.dark .tcrm-client-profile-polish article[class~="bg-emerald-50/35"] {
++  background: linear-gradient(145deg, rgba(16, 185, 129, 0.105), rgba(9, 20, 34, 0.98) 52%) !important;
++  border-color: rgba(52, 211, 153, 0.22) !important;
++}
++
++.dark .tcrm-client-profile-polish article[class~="bg-blue-50/35"] {
++  background: linear-gradient(145deg, rgba(59, 130, 246, 0.115), rgba(9, 20, 34, 0.98) 52%) !important;
++  border-color: rgba(96, 165, 250, 0.22) !important;
++}
++
++.dark .tcrm-client-profile-polish article[class~="bg-amber-50/35"] {
++  background: linear-gradient(145deg, rgba(245, 158, 11, 0.10), rgba(9, 20, 34, 0.98) 52%) !important;
++  border-color: rgba(251, 191, 36, 0.22) !important;
++}
++
++/* Empty-state wells: dark, readable and clearly separated from the parent card. */
++.dark .tcrm-client-profile-polish :where(
++  [class~="bg-white/70"],
++  [class~="bg-white/60"]
++) {
++  background: linear-gradient(180deg, rgba(13, 28, 46, 0.78), rgba(8, 18, 31, 0.94)) !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
++}
++
++.dark .tcrm-client-profile-polish [class~="border-dashed"] {
++  border-color: rgba(126, 164, 220, 0.26) !important;
++  background: linear-gradient(180deg, rgba(13, 27, 45, 0.74), rgba(8, 18, 30, 0.91)) !important;
++  color: #9fb0c4 !important;
++}
++
++/* Readiness block and its mini cards. */
++.dark .tcrm-client-profile-polish [class~="bg-slate-50/70"] {
++  background:
++    radial-gradient(circle at 0% 0%, rgba(95, 134, 255, 0.075), transparent 13rem),
++    linear-gradient(180deg, #0d1b2d 0%, #091725 100%) !important;
++}
++
++.dark .tcrm-client-profile-polish [class~="bg-slate-50/70"] > .bg-white,
++.dark .tcrm-client-profile-polish [class~="bg-slate-50/70"] .bg-white {
++  background: linear-gradient(180deg, #101f33, #0a1727) !important;
++  border: 1px solid rgba(123, 158, 207, 0.12);
++}
++
++/* Neutral typography: stronger contrast without making secondary text shout. */
++.dark .tcrm-client-profile-polish :where(
++  .text-slate-900, .text-slate-800, .text-slate-700,
++  .text-zinc-900, .text-zinc-800, .text-zinc-700,
++  .text-gray-900, .text-gray-800, .text-gray-700
++) {
++  color: var(--cp-text) !important;
++}
++
++.dark .tcrm-client-profile-polish :where(
++  .text-slate-600, .text-zinc-600, .text-gray-600
++) {
++  color: var(--cp-text-2) !important;
++}
++
++.dark .tcrm-client-profile-polish :where(
++  .text-slate-500, .text-zinc-500, .text-gray-500,
++  .text-slate-400, .text-zinc-400, .text-gray-400,
++  .text-muted-foreground
++) {
++  color: var(--cp-text-3) !important;
++}
++
++/* Neutral borders get a cool blue tint instead of flat gray. */
++.dark .tcrm-client-profile-polish :where(
++  .border-slate-100, .border-slate-200, .border-slate-300,
++  .border-zinc-100, .border-zinc-200, .border-zinc-300,
++  .border-gray-100, .border-gray-200, .border-gray-300,
++  .border-border
++) {
++  border-color: var(--cp-border) !important;
++}
++
++/* Semantic pale Tailwind colors become dark tinted chips/cards in dark mode. */
++.dark .tcrm-client-profile-polish :where(.bg-blue-50, .bg-blue-100) {
++  background-color: rgba(59, 130, 246, 0.13) !important;
++}
++.dark .tcrm-client-profile-polish :where(.bg-violet-50, .bg-violet-100, .bg-purple-50, .bg-purple-100) {
++  background-color: rgba(139, 92, 246, 0.13) !important;
++}
++.dark .tcrm-client-profile-polish :where(.bg-emerald-50, .bg-emerald-100, .bg-green-50, .bg-green-100) {
++  background-color: rgba(16, 185, 129, 0.13) !important;
++}
++.dark .tcrm-client-profile-polish :where(.bg-amber-50, .bg-amber-100, .bg-yellow-50, .bg-yellow-100, .bg-orange-50, .bg-orange-100) {
++  background-color: rgba(245, 158, 11, 0.13) !important;
++}
++.dark .tcrm-client-profile-polish :where(.bg-rose-50, .bg-rose-100, .bg-red-50, .bg-red-100) {
++  background-color: rgba(239, 68, 68, 0.13) !important;
++}
++
++.dark .tcrm-client-profile-polish :where(.text-blue-700, .text-blue-600) { color: #82a7ff !important; }
++.dark .tcrm-client-profile-polish :where(.text-violet-800, .text-violet-700, .text-purple-700) { color: #b7a5ff !important; }
++.dark .tcrm-client-profile-polish :where(.text-emerald-700, .text-green-700) { color: #74e3bd !important; }
++.dark .tcrm-client-profile-polish :where(.text-amber-700, .text-orange-700, .text-yellow-700) { color: #f8c96d !important; }
++.dark .tcrm-client-profile-polish :where(.text-rose-700, .text-red-700) { color: #ff9a9a !important; }
++
++/* Inputs / selects / editors: no more light-gray fields. */
++.dark .tcrm-client-profile-polish :where(input, textarea, [role="combobox"], [contenteditable="true"]) {
++  background-color: #0b192a !important;
++  border-color: rgba(125, 160, 210, 0.20) !important;
++  color: #f2f6fd !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
++}
++
++.dark .tcrm-client-profile-polish :where(input, textarea)::placeholder {
++  color: #6f8198 !important;
++}
++
++.dark .tcrm-client-profile-polish :where(input, textarea, [role="combobox"]):focus-visible {
++  border-color: rgba(95, 134, 255, 0.58) !important;
++  box-shadow: 0 0 0 3px rgba(95, 134, 255, 0.12) !important;
++}
++
++/* Tabs: more obvious selected state and cleaner inactive state. */
++.dark .tcrm-client-profile-polish .client-profile-tabs-shell {
++  background: rgba(7, 18, 31, 0.94) !important;
++  border-color: rgba(95, 134, 255, 0.20) !important;
++  box-shadow: 0 14px 34px -24px rgba(0, 0, 0, 0.92);
++  backdrop-filter: blur(16px) saturate(125%);
++}
++
++.dark .tcrm-client-profile-polish .client-profile-tab-button {
++  color: #92a3b8 !important;
++}
++
++.dark .tcrm-client-profile-polish .client-profile-tab-button:hover {
++  color: #e9f0fb !important;
++  background: rgba(95, 134, 255, 0.08) !important;
++}
++
++.dark .tcrm-client-profile-polish .client-profile-tab-button[data-state="active"] {
++  color: #ffffff !important;
++  background: linear-gradient(135deg, rgba(76, 125, 255, 0.24), rgba(124, 92, 255, 0.18)) !important;
++  border-color: rgba(105, 133, 255, 0.32) !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 8px 20px -14px rgba(76, 125, 255, 0.85);
++}
++
++/* Hero facts: keep the navy hierarchy and remove muddy gray glass. */
++.dark .tcrm-client-profile-polish .client-profile-hero-fact {
++  background: rgba(7, 18, 32, 0.58) !important;
++  border-color: rgba(177, 202, 235, 0.15) !important;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 12px 28px -22px rgba(0, 0, 0, 0.82);
++}
++
++/* Progress tracks become deep navy instead of white/gray. */
++.dark .tcrm-client-profile-polish :where(.h-2, .h-2\.5, .h-3).bg-white,
++.dark .tcrm-client-profile-polish :where(.h-2, .h-2\.5, .h-3).bg-slate-100 {
++  background: #15263b !important;
++  border: 1px solid rgba(125, 158, 205, 0.08);
++}
++
++/* Buttons with outline treatment should read as controls, not gray pills. */
++.dark .tcrm-client-profile-polish button[class~="border"]:not(.client-profile-primary-action) {
++  border-color: rgba(126, 164, 220, 0.22) !important;
++}
++
++.dark .tcrm-client-profile-polish button[class~="border"]:not(.client-profile-primary-action):hover {
++  border-color: rgba(95, 134, 255, 0.42) !important;
++  background-color: rgba(95, 134, 255, 0.09) !important;
++}
++
++/* Long-text boxes stay readable on dense client data. */
++.dark .tcrm-client-profile-polish :where(.crm-long-text-box, .rich-text-view) {
++  color: #dce6f3;
++}
++
++/* WhatsApp client card / lower modules inherit the same elevated surface language. */
++.dark .tcrm-client-profile-polish :where([class*="whatsapp" i], [class*="onboarding" i]) .bg-white {
++  background-color: #0b192a !important;
++}
++
++/* Reduced motion stays respected. */
++@media (prefers-reduced-motion: reduce) {
++  .tcrm-client-profile-polish .client-profile-info-card,
++  .tcrm-client-profile-polish .client-profile-metric-card,
++  .tcrm-client-profile-polish .client-profile-tab-button {
++    transition: none !important;
++  }
++}
+
+From 0abbf09e2637fe80cb1bb1a1cc5c4c5b7b413d58 Mon Sep 17 00:00:00 2001
+From: mohamedamouseo-a11y <mohamedamou.seo@gmail.com>
+Date: Sun, 30 Aug 2026 17:31:22 +0300
+Subject: [PATCH 2/2] Load client profile dark UI polish stylesheet
+
+---
+ client/index.html | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/client/index.html b/client/index.html
+index 04c0593..c01051a 100644
+--- a/client/index.html
++++ b/client/index.html
+@@ -14,6 +14,7 @@
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+     <link id="crm-font-link" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" />
+     <link rel="stylesheet" href="/src/leads-premium.css" />
++    <link rel="stylesheet" href="/src/client-profile-dark-polish.css" />
+     <!-- Google tag (gtag.js) -->
+   <script async src="https://www.googletagmanager.com/gtag/js?id=G-NMSKFVNBSJ"></script>
+   <script>
