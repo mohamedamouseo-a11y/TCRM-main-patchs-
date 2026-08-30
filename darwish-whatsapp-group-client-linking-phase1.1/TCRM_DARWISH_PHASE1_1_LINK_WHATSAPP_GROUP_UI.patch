@@ -1,0 +1,362 @@
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -13,6 +13,7 @@
+   getDarwishMappingCounts,
+   listDarwishGroupJobs,
+   listDarwishGroupLinks,
++  resolveDarwishGroupLink,
+   upsertDarwishAgentMapping,
+   upsertDarwishClientMapping,
+   upsertDarwishGroupLink,
+@@ -77,4 +78,115 @@
+   normalizePendingJobs: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => normalizePendingDarwishJobs(input?.limit || 100)),
+   groupLinks: darwishProcedure.query(() => listDarwishGroupLinks()),
+   groupJobs: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishGroupJobs(input?.limit || 50)),
++  clientGroupCandidates: darwishProcedure.input(z.object({
++    clientId: z.number().int().positive(),
++    limit: z.number().int().min(1).max(200).default(200),
++  })).query(async ({ input }) => {
++    const [jobs, links] = await Promise.all([
++      listDarwishGroupJobs(input.limit),
++      listDarwishGroupLinks(),
++    ]);
++
++    const identity = (groupJid: unknown, evolutionInstance: unknown) =>
++      `${String(evolutionInstance || "").trim()}::${String(groupJid || "").trim()}`;
++
++    const enabledLinkByIdentity = new Map<string, any>();
++    for (const link of links as any[]) {
++      if (Number(link?.enabled ?? 1) !== 1) continue;
++      const groupJid = String(link?.groupJid || "").trim();
++      const evolutionInstance = String(link?.evolutionInstance || "").trim();
++      if (!groupJid || !evolutionInstance) continue;
++      enabledLinkByIdentity.set(identity(groupJid, evolutionInstance), link);
++    }
++
++    const seen = new Set<string>();
++    const candidates: Array<{
++      groupJid: string;
++      groupName: string | null;
++      evolutionInstance: string;
++      chatwootConversationId: string | null;
++      lastActivityAt: unknown;
++      linkedClientId: number | null;
++      status: "unlinked" | "linked_current" | "linked_other";
++      eligible: boolean;
++    }> = [];
++
++    for (const job of jobs as any[]) {
++      const groupJid = String(job?.groupJid || "").trim();
++      const evolutionInstance = String(job?.evolutionInstance || "").trim();
++      if (!groupJid || !evolutionInstance) continue;
++
++      const key = identity(groupJid, evolutionInstance);
++      if (seen.has(key)) continue;
++      seen.add(key);
++
++      const link = enabledLinkByIdentity.get(key);
++      const rawLinkedClientId = Number(link?.clientId);
++      const linkedClientId = Number.isInteger(rawLinkedClientId) && rawLinkedClientId > 0 ? rawLinkedClientId : null;
++      const status = linkedClientId === input.clientId
++        ? "linked_current"
++        : linkedClientId
++          ? "linked_other"
++          : "unlinked";
++
++      candidates.push({
++        groupJid,
++        groupName: String(job?.groupName || "").trim() || null,
++        evolutionInstance,
++        chatwootConversationId: String(job?.chatwootConversationId || "").trim() || null,
++        lastActivityAt: job?.receivedAt ?? job?.messageTimestamp ?? null,
++        linkedClientId,
++        status,
++        eligible: linkedClientId === null || linkedClientId === input.clientId,
++      });
++    }
++
++    return candidates;
++  }),
++  linkClientGroup: darwishProcedure.input(z.object({
++    clientId: z.number().int().positive(),
++    groupJid: z.string().trim().min(3).max(255),
++    evolutionInstance: z.string().trim().min(1).max(160),
++  })).mutation(async ({ input }) => {
++    const groupJid = input.groupJid.trim();
++    const evolutionInstance = input.evolutionInstance.trim();
++    const jobs = await listDarwishGroupJobs(200);
++    const candidate = (jobs as any[]).find((job) =>
++      String(job?.groupJid || "").trim() === groupJid
++      && String(job?.evolutionInstance || "").trim() === evolutionInstance
++    );
++
++    if (!candidate) {
++      throw new TRPCError({
++        code: "NOT_FOUND",
++        message: "This WhatsApp group is not available in recent Darwish group activity",
++      });
++    }
++
++    const existing = await resolveDarwishGroupLink(groupJid, evolutionInstance);
++    if (existing && Number(existing.clientId) !== input.clientId) {
++      throw new TRPCError({
++        code: "CONFLICT",
++        message: `This WhatsApp group is already linked to client #${existing.clientId}`,
++      });
++    }
++
++    if (!existing) {
++      await upsertDarwishGroupLink({
++        clientId: input.clientId,
++        groupJid,
++        groupName: String(candidate?.groupName || "").trim() || null,
++        evolutionInstance,
++        enabled: true,
++      });
++    }
++
++    return {
++      success: true,
++      alreadyLinked: Boolean(existing),
++      clientId: input.clientId,
++      groupJid,
++      evolutionInstance,
++    };
++  }),
+   intelligenceStats: darwishProcedure.query(() => getDarwishIntelligenceStats()),
+diff --git a/client/src/pages/ClientProfile.tsx b/client/src/pages/ClientProfile.tsx
+--- a/client/src/pages/ClientProfile.tsx
++++ b/client/src/pages/ClientProfile.tsx
+@@ -3,7 +3,12 @@
+               <FelfelMeetingsHub clientId={Number(client.id)} leadId={client.leadId ? Number(client.leadId) : null} dealId={client.dealId ? Number(client.dealId) : null} isRTL={isRTL} />
+             </TabsContent>
+             <TabsContent value="overview" className="mt-4 space-y-4">
+-              <ClientWhatsAppGroupsCard groups={(data as any)?.whatsappGroups ?? []} isRTL={isRTL} />
++              <ClientWhatsAppGroupsCard
++                clientId={Number(client.id)}
++                groups={(data as any)?.whatsappGroups ?? []}
++                isRTL={isRTL}
++                canManage={["Admin", "Developer"].includes(String(user?.role || ""))}
++              />
+               <div className="rounded-2xl border bg-card p-6 overflow-hidden shadow-sm">
+                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                   <div>
+diff --git a/client/src/components/ClientWhatsAppGroupsCard.tsx b/client/src/components/ClientWhatsAppGroupsCard.tsx
+--- a/client/src/components/ClientWhatsAppGroupsCard.tsx
++++ b/client/src/components/ClientWhatsAppGroupsCard.tsx
+@@ -1,5 +1,11 @@
++import { useMemo, useState } from "react";
+ import { Badge } from "@/components/ui/badge";
+-import { MessageSquare } from "lucide-react";
++import { Button } from "@/components/ui/button";
++import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
++import { trpc } from "@/lib/trpc";
++import { Link2, Loader2, MessageSquare } from "lucide-react";
++import { toast } from "sonner";
+ 
+ type ClientWhatsAppGroup = {
+   id: number;
+@@ -14,6 +20,17 @@
+   updatedAt: Date | string | null;
+ };
+ 
++type GroupCandidate = {
++  groupJid: string;
++  groupName: string | null;
++  evolutionInstance: string;
++  chatwootConversationId: string | null;
++  lastActivityAt: Date | string | null;
++  linkedClientId: number | null;
++  status: "unlinked" | "linked_current" | "linked_other";
++  eligible: boolean;
++};
++
+ function formatActivity(value: unknown, isRTL: boolean) {
+   if (!value) return isRTL ? "لا يوجد نشاط مسجل" : "No recorded activity";
+   const date = value instanceof Date ? value : new Date(String(value));
+@@ -24,14 +41,63 @@
+   }).format(date);
+ }
+ 
++function candidateKey(candidate: Pick<GroupCandidate, "groupJid" | "evolutionInstance">) {
++  return `${candidate.evolutionInstance}::${candidate.groupJid}`;
++}
++
+ export default function ClientWhatsAppGroupsCard({
++  clientId,
+   groups,
+   isRTL,
++  canManage,
+ }: {
++  clientId: number;
+   groups: ClientWhatsAppGroup[];
+   isRTL: boolean;
++  canManage: boolean;
+ }) {
++  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
++  const [selectedCandidateKey, setSelectedCandidateKey] = useState("");
++  const utils = trpc.useUtils();
++
++  const candidatesQuery = trpc.darwish.clientGroupCandidates.useQuery(
++    { clientId, limit: 200 },
++    { enabled: canManage && linkDialogOpen && Number.isInteger(clientId) && clientId > 0, refetchOnWindowFocus: false },
++  );
++
++  const candidates = (candidatesQuery.data ?? []) as GroupCandidate[];
++  const selectableCandidates = useMemo(
++    () => candidates.filter((candidate) => candidate.status !== "linked_current"),
++    [candidates],
++  );
++  const selectedCandidate = selectableCandidates.find((candidate) => candidateKey(candidate) === selectedCandidateKey) ?? null;
++
++  const linkMutation = trpc.darwish.linkClientGroup.useMutation({
++    onSuccess: async () => {
++      toast.success(isRTL ? "تم ربط جروب واتساب بالعميل" : "WhatsApp group linked to client");
++      setLinkDialogOpen(false);
++      setSelectedCandidateKey("");
++      await Promise.all([
++        utils.accountManagement.getClientProfile.invalidate({ id: clientId }),
++        utils.darwish.clientGroupCandidates.invalidate({ clientId, limit: 200 }),
++        utils.darwish.groupLinks.invalidate(),
++      ]);
++    },
++    onError: (error) => {
++      toast.error(error.message || (isRTL ? "تعذر ربط الجروب" : "Unable to link group"));
++    },
++  });
++
+   const linkedGroups = Array.isArray(groups) ? groups.filter((group) => group?.enabled !== false) : [];
++
++  const submitLink = () => {
++    if (!selectedCandidate || !selectedCandidate.eligible) return;
++    linkMutation.mutate({
++      clientId,
++      groupJid: selectedCandidate.groupJid,
++      evolutionInstance: selectedCandidate.evolutionInstance,
++    });
++  };
+ 
+   return (
+     <section className="overflow-hidden rounded-2xl border border-emerald-200/70 bg-card shadow-sm" dir={isRTL ? "rtl" : "ltr"}>
+@@ -51,9 +117,116 @@
+             </p>
+           </div>
+         </div>
+-        <Badge variant="secondary" className="rounded-full bg-white text-emerald-700">
+-          {linkedGroups.length} {isRTL ? "جروب" : linkedGroups.length === 1 ? "group" : "groups"}
+-        </Badge>
++
++        <div className="flex items-center gap-2">
++          <Badge variant="secondary" className="rounded-full bg-white text-emerald-700">
++            {linkedGroups.length} {isRTL ? "جروب" : linkedGroups.length === 1 ? "group" : "groups"}
++          </Badge>
++
++          {canManage ? (
++            <Dialog
++              open={linkDialogOpen}
++              onOpenChange={(open) => {
++                setLinkDialogOpen(open);
++                if (!open) setSelectedCandidateKey("");
++              }}
++            >
++              <DialogTrigger asChild>
++                <Button size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700">
++                  <Link2 size={15} />
++                  {isRTL ? "ربط جروب واتساب" : "Link WhatsApp group"}
++                </Button>
++              </DialogTrigger>
++              <DialogContent className="sm:max-w-xl" dir={isRTL ? "rtl" : "ltr"}>
++                <DialogHeader>
++                  <DialogTitle>{isRTL ? "ربط جروب واتساب بالعميل" : "Link WhatsApp group to client"}</DialogTitle>
++                </DialogHeader>
++
++                <div className="space-y-4 py-2">
++                  <p className="text-sm text-muted-foreground">
++                    {isRTL
++                      ? "اختر جروبًا حقيقيًا استقبله درويش من Evolution/Chatwoot. لا يتم إنشاء JID يدوي أو تخمين الربط."
++                      : "Choose a real group observed by Darwish through Evolution/Chatwoot. No manual JID or guessed mapping is created."}
++                  </p>
++
++                  {candidatesQuery.isLoading ? (
++                    <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-sm text-muted-foreground">
++                      <Loader2 size={16} className="animate-spin" />
++                      {isRTL ? "جاري تحميل الجروبات..." : "Loading groups..."}
++                    </div>
++                  ) : candidatesQuery.isError ? (
++                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
++                      {candidatesQuery.error.message}
++                    </div>
++                  ) : selectableCandidates.length === 0 ? (
++                    <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
++                      {isRTL
++                        ? "لا توجد جروبات متاحة للربط. يجب أن يكون درويش قد استقبل رسالة من الجروب أولًا."
++                        : "No groups are available to link. Darwish must have received a group message first."}
++                    </div>
++                  ) : (
++                    <Select value={selectedCandidateKey} onValueChange={setSelectedCandidateKey}>
++                      <SelectTrigger>
++                        <SelectValue placeholder={isRTL ? "اختر جروب واتساب" : "Select WhatsApp group"} />
++                      </SelectTrigger>
++                      <SelectContent>
++                        {selectableCandidates.map((candidate) => (
++                          <SelectItem
++                            key={candidateKey(candidate)}
++                            value={candidateKey(candidate)}
++                            disabled={!candidate.eligible}
++                          >
++                            <div className="flex min-w-0 flex-col gap-0.5">
++                              <span className="truncate font-medium">
++                                {candidate.groupName || (isRTL ? "جروب واتساب" : "WhatsApp Group")}
++                              </span>
++                              <span className="truncate font-mono text-[10px] text-muted-foreground" dir="ltr">
++                                {candidate.groupJid} · {candidate.evolutionInstance}
++                              </span>
++                              {candidate.status === "linked_other" ? (
++                                <span className="text-[10px] text-amber-600">
++                                  {isRTL
++                                    ? `مرتبط بالفعل بالعميل #${candidate.linkedClientId}`
++                                    : `Already linked to client #${candidate.linkedClientId}`}
++                                </span>
++                              ) : null}
++                            </div>
++                          </SelectItem>
++                        ))}
++                      </SelectContent>
++                    </Select>
++                  )}
++
++                  {selectedCandidate ? (
++                    <div className="rounded-xl border bg-muted/30 p-3 text-xs">
++                      <div className="font-medium">
++                        {selectedCandidate.groupName || (isRTL ? "جروب واتساب" : "WhatsApp Group")}
++                      </div>
++                      <div className="mt-1 break-all font-mono text-muted-foreground" dir="ltr">
++                        {selectedCandidate.groupJid}
++                      </div>
++                      <div className="mt-2 text-muted-foreground">
++                        {isRTL ? "آخر نشاط: " : "Last activity: "}
++                        {formatActivity(selectedCandidate.lastActivityAt, isRTL)}
++                      </div>
++                    </div>
++                  ) : null}
++                </div>
++
++                <DialogFooter>
++                  <Button
++                    onClick={submitLink}
++                    disabled={!selectedCandidate?.eligible || linkMutation.isPending}
++                    className="gap-2 bg-emerald-600 hover:bg-emerald-700"
++                  >
++                    {linkMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
++                    {isRTL ? "ربط الجروب" : "Link group"}
++                  </Button>
++                </DialogFooter>
++              </DialogContent>
++            </Dialog>
++          ) : null}
++        </div>
+       </div>
+ 
+       <div className="p-5">
