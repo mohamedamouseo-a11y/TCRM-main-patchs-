@@ -1,0 +1,269 @@
+diff --git a/server/db.ts b/server/db.ts
+--- a/server/db.ts
++++ b/server/db.ts
+@@ -4182,6 +4182,11 @@ type ClientListFilters = {
+   sourceMarketerCode?: string;
+   crmTag?: string;
+   paymentStatus?: string;
++  clientDateField?: "createdAt" | "contractStartDate" | "lastFollowUpDate" | "updatedAt";
++  clientDateFrom?: Date;
++  clientDateTo?: Date;
++  selectedClientIds?: number[];
++  searchResultLimit?: number;
+ };
+ 
+ function buildClientListConditions(filters: ClientListFilters = {}, searchMode: "exact" | "fuzzy" = "fuzzy") {
+@@ -4193,6 +4198,65 @@ function buildClientListConditions(filters: ClientListFilters = {}, searchMode:
+   if (filters.sourceMarketerCode?.trim()) conditions.push(eq((clients as any).sourceMarketerCode, filters.sourceMarketerCode.trim()));
+   if (filters.crmTag?.trim()) conditions.push(eq((clients as any).crmTag, filters.crmTag.trim() as any));
+   if (filters.paymentStatus?.trim()) conditions.push(eq((clients as any).paymentStatus, filters.paymentStatus.trim() as any));
++
++  if (filters.selectedClientIds?.length) {
++    conditions.push(inArray(clients.id, filters.selectedClientIds));
++  }
++
++  const clientDateFrom =
++    filters.clientDateFrom instanceof Date && !Number.isNaN(filters.clientDateFrom.getTime())
++      ? filters.clientDateFrom
++      : undefined;
++  const clientDateTo =
++    filters.clientDateTo instanceof Date && !Number.isNaN(filters.clientDateTo.getTime())
++      ? filters.clientDateTo
++      : undefined;
++
++  if (filters.clientDateField && (clientDateFrom || clientDateTo)) {
++    if (filters.clientDateField === "contractStartDate") {
++      // Client Pool exposes the newest non-deleted contract in each row. Filter
++      // against that exact same canonical contract so preview/export cannot
++      // disagree with the contractStartDate shown in the generated workbook.
++      if (clientDateFrom && clientDateTo) {
++        conditions.push(sql`EXISTS (
++          SELECT 1
++          FROM contracts client_export_contract
++          WHERE client_export_contract.clientId = ${clients.id}
++            AND client_export_contract.deletedAt IS NULL
++            AND client_export_contract.id = (
++              SELECT latest_client_export_contract.id
++              FROM contracts latest_client_export_contract
++              WHERE latest_client_export_contract.clientId = ${clients.id}
++                AND latest_client_export_contract.deletedAt IS NULL
++              ORDER BY latest_client_export_contract.createdAt DESC, latest_client_export_contract.id DESC
++              LIMIT 1
++            )
++            AND client_export_contract.startDate >= ${clientDateFrom}
++            AND client_export_contract.startDate <= ${clientDateTo}
++        )`);
++      } else if (clientDateFrom) {
++        conditions.push(sql`EXISTS (
++          SELECT 1
++          FROM contracts client_export_contract
++          WHERE client_export_contract.clientId = ${clients.id}
++            AND client_export_contract.deletedAt IS NULL
++            AND client_export_contract.id = (
++              SELECT latest_client_export_contract.id
++              FROM contracts latest_client_export_contract
++              WHERE latest_client_export_contract.clientId = ${clients.id}
++                AND latest_client_export_contract.deletedAt IS NULL
++              ORDER BY latest_client_export_contract.createdAt DESC, latest_client_export_contract.id DESC
++              LIMIT 1
++            )
++            AND client_export_contract.startDate >= ${clientDateFrom}
++        )`);
++      } else if (clientDateTo) {
++        conditions.push(sql`EXISTS (
++          SELECT 1
++          FROM contracts client_export_contract
++          WHERE client_export_contract.clientId = ${clients.id}
++            AND client_export_contract.deletedAt IS NULL
++            AND client_export_contract.id = (
++              SELECT latest_client_export_contract.id
++              FROM contracts latest_client_export_contract
++              WHERE latest_client_export_contract.clientId = ${clients.id}
++                AND latest_client_export_contract.deletedAt IS NULL
++              ORDER BY latest_client_export_contract.createdAt DESC, latest_client_export_contract.id DESC
++              LIMIT 1
++            )
++            AND client_export_contract.startDate <= ${clientDateTo}
++        )`);
++      }
++    } else {
++      const dateColumn = filters.clientDateField === "updatedAt"
++        ? clients.updatedAt
++        : filters.clientDateField === "lastFollowUpDate"
++          ? clients.lastFollowUpDate
++          : clients.createdAt;
++      if (clientDateFrom) conditions.push(gte(dateColumn as any, clientDateFrom as any));
++      if (clientDateTo) conditions.push(lte(dateColumn as any, clientDateTo as any));
++    }
++  }
++
+   if (filters.handoverStatus) {
+     if (filters.handoverStatus === "AwaitingAssignment") {
+       conditions.push(and(eq((clients as any).handoverStatus, "AwaitingAssignment"), isNull(clients.accountManagerId)));
+@@ -4695,6 +4759,11 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
+ 
+   const conditions = buildClientListConditions(filters, searchMode);
+   const whereClause = buildClientWhere(conditions);
++  const requestedSearchResultLimit = Number(filters.searchResultLimit ?? 1000);
++  const searchResultLimit = Number.isFinite(requestedSearchResultLimit)
++    ? Math.max(1, Math.min(Math.trunc(requestedSearchResultLimit), 10_000))
++    : 1000;
+ 
+   const [data, countResult] = await Promise.all([
+     db.select({
+@@ -4738,8 +4807,8 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
+       .leftJoin(users, eq(clients.accountManagerId, users.id))
+       .where(whereClause)
+       .orderBy(desc(clients.createdAt))
+-      .limit(filters.search?.trim() ? 1000 : (filters.limit ?? 50))
++      .limit(filters.search?.trim() ? searchResultLimit : (filters.limit ?? 50))
+       .offset(filters.search?.trim() ? 0 : (filters.offset ?? 0)),
+     db.select({ count: count() }).from(clients).where(whereClause),
+   ]);
+@@ -4761,7 +4830,7 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
+         inArray(contracts.clientId, clientIds),
+         isNull(contracts.deletedAt)
+       ))
+-      .orderBy(desc(contracts.createdAt));
++      .orderBy(desc(contracts.createdAt), desc(contracts.id));
+ 
+     // Group by clientId, take the latest active contract
+     for (const c of clientContracts) {
+diff --git a/server/services/clientPoolExcelExportService.ts b/server/services/clientPoolExcelExportService.ts
+--- a/server/services/clientPoolExcelExportService.ts
++++ b/server/services/clientPoolExcelExportService.ts
+@@ -1,5 +1,6 @@
+ // TCRM_CLIENT_POOL_PRO_EXCEL_EXPORT_V1
+ // TCRM_CLIENT_POOL_EXPORT_DATA_INTEGRITY_SECURITY_V1R8
++// TCRM_CLIENT_POOL_EXPORT_DATE_FILTER_DB_V1R9
+ import JSZip from "jszip";
+ import { z } from "zod";
+ import { getClients } from "../db";
+@@ -349,6 +350,19 @@ export function filterClientPoolExportRows(
+   });
+ }
+ 
++export function buildClientPoolExportDbFilters(
++  input: ClientPoolExportInput,
++  now = new Date(),
++) {
++  const range = resolveClientPoolExportDateRange(input, now);
++  const hasDateRange = !!range.from || !!range.to;
++  return {
++    clientDateField: hasDateRange ? input.dateField : undefined,
++    clientDateFrom: range.from ?? undefined,
++    clientDateTo: range.to ?? undefined,
++    selectedClientIds: input.scope === "selected" ? input.selectedClientIds : undefined,
++  };
++}
++
+ async function fetchCanonicalClientRows(input: ClientPoolExportInput) {
++  const dbDateFilters = buildClientPoolExportDbFilters(input);
++  const queryLimit = input.filters.search?.trim() ? CLIENT_POOL_EXPORT_MAX_ROWS + 1 : PAGE_SIZE;
+   const baseFilters: Record<string, any> = {
++    ...dbDateFilters,
+     planStatus: input.filters.planStatus,
+     renewalStatus: input.filters.renewalStatus,
+     handoverStatus: input.filters.handoverStatus,
+@@ -360,7 +374,8 @@ async function fetchCanonicalClientRows(input: ClientPoolExportInput) {
+     paymentStatus: input.filters.paymentStatus,
+     search: input.filters.search,
+     userRole: "Admin",
+-    limit: PAGE_SIZE,
++    limit: queryLimit,
++    searchResultLimit: queryLimit,
+   };
+ 
+   const rows: ExportClient[] = [];
+diff --git a/server/services/clientPoolExcelExportService.test.ts b/server/services/clientPoolExcelExportService.test.ts
+--- a/server/services/clientPoolExcelExportService.test.ts
++++ b/server/services/clientPoolExcelExportService.test.ts
+@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
+ import {
+   assertClientPoolPreviewCount,
++  buildClientPoolExportDbFilters,
+   buildClientPoolWorkbook,
+   clientPoolExportInputSchema,
+   filterClientPoolExportRows,
+@@ -29,6 +30,7 @@ const rows = [
+     servicesNeeded: "SEO",
+     createdAt: "2026-08-05T10:00:00Z",
+     updatedAt: "2026-08-05T11:00:00Z",
++    contractStartDate: "2026-08-03T00:00:00Z",
+     lastFollowUpDate: "2026-08-01T10:00:00Z",
+   },
+   {
+@@ -42,6 +44,7 @@ const rows = [
+     servicesNeeded: "Ads",
+     createdAt: "2026-07-01T10:00:00Z",
+     updatedAt: "2026-07-02T11:00:00Z",
++    contractStartDate: "2026-08-10T00:00:00Z",
+     lastFollowUpDate: null,
+   },
+ ];
+@@ -96,6 +99,64 @@ describe("Client Pool professional Excel export", () => {
+     expect(range.to?.getHours()).toBe(23);
+   });
+ 
++  it("pushes the chosen custom date window into the canonical database filters", () => {
++    const input = clientPoolExportInputSchema.parse({
++      ...baseInput,
++      scope: "selected",
++      selectedClientIds: [1],
++      dateField: "createdAt",
++      datePreset: "custom",
++      fromDate: "2026-08-05",
++      toDate: "2026-08-05",
++    });
++    const filters = buildClientPoolExportDbFilters(input);
++
++    expect(filters.clientDateField).toBe("createdAt");
++    expect(filters.selectedClientIds).toEqual([1]);
++    expect(filters.clientDateFrom?.getFullYear()).toBe(2026);
++    expect(filters.clientDateFrom?.getMonth()).toBe(7);
++    expect(filters.clientDateFrom?.getDate()).toBe(5);
++    expect(filters.clientDateFrom?.getHours()).toBe(0);
++    expect(filters.clientDateTo?.getDate()).toBe(5);
++    expect(filters.clientDateTo?.getHours()).toBe(23);
++  });
++
++  it("does not push a date predicate for all-time exports", () => {
++    const filters = buildClientPoolExportDbFilters(baseInput);
++    expect(filters.clientDateField).toBeUndefined();
++    expect(filters.clientDateFrom).toBeUndefined();
++    expect(filters.clientDateTo).toBeUndefined();
++  });
++
++  it("filters a custom creation-date range inclusively", () => {
++    const result = filterClientPoolExportRows(rows, {
++      ...baseInput,
++      dateField: "createdAt",
++      datePreset: "custom",
++      fromDate: "2026-08-05",
++      toDate: "2026-08-05",
++      filters: {
++        ...baseInput.filters,
++        planStatus: undefined,
++      },
++    });
++    expect(result.map((row) => row.id)).toEqual([1]);
++  });
++
++  it("uses the selected date field instead of silently falling back to createdAt", () => {
++    const result = filterClientPoolExportRows(rows, {
++      ...baseInput,
++      dateField: "contractStartDate",
++      datePreset: "custom",
++      fromDate: "2026-08-10",
++      toDate: "2026-08-10",
++      filters: {
++        ...baseInput.filters,
++        planStatus: undefined,
++      },
++    });
++    expect(result.map((row) => row.id)).toEqual([2]);
++  });
++
+   it("filters selected client ids server-side", () => {
+     const result = filterClientPoolExportRows(rows, {
+       ...baseInput,
