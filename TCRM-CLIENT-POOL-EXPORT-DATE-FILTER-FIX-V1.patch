@@ -2,9 +2,9 @@ diff --git a/server/db.ts b/server/db.ts
 --- a/server/db.ts
 +++ b/server/db.ts
 @@ -4182,6 +4182,11 @@ type ClientListFilters = {
-   sourceMarketerCode?: string;
-   crmTag?: string;
-   paymentStatus?: string;
+  sourceMarketerCode?: string;
+  crmTag?: string;
+  paymentStatus?: string;
 +  clientDateField?: "createdAt" | "contractStartDate" | "lastFollowUpDate" | "updatedAt";
 +  clientDateFrom?: Date;
 +  clientDateTo?: Date;
@@ -13,10 +13,10 @@ diff --git a/server/db.ts b/server/db.ts
  };
  
  function buildClientListConditions(filters: ClientListFilters = {}, searchMode: "exact" | "fuzzy" = "fuzzy") {
-@@ -4193,6 +4198,65 @@ function buildClientListConditions(filters: ClientListFilters = {}, searchMode:
-   if (filters.sourceMarketerCode?.trim()) conditions.push(eq((clients as any).sourceMarketerCode, filters.sourceMarketerCode.trim()));
-   if (filters.crmTag?.trim()) conditions.push(eq((clients as any).crmTag, filters.crmTag.trim() as any));
-   if (filters.paymentStatus?.trim()) conditions.push(eq((clients as any).paymentStatus, filters.paymentStatus.trim() as any));
+@@ -4193,6 +4198,86 @@ function buildClientListConditions(filters: ClientListFilters = {}, searchMode:
+  if (filters.sourceMarketerCode?.trim()) conditions.push(eq((clients as any).sourceMarketerCode, filters.sourceMarketerCode.trim()));
+  if (filters.crmTag?.trim()) conditions.push(eq((clients as any).crmTag, filters.crmTag.trim() as any));
+  if (filters.paymentStatus?.trim()) conditions.push(eq((clients as any).paymentStatus, filters.paymentStatus.trim() as any));
 +
 +  if (filters.selectedClientIds?.length) {
 +    conditions.push(inArray(clients.id, filters.selectedClientIds));
@@ -97,38 +97,38 @@ diff --git a/server/db.ts b/server/db.ts
 +    }
 +  }
 +
-   if (filters.handoverStatus) {
-     if (filters.handoverStatus === "AwaitingAssignment") {
-       conditions.push(and(eq((clients as any).handoverStatus, "AwaitingAssignment"), isNull(clients.accountManagerId)));
-@@ -4695,6 +4759,11 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
+  if (filters.handoverStatus) {
+    if (filters.handoverStatus === "AwaitingAssignment") {
+      conditions.push(and(eq((clients as any).handoverStatus, "AwaitingAssignment"), isNull(clients.accountManagerId)));
+@@ -4695,6 +4759,10 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
  
-   const conditions = buildClientListConditions(filters, searchMode);
-   const whereClause = buildClientWhere(conditions);
+  const conditions = buildClientListConditions(filters, searchMode);
+  const whereClause = buildClientWhere(conditions);
 +  const requestedSearchResultLimit = Number(filters.searchResultLimit ?? 1000);
 +  const searchResultLimit = Number.isFinite(requestedSearchResultLimit)
 +    ? Math.max(1, Math.min(Math.trunc(requestedSearchResultLimit), 10_000))
 +    : 1000;
  
-   const [data, countResult] = await Promise.all([
-     db.select({
-@@ -4738,8 +4807,8 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
-       .leftJoin(users, eq(clients.accountManagerId, users.id))
-       .where(whereClause)
-       .orderBy(desc(clients.createdAt))
+  const [data, countResult] = await Promise.all([
+    db.select({
+@@ -4738,7 +4807,7 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
+      .leftJoin(users, eq(clients.accountManagerId, users.id))
+      .where(whereClause)
+      .orderBy(desc(clients.createdAt))
 -      .limit(filters.search?.trim() ? 1000 : (filters.limit ?? 50))
 +      .limit(filters.search?.trim() ? searchResultLimit : (filters.limit ?? 50))
-       .offset(filters.search?.trim() ? 0 : (filters.offset ?? 0)),
-     db.select({ count: count() }).from(clients).where(whereClause),
-   ]);
+      .offset(filters.search?.trim() ? 0 : (filters.offset ?? 0)),
+    db.select({ count: count() }).from(clients).where(whereClause),
+  ]);
 @@ -4761,7 +4830,7 @@ async function getClientsWithSearchMode(filters: ClientListFilters = {}, search
-         inArray(contracts.clientId, clientIds),
-         isNull(contracts.deletedAt)
-       ))
+        inArray(contracts.clientId, clientIds),
+        isNull(contracts.deletedAt)
+      ))
 -      .orderBy(desc(contracts.createdAt));
 +      .orderBy(desc(contracts.createdAt), desc(contracts.id));
  
-     // Group by clientId, take the latest active contract
-     for (const c of clientContracts) {
+    // Group by clientId, take the latest active contract
+    for (const c of clientContracts) {
 diff --git a/server/services/clientPoolExcelExportService.ts b/server/services/clientPoolExcelExportService.ts
 --- a/server/services/clientPoolExcelExportService.ts
 +++ b/server/services/clientPoolExcelExportService.ts
@@ -139,8 +139,8 @@ diff --git a/server/services/clientPoolExcelExportService.ts b/server/services/c
  import JSZip from "jszip";
  import { z } from "zod";
  import { getClients } from "../db";
-@@ -349,6 +350,19 @@ export function filterClientPoolExportRows(
-   });
+@@ -349,8 +350,25 @@ export function filterClientPoolExportRows(
+  });
  }
  
 +export function buildClientPoolExportDbFilters(
@@ -160,50 +160,50 @@ diff --git a/server/services/clientPoolExcelExportService.ts b/server/services/c
  async function fetchCanonicalClientRows(input: ClientPoolExportInput) {
 +  const dbDateFilters = buildClientPoolExportDbFilters(input);
 +  const queryLimit = input.filters.search?.trim() ? CLIENT_POOL_EXPORT_MAX_ROWS + 1 : PAGE_SIZE;
-   const baseFilters: Record<string, any> = {
+  const baseFilters: Record<string, any> = {
 +    ...dbDateFilters,
-     planStatus: input.filters.planStatus,
-     renewalStatus: input.filters.renewalStatus,
-     handoverStatus: input.filters.handoverStatus,
+    planStatus: input.filters.planStatus,
+    renewalStatus: input.filters.renewalStatus,
+    handoverStatus: input.filters.handoverStatus,
 @@ -360,7 +374,8 @@ async function fetchCanonicalClientRows(input: ClientPoolExportInput) {
-     paymentStatus: input.filters.paymentStatus,
-     search: input.filters.search,
-     userRole: "Admin",
+    paymentStatus: input.filters.paymentStatus,
+    search: input.filters.search,
+    userRole: "Admin",
 -    limit: PAGE_SIZE,
 +    limit: queryLimit,
 +    searchResultLimit: queryLimit,
-   };
+  };
  
-   const rows: ExportClient[] = [];
+  const rows: ExportClient[] = [];
 diff --git a/server/services/clientPoolExcelExportService.test.ts b/server/services/clientPoolExcelExportService.test.ts
 --- a/server/services/clientPoolExcelExportService.test.ts
 +++ b/server/services/clientPoolExcelExportService.test.ts
-@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
+@@ -4,5 +4,6 @@ import { describe, expect, it } from "vitest";
  import {
-   assertClientPoolPreviewCount,
+  assertClientPoolPreviewCount,
 +  buildClientPoolExportDbFilters,
-   buildClientPoolWorkbook,
-   clientPoolExportInputSchema,
-   filterClientPoolExportRows,
+  buildClientPoolWorkbook,
+  clientPoolExportInputSchema,
+  filterClientPoolExportRows,
 @@ -29,6 +30,7 @@ const rows = [
-     servicesNeeded: "SEO",
-     createdAt: "2026-08-05T10:00:00Z",
-     updatedAt: "2026-08-05T11:00:00Z",
+    servicesNeeded: "SEO",
+    createdAt: "2026-08-05T10:00:00Z",
+    updatedAt: "2026-08-05T11:00:00Z",
 +    contractStartDate: "2026-08-03T00:00:00Z",
-     lastFollowUpDate: "2026-08-01T10:00:00Z",
-   },
-   {
+    lastFollowUpDate: "2026-08-01T10:00:00Z",
+  },
+  {
 @@ -42,6 +44,7 @@ const rows = [
-     servicesNeeded: "Ads",
-     createdAt: "2026-07-01T10:00:00Z",
-     updatedAt: "2026-07-02T11:00:00Z",
+    servicesNeeded: "Ads",
+    createdAt: "2026-07-01T10:00:00Z",
+    updatedAt: "2026-07-02T11:00:00Z",
 +    contractStartDate: "2026-08-10T00:00:00Z",
-     lastFollowUpDate: null,
-   },
+    lastFollowUpDate: null,
+  },
  ];
-@@ -96,6 +99,64 @@ describe("Client Pool professional Excel export", () => {
-     expect(range.to?.getHours()).toBe(23);
-   });
+@@ -96,6 +99,65 @@ describe("Client Pool professional Excel export", () => {
+    expect(range.to?.getHours()).toBe(23);
+  });
  
 +  it("pushes the chosen custom date window into the canonical database filters", () => {
 +    const input = clientPoolExportInputSchema.parse({
@@ -264,6 +264,6 @@ diff --git a/server/services/clientPoolExcelExportService.test.ts b/server/servi
 +    expect(result.map((row) => row.id)).toEqual([2]);
 +  });
 +
-   it("filters selected client ids server-side", () => {
-     const result = filterClientPoolExportRows(rows, {
-       ...baseInput,
+  it("filters selected client ids server-side", () => {
+    const result = filterClientPoolExportRows(rows, {
+      ...baseInput,
