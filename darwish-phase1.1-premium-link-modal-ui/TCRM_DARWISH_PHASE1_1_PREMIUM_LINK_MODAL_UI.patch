@@ -1,0 +1,322 @@
+diff --git a/client/src/components/ClientWhatsAppGroupsCard.tsx b/client/src/components/ClientWhatsAppGroupsCard.tsx
+--- a/client/src/components/ClientWhatsAppGroupsCard.tsx
++++ b/client/src/components/ClientWhatsAppGroupsCard.tsx
+@@ -1,10 +1,9 @@
+ import { useMemo, useState } from "react";
+ import { Badge } from "@/components/ui/badge";
+ import { Button } from "@/components/ui/button";
+ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+ import { trpc } from "@/lib/trpc";
+-import { Link2, Loader2, MessageSquare } from "lucide-react";
++import { Check, Info, Link2, Loader2, MessageSquare, Search, ShieldCheck, Users } from "lucide-react";
+ import { toast } from "sonner";
+ 
+ type ClientWhatsAppGroup = {
+@@ -57,6 +56,7 @@ export default function ClientWhatsAppGroupsCard({
+ }) {
+   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+   const [selectedCandidateKey, setSelectedCandidateKey] = useState("");
++  const [candidateSearch, setCandidateSearch] = useState("");
+   const utils = trpc.useUtils();
+ 
+   const candidatesQuery = trpc.darwish.clientGroupCandidates.useQuery(
+@@ -69,6 +69,16 @@ export default function ClientWhatsAppGroupsCard({
+     () => candidates.filter((candidate) => candidate.status !== "linked_current"),
+     [candidates],
+   );
++  const visibleCandidates = useMemo(() => {
++    const query = candidateSearch.trim().toLowerCase();
++    if (!query) return selectableCandidates;
++    return selectableCandidates.filter((candidate) =>
++      [candidate.groupName, candidate.groupJid, candidate.evolutionInstance]
++        .filter(Boolean)
++        .some((value) => String(value).toLowerCase().includes(query)),
++    );
++  }, [candidateSearch, selectableCandidates]);
++  const availableCandidateCount = selectableCandidates.filter((candidate) => candidate.eligible).length;
+   const selectedCandidate = selectableCandidates.find((candidate) => candidateKey(candidate) === selectedCandidateKey) ?? null;
+ 
+   const linkMutation = trpc.darwish.linkClientGroup.useMutation({
+@@ -132,6 +144,7 @@ export default function ClientWhatsAppGroupsCard({
+               onOpenChange={(open) => {
+                 setLinkDialogOpen(open);
+                 if (!open) setSelectedCandidateKey("");
++                if (!open) setCandidateSearch("");
+               }}
+             >
+               <DialogTrigger asChild>
+@@ -140,91 +153,195 @@ export default function ClientWhatsAppGroupsCard({
+                   {isRTL ? "ربط جروب واتساب" : "Link WhatsApp group"}
+                 </Button>
+               </DialogTrigger>
+-              <DialogContent className="sm:max-w-xl" dir={isRTL ? "rtl" : "ltr"}>
+-                <DialogHeader>
+-                  <DialogTitle>{isRTL ? "ربط جروب واتساب بالعميل" : "Link WhatsApp group to client"}</DialogTitle>
+-                </DialogHeader>
+-
+-                <div className="space-y-4 py-2">
+-                  <p className="text-sm text-muted-foreground">
+-                    {isRTL
+-                      ? "اختر جروبًا حقيقيًا استقبله درويش من Evolution/Chatwoot. لا يتم إنشاء JID يدوي أو تخمين الربط."
+-                      : "Choose a real group observed by Darwish through Evolution/Chatwoot. No manual JID or guessed mapping is created."}
+-                  </p>
+-
+-                  {candidatesQuery.isLoading ? (
+-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-dashed p-8 text-sm text-muted-foreground">
+-                      <Loader2 size={16} className="animate-spin" />
+-                      {isRTL ? "جاري تحميل الجروبات..." : "Loading groups..."}
+-                    </div>
+-                  ) : candidatesQuery.isError ? (
+-                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+-                      {candidatesQuery.error.message}
+-                    </div>
+-                  ) : selectableCandidates.length === 0 ? (
+-                    <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+-                      {isRTL
+-                        ? "لا توجد جروبات متاحة للربط. يجب أن يكون درويش قد استقبل رسالة من الجروب أولًا."
+-                        : "No groups are available to link. Darwish must have received a group message first."}
+-                    </div>
+-                  ) : (
+-                    <Select value={selectedCandidateKey} onValueChange={setSelectedCandidateKey}>
+-                      <SelectTrigger>
+-                        <SelectValue placeholder={isRTL ? "اختر جروب واتساب" : "Select WhatsApp group"} />
+-                      </SelectTrigger>
+-                      <SelectContent>
+-                        {selectableCandidates.map((candidate) => (
+-                          <SelectItem
+-                            key={candidateKey(candidate)}
+-                            value={candidateKey(candidate)}
+-                            disabled={!candidate.eligible}
+-                          >
+-                            <div className="flex min-w-0 flex-col gap-0.5">
+-                              <span className="truncate font-medium">
+-                                {candidate.groupName || (isRTL ? "جروب واتساب" : "WhatsApp Group")}
+-                              </span>
+-                              <span className="truncate font-mono text-[10px] text-muted-foreground" dir="ltr">
+-                                {candidate.groupJid} · {candidate.evolutionInstance}
+-                              </span>
+-                              {candidate.status === "linked_other" ? (
+-                                <span className="text-[10px] text-amber-600">
+-                                  {isRTL
+-                                    ? `مرتبط بالفعل بالعميل #${candidate.linkedClientId}`
+-                                    : `Already linked to client #${candidate.linkedClientId}`}
+-                                </span>
+-                              ) : null}
+-                            </div>
+-                          </SelectItem>
+-                        ))}
+-                      </SelectContent>
+-                    </Select>
+-                  )}
+-
+-                  {selectedCandidate ? (
+-                    <div className="rounded-xl border bg-muted/30 p-3 text-xs">
+-                      <div className="font-medium">
+-                        {selectedCandidate.groupName || (isRTL ? "جروب واتساب" : "WhatsApp Group")}
+-                      </div>
+-                      <div className="mt-1 break-all font-mono text-muted-foreground" dir="ltr">
+-                        {selectedCandidate.groupJid}
+-                      </div>
+-                      <div className="mt-2 text-muted-foreground">
+-                        {isRTL ? "آخر نشاط: " : "Last activity: "}
+-                        {formatActivity(selectedCandidate.lastActivityAt, isRTL)}
+-                      </div>
+-                    </div>
+-                  ) : null}
+-                </div>
+-
+-                <DialogFooter>
++              <DialogContent
++                className="gap-0 overflow-hidden border-border/70 bg-background p-0 shadow-2xl sm:max-w-4xl"
++                dir={isRTL ? "rtl" : "ltr"}
++              >
++                <DialogHeader className="border-b border-border/60 bg-gradient-to-br from-background via-background to-violet-500/[0.04] px-6 pb-5 pt-6 sm:px-7">
++                  <div className="flex items-start gap-4 pe-10">
++                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-500 ring-1 ring-inset ring-violet-500/20">
++                      <MessageSquare size={23} />
++                    </div>
++                    <div className="min-w-0 space-y-1.5 text-start">
++                      <DialogTitle className="text-xl font-bold tracking-tight">
++                        {isRTL ? "ربط جروب واتساب بالعميل" : "Link WhatsApp Group to Client"}
++                      </DialogTitle>
++                      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
++                        {isRTL
++                          ? "اختر جروبًا حقيقيًا تم رصده بواسطة درويش من Evolution / Chatwoot. الربط دقيق ولا يعتمد على تخمين أو إدخال JID يدوي."
++                          : "Choose a real WhatsApp group observed by Darwish through Evolution / Chatwoot. Linking is deterministic with no manual JID or guessed mapping."}
++                      </p>
++                    </div>
++                  </div>
++                </DialogHeader>
++
++                <div className="space-y-5 px-6 py-5 sm:px-7">
++                  <div className="flex gap-3 rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] px-4 py-3.5 text-sm">
++                    <Info size={18} className="mt-0.5 shrink-0 text-violet-500" />
++                    <p className="leading-6 text-muted-foreground">
++                      {isRTL
++                        ? "نعرض الجروبات التي رصدها درويش فعليًا. الجروب المرتبط بعميل آخر سيظهر كغير متاح ولن يتم نقله تلقائيًا."
++                        : "Only groups actually observed by Darwish are shown. A group linked to another client remains unavailable and will never be reassigned automatically."}
++                    </p>
++                  </div>
++
++                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
++                    <div className="flex items-center gap-2.5">
++                      <h4 className="text-sm font-semibold">
++                        {isRTL ? "جروبات واتساب المتاحة" : "Available WhatsApp Groups"}
++                      </h4>
++                      <Badge variant="secondary" className="rounded-lg px-2 py-0.5 font-mono text-[11px]">
++                        {availableCandidateCount}
++                      </Badge>
++                    </div>
++
++                    <label className="relative block w-full sm:w-80">
++                      <Search
++                        size={16}
++                        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground ${isRTL ? "right-3" : "left-3"}`}
++                      />
++                      <input
++                        value={candidateSearch}
++                        onChange={(event) => setCandidateSearch(event.target.value)}
++                        placeholder={isRTL ? "ابحث باسم الجروب أو JID..." : "Search by group name or JID..."}
++                        className={`h-10 w-full rounded-xl border border-border/70 bg-muted/20 text-sm outline-none transition focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10 ${isRTL ? "pr-9 pl-3" : "pl-9 pr-3"}`}
++                      />
++                    </label>
++                  </div>
++
++                  {candidatesQuery.isLoading ? (
++                    <div className="flex min-h-56 items-center justify-center gap-2 rounded-2xl border border-dashed bg-muted/10 text-sm text-muted-foreground">
++                      <Loader2 size={17} className="animate-spin" />
++                      {isRTL ? "جاري تحميل الجروبات..." : "Loading WhatsApp groups..."}
++                    </div>
++                  ) : candidatesQuery.isError ? (
++                    <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-600 dark:text-rose-300">
++                      {candidatesQuery.error.message}
++                    </div>
++                  ) : selectableCandidates.length === 0 ? (
++                    <div className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/10 px-6 text-center">
++                      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
++                        <Users size={20} />
++                      </div>
++                      <p className="text-sm font-medium">
++                        {isRTL ? "لا توجد جروبات متاحة للربط" : "No WhatsApp groups available"}
++                      </p>
++                      <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
++                        {isRTL
++                          ? "يجب أن يكون درويش قد استقبل نشاطًا من الجروب أولًا قبل ظهوره هنا."
++                          : "Darwish must receive group activity before the group can appear here."}
++                      </p>
++                    </div>
++                  ) : visibleCandidates.length === 0 ? (
++                    <div className="flex min-h-44 flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/10 px-6 text-center">
++                      <Search size={20} className="mb-3 text-muted-foreground" />
++                      <p className="text-sm font-medium">
++                        {isRTL ? "لا توجد نتائج مطابقة" : "No matching groups"}
++                      </p>
++                      <p className="mt-1 text-xs text-muted-foreground">
++                        {isRTL ? "جرّب اسم جروب أو JID مختلف." : "Try a different group name or JID."}
++                      </p>
++                    </div>
++                  ) : (
++                    <div className="max-h-[46vh] space-y-2 overflow-y-auto pe-1">
++                      {visibleCandidates.map((candidate) => {
++                        const key = candidateKey(candidate);
++                        const selected = key === selectedCandidateKey;
++                        return (
++                          <button
++                            key={key}
++                            type="button"
++                            disabled={!candidate.eligible}
++                            onClick={() => setSelectedCandidateKey(key)}
++                            className={`group w-full rounded-2xl border px-4 py-3.5 text-start transition-all ${
++                              selected
++                                ? "border-violet-500/60 bg-violet-500/[0.08] shadow-sm ring-1 ring-violet-500/15"
++                                : "border-border/70 bg-card hover:border-violet-500/30 hover:bg-muted/20"
++                            } ${!candidate.eligible ? "cursor-not-allowed opacity-55 hover:border-border/70 hover:bg-card" : ""}`}
++                          >
++                            <div className="flex items-center gap-3.5">
++                              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${selected ? "bg-violet-500 text-white" : "bg-muted text-muted-foreground"}`}>
++                                <Users size={19} />
++                              </div>
++
++                              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_minmax(0,.9fr)] sm:items-center">
++                                <div className="min-w-0">
++                                  <div className="flex min-w-0 items-center gap-2">
++                                    <p className="truncate text-sm font-semibold">
++                                      {candidate.groupName || (isRTL ? "جروب واتساب" : "WhatsApp Group")}
++                                    </p>
++                                    {candidate.status === "linked_other" ? (
++                                      <Badge variant="outline" className="shrink-0 border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-300">
++                                        {isRTL ? `مرتبط بعميل #${candidate.linkedClientId}` : `Client #${candidate.linkedClientId}`}
++                                      </Badge>
++                                    ) : null}
++                                  </div>
++                                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground" dir="ltr">
++                                    {candidate.groupJid}
++                                  </p>
++                                </div>
++
++                                <div className="min-w-0">
++                                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
++                                    Evolution Instance
++                                  </p>
++                                  <p className="mt-1 truncate font-mono text-xs text-foreground" dir="ltr">
++                                    {candidate.evolutionInstance}
++                                  </p>
++                                </div>
++
++                                <div className="min-w-0">
++                                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
++                                    {isRTL ? "آخر نشاط" : "Last Activity"}
++                                  </p>
++                                  <p className="mt-1 truncate text-xs font-medium text-foreground">
++                                    {formatActivity(candidate.lastActivityAt, isRTL)}
++                                  </p>
++                                </div>
++                              </div>
++
++                              <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
++                                selected
++                                  ? "border-violet-500 bg-violet-500 text-white"
++                                  : "border-border bg-background text-transparent"
++                              }`}>
++                                <Check size={14} strokeWidth={3} />
++                              </div>
++                            </div>
++                          </button>
++                        );
++                      })}
++                    </div>
++                  )}
++                </div>
++
++                <DialogFooter className="flex-col gap-3 border-t border-border/60 bg-muted/10 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
++                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
++                    <ShieldCheck size={16} className="text-violet-500" />
++                    <span>
++                      {isRTL ? "ربط آمن فقط · لن يتم إرسال أي رسائل" : "Secure linking only · No messages will be sent"}
++                    </span>
++                  </div>
++
++                  <div className="flex w-full gap-2 sm:w-auto">
++                    <Button
++                      type="button"
++                      variant="outline"
++                      onClick={() => setLinkDialogOpen(false)}
++                      disabled={linkMutation.isPending}
++                      className="flex-1 sm:flex-none"
++                    >
++                      {isRTL ? "إلغاء" : "Cancel"}
++                    </Button>
+                   <Button
+                     onClick={submitLink}
+                     disabled={!selectedCandidate?.eligible || linkMutation.isPending}
+-                    className="gap-2 bg-emerald-600 hover:bg-emerald-700"
++                      className="flex-1 gap-2 bg-violet-600 text-white shadow-sm hover:bg-violet-700 sm:flex-none"
+                   >
+                     {linkMutation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
+                     {isRTL ? "ربط الجروب" : "Link group"}
+                   </Button>
++                  </div>
+                 </DialogFooter>
+               </DialogContent>
+             </Dialog>
