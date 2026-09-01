@@ -1,0 +1,39 @@
+PATCH: TCRM-TOS-TEAM-DIRECTORY-TRUNCATION-FIX-V1
+DATE: 2026-09-01
+TARGET: server/services/tosIntegrationService.ts
+
+PURPOSE
+Repair the pre-existing truncation in getTosProjectTeamDirectory that leaves the TypeScript file with an Unexpected end of file parse error after the earlier console.warn syntax defect was fixed.
+
+CONFIRMED STATE
+- Previous syntax-only patch fixed console.warn(, ); -> console.warn();
+- esbuild then exposed a separate pre-existing EOF/truncation defect.
+- Live build error: Unexpected end of file at server/services/tosIntegrationService.ts:1031:0
+- The live source is missing the final function-closing brace.
+
+PATCH BEHAVIOR
+- Verifies the target contains getTosProjectTeamDirectory, if (!body), and the already-fixed console.warn(); marker.
+- Runs esbuild parse before editing.
+- Proceeds only when the diagnosed error contains "Unexpected end of file".
+- Creates a timestamped backup.
+- Appends EXACTLY ONE closing brace at EOF.
+- Re-runs esbuild parse.
+- If parsing still fails, automatically restores the original file from backup and aborts.
+
+FILES MODIFIED BY PATCH
+- server/services/tosIntegrationService.ts only
+
+OUT OF SCOPE
+- TOS source
+- database/migrations
+- environment/API keys
+- server routers/db logic
+- frontend selector
+- Save Project Team payload
+- any integration behavior/refactor
+
+APPLY
+python3 APPLY_PATCH.py /var/www/TCRM-MAIN
+
+POST-APPLY
+Run full pnpm build. Do not deploy/restart unless both Vite and server esbuild stages succeed.
