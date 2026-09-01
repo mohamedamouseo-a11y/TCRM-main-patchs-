@@ -1,0 +1,61 @@
+Apply the prepared TCRM patch only. Do not rediagnose or rewrite the feature.
+
+PATCH REPOSITORY:
+mohamedamouseo-a11y/TCRM-main-patchs-
+
+PATCH FOLDER:
+TCRM-TOS-PROJECT-TEAM-MEMBERS-FIX-V1
+
+TARGET:
+TCRM Client Card > Handover > TOS Project Team
+
+CONFIRMED ROOT CAUSE:
+The live frontend regression builds departmentMembersMap from projectMembers, which contains only employees already assigned to the client's TOS project. The TOS API already returns all eligible employees in each department.members array.
+
+STRICT SCOPE:
+- Modify only client/src/components/TosProjectTeamSelector.tsx through the prepared APPLY_PATCH.py script.
+- Do not modify TOS.
+- Do not modify server/services/tosIntegrationService.ts.
+- Do not modify server/routers.ts.
+- Do not modify server/db.ts.
+- Do not modify database data, env values, API keys, roles, permissions or Save Project Team payload.
+- Do not touch the unrelated local TOS db_exports error.
+- No full test suite.
+
+STEPS:
+1. Locate the live TCRM application root safely.
+2. Run `git status --short` in the TCRM application repo.
+3. If unrelated uncommitted application changes exist, STOP and report them. Do not overwrite them.
+4. Fetch/clone the patch repository and use exactly:
+   TCRM-TOS-PROJECT-TEAM-MEMBERS-FIX-V1/APPLY_PATCH.py
+5. Apply:
+   `python3 APPLY_PATCH.py /ABSOLUTE/PATH/TO/TCRM`
+6. The script must create its timestamped backup and report before/after SHA256.
+7. Run:
+   `git diff -- client/src/components/TosProjectTeamSelector.tsx`
+8. Confirm only the intended frontend selector changed.
+9. Do not run broad tests. Run only the existing minimal frontend/build check required by the deployment workflow.
+10. Deploy/restart using the existing documented TCRM production process only. Do not invent a new deployment method.
+11. Verify https://sales.tamiyouzplatform.com is reachable.
+12. Open one affected Client Card > Handover > TOS Project Team page and verify:
+    - department cards still appear;
+    - member counts are non-zero according to TOS data;
+    - employee names are visible under departments;
+    - existing TOS project members are selected;
+    - an unassigned eligible employee can be selected in the UI.
+13. Do not make a production membership change just for testing unless a designated reversible test client exists.
+
+EXPECTED FIX:
+departmentMembersMap must be populated from departments[].members, while projectMembers remains responsible only for existing project membership, real project roles and selection protection.
+
+FINAL REPORT:
+- patch apply result
+- backup path
+- SHA256 before/after
+- exact git diff summary
+- build/deploy result
+- live URL result
+- department/member UI validation
+- explicit confirmation that TOS/backend/database/save payload were not modified
+
+Do not report success unless employee names are visible again on the live Handover screen.

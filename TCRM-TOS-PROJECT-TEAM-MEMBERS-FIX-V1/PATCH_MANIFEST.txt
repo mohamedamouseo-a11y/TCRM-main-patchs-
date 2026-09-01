@@ -1,0 +1,43 @@
+PATCH: TCRM-TOS-PROJECT-TEAM-MEMBERS-FIX-V1
+DATE: 2026-09-01
+TARGET REPOSITORY: mohamedamouseo-a11y/TCRM-MAIN-Tamiyouz-CRM-
+TARGET BRANCH: main / live TCRM working tree
+
+PURPOSE
+Restore the employee directory in Client Card > Handover > TOS Project Team after the regression that made department cards render only current project members and therefore show 0 for most departments.
+
+ROOT CAUSE
+The broken TosProjectTeamSelector refactor builds departmentMembersMap from directoryQ.data.projectMembers. projectMembers contains only employees already assigned to the client's TOS project. The TOS API already returns the full eligible directory in department.members.
+
+CHANGED APPLICATION FILES
+- client/src/components/TosProjectTeamSelector.tsx
+
+PATCH BEHAVIOR
+- Changes departmentMembersMap so it is populated from departments[].members.
+- Keeps projectMembers for current-membership/role/selection state.
+- Keeps tosUserId as the selection/save identifier.
+- Does not change Save Project Team payload or backend synchronization.
+- Does not modify TOS, server/services/tosIntegrationService.ts, server/routers.ts, server/db.ts, database, environment, roles or permissions.
+
+SAFETY
+APPLY_PATCH.py:
+- refuses unknown target versions;
+- verifies the expected broken departmentMembersMap(projectMembers) block;
+- verifies departments is declared before the replacement hook;
+- preserves selection/save safety markers;
+- creates a timestamped backup under .patch-backups before writing;
+- writes only client/src/components/TosProjectTeamSelector.tsx;
+- treats the canonical direct department.members implementation as already fixed and performs no write.
+
+APPLY
+python3 APPLY_PATCH.py /ABSOLUTE/PATH/TO/TCRM
+
+EXPECTED RESULT
+Each department card displays the active employees returned by TOS department.members. Existing TOS project members remain selected with their real roles; unassigned eligible employees can be selected and saved using the existing flow.
+
+VALIDATION
+1. git diff -- client/src/components/TosProjectTeamSelector.tsx
+2. Confirm no other application files changed.
+3. Use the existing TCRM build/deploy process.
+4. Verify one affected Client Card > Handover page live.
+5. Confirm employee names and non-zero department counts appear.
