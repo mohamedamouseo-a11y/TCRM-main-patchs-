@@ -1,0 +1,73 @@
+TCRM-Evolution-Status-Health-Split-V1.1
+========================================
+
+PURPOSE
+-------
+Fix the remaining "Evolution offline" blind-diagnostic case after V1.
+
+V1 correctly separated:
+- online
+- degraded
+- offline
+
+However, gatewayRequest() calls requireGateway() before its internal try/catch.
+Preflight failures such as DNS lookup errors, blocked/private Evolution hosts,
+WA_GATEWAY_ALLOWED_HOSTS restrictions, or gateway configuration validation can
+therefore reject getStatus entirely before statusError/healthError is returned.
+
+V1.1 makes ONLY the status probes resilient. It does not change the shared
+gateway request behavior used by sending or other WhatsApp operations.
+
+SOURCE FILE CHANGED
+-------------------
+server/services/waGatewayIntegrationService.ts
+
+BEHAVIOR
+--------
+- /instance/fetchInstances is called through a getStatus-only safe wrapper.
+- If its preflight/request fails, the error is sanitized and returned with:
+    success: false
+    status: 0 (or WAGatewayRequestError.status when available)
+    error: sanitized diagnostic
+    response: null
+- /healthz fallback uses the same safe wrapper.
+- Existing V1 gatewayState classification then returns offline/degraded as before.
+- Existing frontend Admin tooltip/text can now show the actual reason.
+- getStatus.success remains remoteResult.success for backward compatibility.
+
+EXPECTED DIAGNOSTICS
+--------------------
+Examples that can now surface to Admin:
+- getaddrinfo / DNS resolution failure
+- Evolution API private host is blocked...
+- Evolution API host resolves to a private IP...
+- WA_GATEWAY_ALLOWED_HOSTS-related host restriction
+- TLS/network errors already normalized by gatewayRequest
+
+SAFETY
+------
+NO database/schema changes.
+NO migrations or db:push.
+NO permission/ownership/account-scope changes.
+NO WhatsApp sending changes.
+NO forwarding changes.
+NO webhook changes.
+NO TOS/Evolution external changes.
+NO PM2/deployment changes.
+
+APPLY
+-----
+python3 APPLY_PATCH.py /var/www/TCRM
+
+VERIFY
+------
+python3 VERIFY_PATCH.py /var/www/TCRM
+
+Then run the repository's normal build/typecheck/tests.
+
+FILES IN PACKAGE
+----------------
+APPLY_PATCH.py
+VERIFY_PATCH.py
+PATCH_MANIFEST.txt
+REPLIT_PROMPT.txt
