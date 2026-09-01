@@ -1,0 +1,112 @@
+TCRM-Smart-Search-Systemwide-Parity-Hardening-V1.1
+=====================================================
+
+PURPOSE
+-------
+Small regression-fix patch on top of:
+TCRM-Smart-Search-Systemwide-Parity-Hardening-V1
+
+This V1.1 intentionally changes only three source files.
+
+FIX 1 — SHARED SUGGESTION FILTERING / RANKING
+----------------------------------------------
+File:
+client/src/components/search/SmartSearchBar.tsx
+
+Problem:
+V1 normalized/deduplicated suggestions, then capped the list at six BEFORE
+matching them against the current query. Pages that supplied many rows could
+therefore show the first six unrelated records.
+
+Fix:
+- Preserve all deduplicated candidate suggestions.
+- Use the existing shared rankSearchSuggestions() engine.
+- Rank/filter by label + secondary text against the current query.
+- Only then limit to six.
+- This fixes all pages using the shared SmartSearchBar without page-by-page edits.
+
+Marker:
+TCRM_SMART_SEARCH_SUGGESTION_RANKING_V1_1
+
+
+FIX 2 — GLOBAL SEARCH PARTIAL RESULTS
+-------------------------------------
+File:
+client/src/components/GlobalSearch.tsx
+
+Problem:
+V1 correctly exposed BD search failures, but a BD failure could hide valid
+Client results by rendering the full "Search failed" state.
+
+Fix:
+- Show the hard error only when searchError && total === 0.
+- If valid results exist, keep them visible.
+- Show a small bilingual warning that some sections could not be loaded.
+- Preserve the V1 stale-response race guard.
+
+Marker:
+TCRM_SMART_SEARCH_PARTIAL_RESULTS_V1_1
+
+
+FIX 3 — SETTINGS SUGGESTION NAVIGATION
+--------------------------------------
+File:
+client/src/pages/AdminSettings.tsx
+
+Problem:
+A suggestion could target a tab outside the currently selected Settings
+category. Updating only activeTab allowed category-scoping logic to redirect
+away from the selected suggestion.
+
+Fix:
+- Switch Settings category to "all".
+- Navigate through handleSettingsTabChange().
+- Clear the search text.
+- Preserve the guarded native settings input and autofill protection.
+
+Marker:
+TCRM_SETTINGS_SUGGESTION_NAV_V1_1
+
+
+SAFETY
+------
+- NO DB migration
+- NO schema change
+- NO db:push
+- NO permission/ownership/account-scope expansion
+- NO TOS changes
+- NO Evolution changes
+- NO WhatsApp sending changes
+- NO PM2 restart/deploy
+- NO changes to server search behavior
+- Admin Settings guarded autofill input is preserved
+- Global Search V1 race guard is preserved
+
+
+APPLY
+-----
+From this patch directory:
+
+python3 APPLY_PATCH.py /var/www/TCRM
+
+Then:
+
+python3 VERIFY_PATCH.py /var/www/TCRM
+
+Run the repository's normal build/typecheck/test commands before push/deploy.
+
+
+ROLLBACK
+--------
+The apply script creates one-time backups beside modified files:
+
+.smart-search-v1.1.bak
+
+Restore those backups only if rollback is required.
+
+
+EXPECTED CHANGED SOURCE FILES
+-----------------------------
+1) client/src/components/search/SmartSearchBar.tsx
+2) client/src/components/GlobalSearch.tsx
+3) client/src/pages/AdminSettings.tsx
