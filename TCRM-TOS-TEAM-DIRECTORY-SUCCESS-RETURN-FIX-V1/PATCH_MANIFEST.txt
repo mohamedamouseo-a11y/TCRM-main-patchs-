@@ -1,0 +1,21 @@
+PATCH: TCRM-TOS-TEAM-DIRECTORY-SUCCESS-RETURN-FIX-V1
+
+Purpose:
+Restore the missing success-path return in getTosProjectTeamDirectory().
+
+Affected file:
+server/services/tosIntegrationService.ts
+
+Root cause:
+Valid TOS JSON responses set body successfully, skip the fallback if(!body), then reach end of function and return undefined.
+
+Fix:
+Add the normal return object after the fallback block.
+
+No changes to:
+- TOS
+- database
+- router
+- API payloads
+- frontend
+- permissions
