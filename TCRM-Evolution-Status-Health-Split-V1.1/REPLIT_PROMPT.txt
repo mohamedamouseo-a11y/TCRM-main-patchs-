@@ -1,0 +1,30 @@
+Apply TCRM-Evolution-Status-Health-Split-V1.1 on top of the already-applied V1 patch.
+
+Goal:
+Expose the real Admin diagnostic when Evolution status is red but no tooltip/error appears.
+
+Rules:
+1) Work only inside the supplied TCRM source tree.
+2) Do not change DB schema, run migrations, or run db:push.
+3) Do not change WhatsApp sending, forwarding, webhooks, account assignments, ownership scope, roles, permissions, TOS, or Evolution itself.
+4) Do NOT globally rewrite gatewayRequest(). V1.1 must guard only the getStatus status/health probes so send-path behavior stays unchanged.
+5) Preserve:
+   - getStatus.success === remoteResult.success
+   - TCRM_EVOLUTION_STATUS_HEALTH_SPLIT_V1
+   - existing online/degraded/offline UI behavior.
+6) Apply:
+   python3 APPLY_PATCH.py /var/www/TCRM
+7) Verify:
+   python3 VERIFY_PATCH.py /var/www/TCRM
+8) Run the repository's normal build/typecheck/tests.
+9) Report:
+   - exactly which source files changed
+   - build/typecheck/test result
+   - verification result
+   - confirmation that send/forward/webhook/DB/permissions were untouched
+   - after deployment, the exact Admin diagnostic shown for Evolution offline/degraded.
+
+Expected result:
+- DNS/private-host/WA_GATEWAY_ALLOWED_HOSTS/preflight failures no longer reject the entire getStatus query.
+- The existing red/amber badge receives statusError/healthError and shows the sanitized reason to Admin.
+- Healthy Evolution behavior remains unchanged.
