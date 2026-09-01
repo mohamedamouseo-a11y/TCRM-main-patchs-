@@ -1,0 +1,24 @@
+Apply TCRM-Smart-Search-Systemwide-Parity-Hardening-V1.1 on top of the already-applied Smart Search V1 patch.
+
+Rules:
+1) Work only inside the supplied TCRM source tree.
+2) Do not change DB schema, run migrations, or run db:push.
+3) Do not broaden permissions, ownership scope, account scope, WhatsApp scope, or marketing-platform access.
+4) Do not touch TOS, Evolution, WhatsApp sending logic, unrelated PM2 processes, or deployment configuration.
+5) Preserve the existing Global Search race guard from V1.
+6) Preserve the guarded Admin Settings input and its autofill protection.
+7) Apply:
+   python3 APPLY_PATCH.py /var/www/TCRM
+8) Verify:
+   python3 VERIFY_PATCH.py /var/www/TCRM
+9) Run the repository's normal build/typecheck/test commands.
+10) Report:
+   - exactly which source files changed
+   - build/typecheck/test result
+   - verification result
+   - confirmation that DB/schema/permissions/TOS/Evolution/WhatsApp sending were untouched.
+
+Expected behavior after V1.1:
+- Shared SmartSearchBar suggestions are actually filtered/ranked against the user's query before the six-item limit.
+- Global Search keeps valid Client/BD results visible when another search section fails, with a small partial-results warning instead of hiding everything.
+- Settings autocomplete opens the selected settings tab even when it belongs to a different currently-selected category.
