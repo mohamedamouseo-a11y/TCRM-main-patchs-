@@ -1,0 +1,29 @@
+Apply only this patch.
+
+TARGET:
+server/services/tosIntegrationService.ts
+
+ISSUE:
+getTosProjectTeamDirectory() returns undefined when TOS returns valid JSON because the success-path return was removed.
+
+STRICT SCOPE:
+Modify only server/services/tosIntegrationService.ts.
+Do not modify frontend, TOS, database, router, payloads, or permissions.
+
+Run:
+python3 APPLY_PATCH.py /var/www/TCRM-MAIN
+
+The script must:
+- create backup;
+- restore only the missing success return;
+- report SHA256 before/after.
+
+After patch:
+run pnpm build.
+Verify:
+- Vite success.
+- Server esbuild success.
+- tRPC accountManagement.getTosProjectTeamDirectory returns data.
+- Client Card > Handover > TOS Project Team loads departments and members.
+
+Do not deploy unless build succeeds.
