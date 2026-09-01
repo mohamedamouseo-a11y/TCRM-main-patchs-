@@ -1,0 +1,81 @@
+TCRM-Evolution-Status-Health-Split-V1
+=====================================
+
+PURPOSE
+-------
+Fix the misleading "Evolution offline" badge in the WhatsApp Inbox.
+
+ROOT CAUSE
+----------
+The inbox currently derives the badge from:
+  Boolean(statusQ.data?.success)
+
+getStatus.success is tied to:
+  GET /instance/fetchInstances
+
+Therefore any fetchInstances error (401, 404, 5xx, timeout, version mismatch)
+is displayed as "Evolution offline" even when Evolution itself is reachable
+and TCRM still has chats/counts in its local database.
+
+PATCH BEHAVIOR
+--------------
+This patch keeps the existing getStatus.success semantics for compatibility,
+but adds a separate gateway connectivity classification:
+
+1) online
+   - /instance/fetchInstances succeeds.
+
+2) degraded
+   - fetchInstances fails, but Evolution still returns an HTTP response
+     OR the fallback /healthz check responds successfully/reachably.
+   - Inbox displays:
+       EN: Evolution online · status unavailable
+       AR: Evolution متاح · حالة الحسابات غير متاحة
+   - Admin can see the HTTP code / sanitized error detail.
+
+3) offline
+   - neither fetchInstances nor /healthz returns an HTTP response
+     (transport/DNS/TLS/connection/timeout type failure).
+
+PERFORMANCE
+-----------
+/healthz is only requested when /instance/fetchInstances fails.
+Healthy installations do NOT get an extra Evolution request every refresh.
+
+FILES MODIFIED IN TCRM
+----------------------
+- server/services/waGatewayIntegrationService.ts
+- client/src/pages/wa/WAGatewayInbox.tsx
+
+SAFETY
+------
+- NO database migration.
+- NO schema change.
+- NO db:push.
+- NO permission or role expansion.
+- NO WhatsApp send/forward logic changes.
+- NO account assignment changes.
+- NO webhook signature changes.
+- NO TOS/THRS/TFS changes.
+- Existing getStatus.success remains tied to fetchInstances.
+
+APPLY
+-----
+python3 APPLY_PATCH.py /var/www/TCRM
+
+VERIFY
+------
+python3 VERIFY_PATCH.py /var/www/TCRM
+
+Then run the repository's normal typecheck/build/tests before deployment.
+
+BACKUPS
+-------
+The apply script creates:
+- waGatewayIntegrationService.ts.evolution-status-health-split-v1.bak
+- WAGatewayInbox.tsx.evolution-status-health-split-v1.bak
+
+NOTES
+-----
+The patch uses exact anchors and fails clearly if the target source changed.
+It is source-only and does not restart PM2 or deploy automatically.
