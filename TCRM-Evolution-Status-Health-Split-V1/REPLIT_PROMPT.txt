@@ -1,0 +1,26 @@
+Apply TCRM-Evolution-Status-Health-Split-V1 to the live TCRM source tree.
+
+Rules:
+1) Work only inside the TCRM source directory supplied to APPLY_PATCH.py.
+2) Do not change the database schema, run migrations, or run db:push.
+3) Do not alter WhatsApp sending, forwarding, webhook signatures, account assignments, ownership scope, roles, or permissions.
+4) Preserve the existing meaning of getStatus.success: it must remain tied to /instance/fetchInstances for backward compatibility.
+5) Apply:
+   python3 APPLY_PATCH.py /var/www/TCRM
+6) Verify:
+   python3 VERIFY_PATCH.py /var/www/TCRM
+7) Run the repository's normal typecheck/build/tests.
+8) Do not deploy or restart unrelated PM2 processes unless explicitly requested.
+9) Report:
+   - files changed
+   - typecheck/build/test result
+   - verification result
+   - whether the badge now distinguishes online / degraded / offline
+   - confirmation that DB/schema/permissions/send logic were untouched
+
+Expected behavior:
+- If /instance/fetchInstances succeeds: green "Evolution online".
+- If fetchInstances fails but Evolution is reachable or /healthz responds: amber "Evolution online · status unavailable".
+- If neither endpoint returns an HTTP response: red "Evolution offline".
+- Admin users can see the sanitized HTTP/error diagnostic for degraded/offline states.
+- /healthz is only called when fetchInstances fails, avoiding extra healthy-state traffic.
