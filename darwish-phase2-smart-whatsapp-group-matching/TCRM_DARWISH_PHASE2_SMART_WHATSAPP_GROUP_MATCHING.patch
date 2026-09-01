@@ -1,0 +1,514 @@
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishSmartGroupMatchingService.ts
+@@ -0,0 +1,393 @@
++import { sql } from "drizzle-orm";
++import { z } from "zod";
++import { getDb } from "../../../db";
++import { runDarwishAiDecision } from "../aiProviders/darwishAiDecisionService";
++import { extractDarwishMessageText } from "./darwishIntelligenceService";
++import { normalizePhone } from "./darwishMappingService";
++
++export type DarwishGroupMatchingCandidate = {
++  groupJid: string;
++  groupName: string | null;
++  evolutionInstance: string;
++  chatwootConversationId: string | null;
++  lastActivityAt: unknown;
++  linkedClientId: number | null;
++  status: "unlinked" | "linked_current" | "linked_other";
++  eligible: boolean;
++};
++
++export type DarwishSmartGroupCandidate = DarwishGroupMatchingCandidate & {
++  smartMatchStatus: "ranked" | "unavailable" | "not_evaluated";
++  smartConfidence: number | null;
++  smartConfidenceLevel: "high" | "medium" | "low" | "none";
++  smartReasons: string[];
++  smartSignals: string[];
++  darwishRecommended: boolean;
++};
++
++type GroupJob = {
++  groupJid?: unknown;
++  groupName?: unknown;
++  evolutionInstance?: unknown;
++  senderJid?: unknown;
++  senderName?: unknown;
++  participants?: unknown;
++  payload?: unknown;
++};
++
++type ClientIdentity = {
++  id: number;
++  clientName: string;
++  businessProfile: string;
++  knownPhones: string[];
++};
++
++type CandidateEvidence = {
++  candidateKey: string;
++  groupJid: string;
++  groupName: string | null;
++  evolutionInstance: string;
++  senderNames: string[];
++  senderJids: string[];
++  participantTexts: string[];
++  detectedPhones: string[];
++  messageSnippets: string[];
++  deterministicSignals: string[];
++  deterministicScore: number;
++};
++
++const smartRankingSchema = z.object({
++  candidates: z.array(z.object({
++    candidateKey: z.string().trim().min(1).max(500),
++    confidence: z.number().min(0).max(100),
++    reasons: z.array(z.string().trim().min(1).max(260)).max(4).default([]),
++    matchedSignals: z.array(z.enum([
++      "exact_phone",
++      "name",
++      "business_name",
++      "group_name",
++      "participant_name",
++      "sender_identity",
++      "message_context",
++      "other",
++    ])).max(8).default([]),
++  })).max(200),
++});
++
++function rowsOf(result: any): any[] {
++  if (Array.isArray(result) && Array.isArray(result[0])) return result[0] as any[];
++  return Array.isArray(result) ? result : [];
++}
++
++function candidateKey(groupJid: unknown, evolutionInstance: unknown) {
++  return `${String(evolutionInstance || "").trim()}::${String(groupJid || "").trim()}`;
++}
++
++function parseJson(value: unknown): unknown {
++  if (value == null || value === "") return null;
++  if (typeof value === "object") return value;
++  try { return JSON.parse(String(value)); } catch { return value; }
++}
++
++function collectStrings(value: unknown, output: string[], depth = 0) {
++  if (depth > 3 || output.length >= 120 || value == null) return;
++  if (typeof value === "string" || typeof value === "number") {
++    const text = String(value).trim();
++    if (text) output.push(text.slice(0, 300));
++    return;
++  }
++  if (Array.isArray(value)) {
++    for (const item of value.slice(0, 60)) collectStrings(item, output, depth + 1);
++    return;
++  }
++  if (typeof value === "object") {
++    for (const item of Object.values(value as Record<string, unknown>).slice(0, 60)) {
++      collectStrings(item, output, depth + 1);
++    }
++  }
++}
++
++function uniqueStrings(values: unknown[], max = 30) {
++  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, max);
++}
++
++function normalizeText(value: unknown) {
++  return String(value || "")
++    .toLowerCase()
++    .replace(/[^\p{L}\p{N}]+/gu, " ")
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
++function meaningfulTokens(value: unknown) {
++  return new Set(
++    normalizeText(value)
++      .split(" ")
++      .filter((token) => token.length >= 3 && !["group", "whatsapp", "واتساب", "جروب", "شركة", "company"].includes(token)),
++  );
++}
++
++function tokenOverlap(left: unknown, right: unknown) {
++  const a = meaningfulTokens(left);
++  const b = meaningfulTokens(right);
++  if (!a.size || !b.size) return 0;
++  let hits = 0;
++  for (const token of a) if (b.has(token)) hits += 1;
++  return hits / Math.max(1, Math.min(a.size, b.size));
++}
++
++function extractPhones(values: string[]) {
++  const phones = new Set<string>();
++  for (const value of values) {
++    const chunks = String(value).match(/\+?\d[\d\s().-]{6,20}\d/g) || [];
++    for (const chunk of chunks) {
++      const normalized = normalizePhone(chunk);
++      if (normalized.length >= 7 && normalized.length <= 16) phones.add(normalized);
++    }
++    const jidPhone = normalizePhone(String(value).split("@")[0]);
++    if (jidPhone.length >= 7 && jidPhone.length <= 16) phones.add(jidPhone);
++  }
++  return [...phones].slice(0, 40);
++}
++
++export function __buildDarwishGroupEvidenceForTests(
++  client: ClientIdentity,
++  candidate: DarwishGroupMatchingCandidate,
++  jobs: GroupJob[],
++): CandidateEvidence {
++  const matchingJobs = jobs.filter((job) =>
++    candidateKey(job.groupJid, job.evolutionInstance) === candidateKey(candidate.groupJid, candidate.evolutionInstance)
++  ).slice(0, 30);
++
++  const senderNames = uniqueStrings(matchingJobs.map((job) => job.senderName), 6);
++  const senderJids = uniqueStrings(matchingJobs.map((job) => job.senderJid), 6);
++  const participantTexts: string[] = [];
++  for (const job of matchingJobs) collectStrings(parseJson(job.participants), participantTexts);
++  const participants = uniqueStrings(participantTexts, 10);
++  const detectedPhones = extractPhones([...senderJids, ...participants]).slice(0, 12);
++
++  const messageSnippets = uniqueStrings(
++    matchingJobs.map((job) => {
++      try { return extractDarwishMessageText(job.payload).slice(0, 320); }
++      catch { return ""; }
++    }),
++    2,
++  );
++
++  const signals: string[] = [];
++  let score = 0;
++  if (client.knownPhones.some((phone) => detectedPhones.includes(phone))) {
++    signals.push("exact_phone");
++    score += 55;
++  }
++
++  const groupNameOverlap = tokenOverlap(client.clientName, candidate.groupName);
++  if (groupNameOverlap >= 0.5) {
++    signals.push("group_name");
++    score += Math.round(25 * groupNameOverlap);
++  }
++
++  const participantNameOverlap = Math.max(
++    0,
++    ...senderNames.map((name) => tokenOverlap(client.clientName, name)),
++    ...participants.map((name) => tokenOverlap(client.clientName, name)),
++  );
++  if (participantNameOverlap >= 0.5) {
++    signals.push("participant_name");
++    score += Math.round(20 * participantNameOverlap);
++  }
++
++  const businessOverlap = Math.max(
++    tokenOverlap(client.businessProfile, candidate.groupName),
++    ...senderNames.map((name) => tokenOverlap(client.businessProfile, name)),
++  );
++  if (businessOverlap >= 0.4) {
++    signals.push("business_name");
++    score += Math.round(10 * businessOverlap);
++  }
++
++  return {
++    candidateKey: candidateKey(candidate.groupJid, candidate.evolutionInstance),
++    groupJid: candidate.groupJid,
++    groupName: candidate.groupName,
++    evolutionInstance: candidate.evolutionInstance,
++    senderNames,
++    senderJids,
++    participantTexts: participants,
++    detectedPhones,
++    messageSnippets,
++    deterministicSignals: [...new Set(signals)],
++    deterministicScore: Math.min(100, score),
++  };
++}
++
++function confidenceLevel(confidence: number | null): DarwishSmartGroupCandidate["smartConfidenceLevel"] {
++  if (confidence == null) return "none";
++  if (confidence >= 80) return "high";
++  if (confidence >= 55) return "medium";
++  return "low";
++}
++
++export function __applyDarwishSmartRankingForTests(
++  candidates: DarwishGroupMatchingCandidate[],
++  ranking: z.infer<typeof smartRankingSchema>,
++): DarwishSmartGroupCandidate[] {
++  const eligibleKeys = new Set(
++    candidates.filter((candidate) => candidate.eligible && candidate.status === "unlinked")
++      .map((candidate) => candidateKey(candidate.groupJid, candidate.evolutionInstance)),
++  );
++
++  const rankingByKey = new Map(
++    ranking.candidates
++      .filter((item) => eligibleKeys.has(item.candidateKey))
++      .map((item) => [item.candidateKey, item]),
++  );
++
++  const rankedEligible = candidates
++    .filter((candidate) => candidate.eligible && candidate.status === "unlinked")
++    .map((candidate) => {
++      const key = candidateKey(candidate.groupJid, candidate.evolutionInstance);
++      const item = rankingByKey.get(key);
++      return { key, confidence: item?.confidence ?? -1 };
++    })
++    .sort((a, b) => b.confidence - a.confidence);
++
++  const top = rankedEligible[0];
++  const second = rankedEligible[1];
++  const recommendedKey = top && top.confidence >= 75 && (second == null || top.confidence - second.confidence >= 12)
++    ? top.key
++    : null;
++
++  return candidates
++    .map((candidate): DarwishSmartGroupCandidate => {
++      const key = candidateKey(candidate.groupJid, candidate.evolutionInstance);
++      const item = rankingByKey.get(key);
++      if (!candidate.eligible || candidate.status !== "unlinked") {
++        return {
++          ...candidate,
++          smartMatchStatus: "not_evaluated",
++          smartConfidence: null,
++          smartConfidenceLevel: "none",
++          smartReasons: [],
++          smartSignals: [],
++          darwishRecommended: false,
++        };
++      }
++      const confidence = item?.confidence ?? null;
++      return {
++        ...candidate,
++        smartMatchStatus: item ? "ranked" : "unavailable",
++        smartConfidence: confidence,
++        smartConfidenceLevel: confidenceLevel(confidence),
++        smartReasons: item?.reasons ?? [],
++        smartSignals: item?.matchedSignals ?? [],
++        darwishRecommended: key === recommendedKey,
++      };
++    })
++    .sort((a, b) => {
++      if (a.darwishRecommended !== b.darwishRecommended) return a.darwishRecommended ? -1 : 1;
++      const aScore = a.smartConfidence ?? -1;
++      const bScore = b.smartConfidence ?? -1;
++      if (aScore !== bScore) return bScore - aScore;
++      if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
++      return 0;
++    });
++}
++
++function manualFallback(candidates: DarwishGroupMatchingCandidate[]): DarwishSmartGroupCandidate[] {
++  return candidates.map((candidate) => ({
++    ...candidate,
++    smartMatchStatus: candidate.eligible && candidate.status === "unlinked" ? "unavailable" : "not_evaluated",
++    smartConfidence: null,
++    smartConfidenceLevel: "none",
++    smartReasons: [],
++    smartSignals: [],
++    darwishRecommended: false,
++  }));
++}
++
++async function loadClientIdentity(clientId: number): Promise<ClientIdentity | null> {
++  const db = await getDb();
++  if (!db) return null;
++  const client = rowsOf(await db.execute(sql`
++    SELECT c.id, c.leadName AS clientName, c.businessProfile
++    FROM clients c
++    WHERE c.id = ${clientId} AND c.deletedAt IS NULL
++    LIMIT 1
++  `))[0];
++  if (!client) return null;
++
++  const phoneRows = rowsOf(await db.execute(sql`
++    SELECT normalized_phone AS normalizedPhone
++    FROM darwish_client_mappings
++    WHERE tcrm_client_id = ${clientId} AND sync_status <> 'disabled'
++    ORDER BY last_synced_at DESC
++    LIMIT 20
++  `));
++
++  return {
++    id: Number(client.id),
++    clientName: String(client.clientName || "").trim(),
++    businessProfile: String(client.businessProfile || "").trim(),
++    knownPhones: uniqueStrings(phoneRows.map((row) => normalizePhone(row.normalizedPhone)), 20),
++  };
++}
++
++export async function rankDarwishGroupCandidatesForClient(input: {
++  clientId: number;
++  candidates: DarwishGroupMatchingCandidate[];
++  jobs: GroupJob[];
++}): Promise<DarwishSmartGroupCandidate[]> {
++  if (!input.candidates.length) return [];
++  const client = await loadClientIdentity(input.clientId);
++  if (!client) return manualFallback(input.candidates);
++
++  const eligible = input.candidates.filter((candidate) => candidate.eligible && candidate.status === "unlinked");
++  if (!eligible.length) return manualFallback(input.candidates);
++
++  const evidence = eligible
++    .map((candidate, index) => ({
++      index,
++      value: __buildDarwishGroupEvidenceForTests(client, candidate, input.jobs),
++    }))
++    .sort((a, b) => b.value.deterministicScore - a.value.deterministicScore || a.index - b.index)
++    .slice(0, 15)
++    .map((item) => item.value);
++
++  try {
++    const decision = await runDarwishAiDecision({
++      taskType: "group_matching",
++      instructions: [
++        "Rank the supplied real WhatsApp groups by how likely each group belongs to the supplied TCRM client.",
++        "Use multiple independent identity signals: exact phone matches, client/person names, company/business names, group names, participant names, sender identities/JIDs, and grounded recent message context.",
++        "Tolerate spelling mistakes, Arabic/English transliteration, shortened names, word-order changes, and minor naming differences.",
++        "Exact phone evidence is a very strong signal, but never invent a phone or relationship.",
++        "A name similarity alone can be weak when the name is generic; lower confidence unless other evidence supports it.",
++        "The candidate set is a safety-limited shortlist built from real recent groups. Return one item for each candidateKey you can evaluate. candidateKey must be copied exactly from input.",
++        "Confidence is 0-100. Use 90+ only when evidence is exceptionally strong. Use below 55 when evidence is weak or ambiguous.",
++        "Do not link anything and do not perform actions. This result is advisory for a human.",
++      ].join("\n"),
++      outputContract: JSON.stringify({
++        candidates: [{
++          candidateKey: "exact candidateKey from input",
++          confidence: "number 0-100",
++          reasons: ["1-4 short grounded reasons"],
++          matchedSignals: ["exact_phone|name|business_name|group_name|participant_name|sender_identity|message_context|other"],
++        }],
++      }),
++      input: {
++        client,
++        candidates: evidence,
++      },
++      schema: smartRankingSchema,
++    });
++
++    return __applyDarwishSmartRankingForTests(input.candidates, decision.data);
++  } catch (error) {
++    console.warn("[DarwishSmartGroupMatching] AI ranking unavailable", {
++      clientId: input.clientId,
++      errorClass: error instanceof Error ? error.name : "UnknownError",
++    });
++    return manualFallback(input.candidates);
++  }
++}
+--- /dev/null
++++ b/server/services/darwish/chatwoot/darwishSmartGroupMatchingService.test.ts
+@@ -0,0 +1,92 @@
++import { describe, expect, it } from "vitest";
++import {
++  __applyDarwishSmartRankingForTests,
++  __buildDarwishGroupEvidenceForTests,
++  type DarwishGroupMatchingCandidate,
++} from "./darwishSmartGroupMatchingService";
++
++const candidate = (overrides: Partial<DarwishGroupMatchingCandidate> = {}): DarwishGroupMatchingCandidate => ({
++  groupJid: "120363000001@g.us",
++  groupName: "Acme Marketing",
++  evolutionInstance: "main",
++  chatwootConversationId: null,
++  lastActivityAt: null,
++  linkedClientId: null,
++  status: "unlinked",
++  eligible: true,
++  ...overrides,
++});
++
++describe("Darwish smart WhatsApp group matching", () => {
++  it("detects exact phone evidence from participant/JID data", () => {
++    const evidence = __buildDarwishGroupEvidenceForTests(
++      { id: 118, clientName: "Ahmed Ali", businessProfile: "Acme", knownPhones: ["201001234567"] },
++      candidate(),
++      [{
++        groupJid: "120363000001@g.us",
++        evolutionInstance: "main",
++        senderJid: "201001234567@s.whatsapp.net",
++        senderName: "Ahmed",
++        participants: [{ id: "201001234567@s.whatsapp.net", name: "Ahmed Ali" }],
++        payload: { data: { message: { conversation: "محتاجين نراجع الحملة" } } },
++      }],
++    );
++
++    expect(evidence.detectedPhones).toContain("201001234567");
++    expect(evidence.deterministicSignals).toContain("exact_phone");
++    expect(evidence.deterministicScore).toBeGreaterThanOrEqual(55);
++  });
++
++  it("ignores invented candidate keys and recommends only a strong clear winner", () => {
++    const first = candidate();
++    const second = candidate({ groupJid: "120363000002@g.us", groupName: "Other Group" });
++
++    const result = __applyDarwishSmartRankingForTests([first, second], {
++      candidates: [
++        { candidateKey: "main::120363000001@g.us", confidence: 91, reasons: ["Exact phone match"], matchedSignals: ["exact_phone"] },
++        { candidateKey: "main::120363000002@g.us", confidence: 60, reasons: ["Weak name similarity"], matchedSignals: ["name"] },
++        { candidateKey: "main::INVENTED@g.us", confidence: 100, reasons: ["Invented"], matchedSignals: ["other"] },
++      ],
++    });
++
++    expect(result[0].groupJid).toBe("120363000001@g.us");
++    expect(result[0].darwishRecommended).toBe(true);
++    expect(result[0].smartConfidence).toBe(91);
++    expect(result.some((item) => item.groupJid === "INVENTED@g.us")).toBe(false);
++  });
++
++  it("does not recommend when top candidates are too close", () => {
++    const result = __applyDarwishSmartRankingForTests(
++      [candidate(), candidate({ groupJid: "120363000002@g.us" })],
++      {
++        candidates: [
++          { candidateKey: "main::120363000001@g.us", confidence: 84, reasons: [], matchedSignals: ["name"] },
++          { candidateKey: "main::120363000002@g.us", confidence: 79, reasons: [], matchedSignals: ["name"] },
++        ],
++      },
++    );
++
++    expect(result.every((item) => item.darwishRecommended === false)).toBe(true);
++  });
++
++  it("never evaluates a group already linked to another client", () => {
++    const blocked = candidate({
++      linkedClientId: 999,
++      status: "linked_other",
++      eligible: false,
++    });
++
++    const result = __applyDarwishSmartRankingForTests([blocked], {
++      candidates: [{
++        candidateKey: "main::120363000001@g.us",
++        confidence: 100,
++        reasons: ["Should be ignored"],
++        matchedSignals: ["exact_phone"],
++      }],
++    });
++
++    expect(result[0].smartMatchStatus).toBe("not_evaluated");
++    expect(result[0].darwishRecommended).toBe(false);
++    expect(result[0].smartConfidence).toBeNull();
++  });
++});
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -43,5 +43,6 @@
+   refreshDarwishActionProposals,
+   rejectDarwishAction,
+ } from "./darwishActionService";
++import { rankDarwishGroupCandidatesForClient } from "./darwishSmartGroupMatchingService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -141,6 +141,10 @@
+       });
+     }
+ 
+-    return candidates;
++    return rankDarwishGroupCandidatesForClient({
++      clientId: input.clientId,
++      candidates,
++      jobs: jobs as any[],
++    });
+   }),
+   linkClientGroup: darwishProcedure.input(z.object({
