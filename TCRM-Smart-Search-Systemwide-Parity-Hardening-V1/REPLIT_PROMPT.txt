@@ -1,0 +1,28 @@
+Apply TCRM-Smart-Search-Systemwide-Parity-Hardening-V1 to the live TCRM source tree.
+
+Rules:
+1) Work only inside the TCRM source directory supplied to APPLY_PATCH.py.
+2) Do not change DB schema, run migrations, or run db:push.
+3) Do not broaden permissions, ownership scope, account scope, WhatsApp session scope, or marketing-platform access.
+4) Do not replace the guarded Admin Settings search input with a generic input; the patch deliberately retains it and adds Smart UX around it.
+5) Preserve Client Pool's existing stronger Smart Search pipeline; do not duplicate it.
+6) Do not touch TOS, Evolution, unrelated PM2 processes, or WhatsApp sending logic.
+7) Apply:
+   python3 APPLY_PATCH.py /var/www/TCRM
+8) Verify:
+   python3 VERIFY_PATCH.py /var/www/TCRM
+   python3 AUDIT_SEARCHES.py /var/www/TCRM
+9) Run the repository's normal build/typecheck/test commands.
+10) If the audit reports remaining PENDING or LOGIC_ONLY user-facing search files, review them individually. Do not blindly replace credential fields, structured identifiers, security-sensitive controls, or non-search filters.
+11) Report:
+   - files changed
+   - build/typecheck/test result
+   - audit counts
+   - remaining intentional exceptions
+   - confirmation that DB/schema/permissions/TOS/Evolution were untouched.
+
+Expected product behavior:
+- Normal search bars use the shared SmartSearchBar experience: normalized query handling, suggestions, voice, clear action, RTL/LTR, and keyboard navigation.
+- Each page continues searching only its own authorized data source.
+- Global Search remains TCRM's stronger unified search with clients + BD records, learned ranking, and role scope.
+- Older Global Search requests must never overwrite newer results.
