@@ -1,0 +1,45 @@
+PATCH: TCRM-TOS-INTEGRATION-CONSOLE-WARN-SYNTAX-FIX-V1
+DATE: 2026-09-01
+TARGET FILE: server/services/tosIntegrationService.ts
+
+PURPOSE
+Repair the pre-existing TypeScript syntax error reported on the live TCRM working tree that blocks the server esbuild stage:
+
+console.warn(, );
+
+MINIMUM FIX
+Replace exactly one malformed empty-argument console.warn call with the syntactically valid no-op warning call:
+
+console.warn();
+
+WHY THIS FORM
+This is the smallest possible syntax-only correction. It does not invent a message, alter control flow, change integration payloads, touch the TOS API contract, or modify database behavior.
+
+SAFETY
+APPLY_PATCH.py:
+- targets only server/services/tosIntegrationService.ts;
+- searches only for console.warn(, ) allowing whitespace/newline variation;
+- requires exactly one broken occurrence;
+- aborts if multiple malformed calls are found;
+- makes no write if the broken syntax is absent;
+- creates a timestamped backup before writing;
+- verifies the malformed syntax is gone after transformation;
+- reports SHA256 before and after.
+
+APPLY
+python3 APPLY_PATCH.py /ABSOLUTE/PATH/TO/TCRM
+
+VALIDATION
+1. git diff -- server/services/tosIntegrationService.ts
+2. Confirm the diff is only console.warn(, ); -> console.warn();
+3. Run pnpm build.
+4. Confirm both Vite and server esbuild complete successfully.
+5. Deploy/restart only with the existing documented TCRM process.
+6. Verify the live TCRM URL and one TOS integration read path.
+
+OUT OF SCOPE
+- No TOS source changes.
+- No database changes.
+- No environment/API key changes.
+- No refactoring of tosIntegrationService.
+- No changes to team directory or Save Project Team behavior.
