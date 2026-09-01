@@ -1,0 +1,76 @@
+Apply the prepared TCRM truncation patch only. Do not rediagnose broadly and do not refactor the integration.
+
+PATCH REPOSITORY:
+mohamedamouseo-a11y/TCRM-main-patchs-
+
+PATCH FOLDER:
+TCRM-TOS-TEAM-DIRECTORY-TRUNCATION-FIX-V1
+
+TARGET:
+server/services/tosIntegrationService.ts
+
+CONFIRMED CURRENT STATE:
+- Previous patch already fixed: console.warn(, ); -> console.warn();
+- Full pnpm build still fails at server esbuild with:
+  Unexpected end of file
+  server/services/tosIntegrationService.ts:1031:0
+- This is a separate pre-existing truncation in getTosProjectTeamDirectory.
+
+STRICT SCOPE:
+- Modify only server/services/tosIntegrationService.ts via the prepared APPLY_PATCH.py.
+- Preserve the previous frontend Project Team fix in client/src/components/TosProjectTeamSelector.tsx.
+- Preserve the previous console.warn(); syntax fix.
+- Do not modify TOS.
+- Do not modify database/migrations.
+- Do not modify env/API keys.
+- Do not modify server/routers.ts or server/db.ts.
+- Do not change API payloads or Save Project Team logic.
+- Do not refactor the function.
+
+STEPS:
+1. cd /var/www/TCRM-MAIN
+2. Run: git status --short
+3. Expected known modified files may include:
+   M client/src/components/TosProjectTeamSelector.tsx
+   M server/services/tosIntegrationService.ts
+   Do not revert either known fix.
+4. If any other unknown application files are modified, STOP and report them.
+5. Fetch/clone the patch repo and use exactly:
+   TCRM-TOS-TEAM-DIRECTORY-TRUNCATION-FIX-V1/APPLY_PATCH.py
+6. Apply:
+   python3 APPLY_PATCH.py /var/www/TCRM-MAIN
+7. The script must create a timestamped backup and report SHA256 before/after.
+8. The intended source change is EXACTLY one missing closing brace appended at EOF. The script will automatically restore the original if that one brace does not make esbuild parse successfully.
+9. Run:
+   git diff -- server/services/tosIntegrationService.ts
+10. Confirm this patch added only the final closing brace, while the earlier console.warn(); fix remains.
+11. Run full:
+   pnpm build
+12. Do not continue to deployment unless BOTH succeed:
+   - Vite frontend build SUCCESS
+   - server esbuild build SUCCESS
+13. If full build succeeds, use the existing documented PM2 deployment process only.
+14. Restart the existing tamiyouz-crm PM2 process.
+15. Verify:
+   - PM2 online
+   - http://127.0.0.1:3001 -> HTTP 200
+   - https://sales.tamiyouzplaform.com -> HTTP 200
+   - safe read-only TOS team-directory check still returns department data
+16. Do not make DB writes or real membership changes just for testing.
+
+FINAL REPORT:
+1. Patch apply result
+2. Backup path
+3. SHA256 before/after
+4. Exact git diff for tosIntegrationService.ts
+5. esbuild parser result from the patch
+6. Vite build result
+7. server esbuild result
+8. PM2 restart result
+9. local HTTP result
+10. live URL result
+11. read-only TOS team-directory result
+12. git status --short
+13. Explicit confirmation that TOS/database/API payload/frontend Project Team fix were not modified
+
+Do not report deployment success unless the full pnpm build passes, including the server esbuild stage.
