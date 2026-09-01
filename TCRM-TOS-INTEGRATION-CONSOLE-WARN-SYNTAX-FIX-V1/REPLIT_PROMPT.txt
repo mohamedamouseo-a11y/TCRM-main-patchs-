@@ -1,0 +1,65 @@
+Apply the prepared TCRM syntax-only patch. Do NOT rediagnose broadly and do NOT refactor the integration service.
+
+PATCH REPOSITORY:
+mohamedamouseo-a11y/TCRM-main-patchs-
+
+PATCH FOLDER:
+TCRM-TOS-INTEGRATION-CONSOLE-WARN-SYNTAX-FIX-V1
+
+TARGET FILE:
+server/services/tosIntegrationService.ts
+
+CONFIRMED LIVE ISSUE:
+The live TCRM working tree contains a malformed TypeScript call around the reported build failure area:
+
+console.warn(, );
+
+This prevents the server esbuild stage from completing.
+
+STRICT SCOPE:
+- Modify only server/services/tosIntegrationService.ts through the prepared APPLY_PATCH.py script.
+- Do not modify TOS.
+- Do not modify client files.
+- Do not modify server/routers.ts or server/db.ts.
+- Do not modify database data, migrations, environment values, API keys, endpoints, payloads, roles, permissions or project-team behavior.
+- Do not refactor tosIntegrationService.ts.
+- No broad/full test suite.
+
+STEPS:
+1. Locate the live TCRM root.
+2. Run `git status --short`.
+3. Important: the previous project-team fix may already leave `client/src/components/TosProjectTeamSelector.tsx` modified. Do NOT overwrite or revert that known frontend change. If there are other unrelated unknown changes, STOP and report them.
+4. Fetch/clone the patch repository and use exactly:
+   TCRM-TOS-INTEGRATION-CONSOLE-WARN-SYNTAX-FIX-V1/APPLY_PATCH.py
+5. Apply:
+   `python3 APPLY_PATCH.py /ABSOLUTE/PATH/TO/TCRM`
+6. The script must create a timestamped backup and report SHA256 before/after.
+7. Run:
+   `git diff -- server/services/tosIntegrationService.ts`
+8. The expected server diff must be only the malformed call changing from:
+   `console.warn(, );`
+   to:
+   `console.warn();`
+   Whitespace/newline formatting around the original malformed call may collapse, but no other server logic should change.
+9. Run `pnpm build`.
+10. Confirm both:
+    - Vite frontend build succeeds;
+    - server esbuild stage succeeds past the previous syntax-error line.
+11. If the build succeeds, deploy/restart only with the existing documented TCRM production process.
+12. Verify the real live TCRM domain currently configured on the server is HTTP 200.
+13. Verify PM2 process health and a safe read-only TOS integration path.
+
+DO NOT make production database writes for validation.
+
+FINAL REPORT:
+- patch apply result
+- backup path
+- SHA256 before/after
+- exact server diff
+- pnpm build result (frontend + server)
+- PM2 restart/deploy result if performed
+- live URL result
+- git status after
+- explicit confirmation that TOS/database/API payloads/team-selector logic were not modified
+
+Do not claim full success unless the server esbuild step no longer fails on the malformed console.warn call.
