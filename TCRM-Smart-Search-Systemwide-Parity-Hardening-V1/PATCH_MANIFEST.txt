@@ -1,0 +1,112 @@
+TCRM-Smart-Search-Systemwide-Parity-Hardening-V1
+
+GOAL
+Bring TCRM local search bars up to the stronger TFCRM Smart Search UX pattern while preserving TCRM's stronger Global Search engine, role scope, adaptive ranking, Arabic/English normalization, and existing APIs.
+
+SOURCE / TARGET
+- Source reviewed: mohamedamouseo-a11y/TCRM-MAIN-Tamiyouz-CRM- (main + fix/smart-search-hardening-20260901)
+- Reference: mohamedamouseo-a11y/TFCRM Smart Search Phase 3/4/5A/5B patterns
+- Patch package target: mohamedamouseo-a11y/TCRM-main-patchs-
+
+CORE CHANGES
+1. Upgrade client/src/components/search/SmartSearchBar.tsx
+   - backward-compatible string suggestions
+   - rich {id,label,secondary} suggestions
+   - custom dropdown/listbox
+   - ArrowUp/ArrowDown/Enter/Escape keyboard support
+   - Clear button
+   - VoiceSearchButton
+   - Arabic/English RTL handling
+   - normalized 2-character suggestion threshold
+   - compact mode and accessibility attributes
+
+2. Harden Global Search
+   - stale-request/request-order guard
+   - old requests can no longer overwrite newer results
+   - old finally() cannot incorrectly clear current loading state
+   - visible bilingual error state instead of swallowed API failures
+   - existing clients/deals/companies/contacts ranking + learning preserved
+
+3. Harden server normalized exact search
+   - escape !, %, and _ before SQL LIKE
+   - use ESCAPE '!'
+   - parameter binding remains intact
+
+4. Improve Global BD search latency
+   - Deals / Companies / Contacts independent search sections execute with Promise.all
+   - existing BD ownership/access scope stays unchanged
+   - exact-first bounded fuzzy behavior stays unchanged
+
+LOCAL SEARCH UI MIGRATIONS
+- BD Companies
+- BD Contacts
+- BD Deals Kanban
+- Leads List
+- Renewal Pipeline
+- Meta Campaigns
+- Google Ads Campaigns
+- LinkedIn Campaigns
+- Snapchat Campaigns
+- TikTok Campaigns
+- WhatsApp Conversation List
+- WhatsApp Forward dialog
+- Admin Settings search: guarded native input is deliberately retained; voice + ranked suggestions are added around it so browser-autofill protection is not removed.
+
+ALREADY STRONG / PRESERVED
+- Client Pool is not rewritten. TCRM already has VoiceSearchButton + normalizeSearchText + rankSearchSuggestions wired to its existing scoped listClients flow.
+- Global Search keeps TCRM's existing client section, learned local ranking, voice, normalization, BD scope, and client role scope.
+
+CAPABILITIES
+- P1 Arabic/English normalization
+- P2 bounded typo-tolerant matching where the existing search pipeline supports it
+- P3 ranked suggestions/autocomplete
+- P4 voice-to-the-same-search-state
+- Clear action
+- RTL/LTR
+- keyboard suggestion navigation
+- stale-response protection for Global Search
+- literal-safe SQL LIKE exact search
+
+AUDIT
+AUDIT_SEARCHES.py performs a repository-wide inventory after application.
+It distinguishes:
+- SHARED Smart UI
+- explicit Smart UI
+- normalized/fuzzy logic with legacy UI
+- plain/pending search UI
+
+A search is NOT considered migrated merely because a fuzzy/normalized matcher exists.
+
+SAFETY
+- NO DB migration
+- NO schema change
+- NO db:push
+- NO role/permission expansion
+- NO ownership-scope expansion
+- NO TOS changes
+- NO Evolution/WhatsApp sending behavior changes
+- NO credential/autofill guard removal
+- Existing pagination/filter/API source is preserved per screen.
+
+FILES IN PACKAGE
+- APPLY_PATCH.py
+- SmartSearchBar.tsx
+- AUDIT_SEARCHES.py
+- VERIFY_PATCH.py
+- PATCH_MANIFEST.txt
+
+APPLY
+python3 APPLY_PATCH.py /var/www/TCRM
+
+VERIFY
+python3 VERIFY_PATCH.py /var/www/TCRM
+python3 AUDIT_SEARCHES.py /var/www/TCRM
+
+Then run the repository's normal build/typecheck/test workflow before deployment.
+Restart only the TCRM process(es) for the TCRM working directory if deploying to a server.
+
+ROLLBACK
+The apply script creates .smart-search-systemwide-v1.bak backups for modified existing files before writing changes.
+
+IMPORTANT
+The patch is source-only. It does not automatically build, restart services, modify the database, or change unrelated integrations.
