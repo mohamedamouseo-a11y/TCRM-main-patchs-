@@ -1,0 +1,79 @@
+diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/QuotationsTab.tsx
+--- a/client/src/components/QuotationsTab.tsx
++++ b/client/src/components/QuotationsTab.tsx
+@@ -707,7 +707,9 @@ export default function QuotationsTab({
+   function openMatchingServiceLibraryFromPreview() {
+     if (!current) return;
+ 
+-    const category = previewLibraryItem?.category || detectQuotationLibraryCategory(current);
++    const category =
++      previewLibraryItem?.category ||
++      (libraryCategory === "All" ? "All" : detectQuotationLibraryCategory(current));
+     if (!category) return;
+ 
+     setLibraryCategory(category);
+@@ -1461,6 +1463,7 @@ export default function QuotationsTab({
+                       <QuotationPreviewCard
+                         q={current}
+                         previewServiceItem={previewLibraryItem}
++                        previewAllServices={libraryCategory === "All"}
+                         subTotal={subTotal}
+                         vat={vat}
+                         total={total}
+@@ -1528,17 +1531,23 @@ function OfficialFooter() {
+   );
+ }
+ 
+-function QuotationPreviewCard({ previewServiceItem,
+-  q, subTotal, vat, total, onServicePageClick,
++function QuotationPreviewCard({
++  q, subTotal, vat, total, onServicePageClick, previewServiceItem, previewAllServices = false,
+ }: {
+   q: Quotation;
+   subTotal: number;
+   vat: number;
+   total: number;
+   onServicePageClick?: () => void;
++  previewServiceItem?: QuotationServiceLibraryItem | null;
++  previewAllServices?: boolean;
+ }) {
+   const logoUrl = (import.meta.env.BASE_URL || "/").replace(/\/$/, "") + "/logo.png";
+-  const serviceTitle = previewServiceItem?.name || getServiceTitle(q);
++  const allPreviewItems = previewAllServices
++    ? QUOTATION_SERVICE_LIBRARY.filter((item) => item.active)
++    : [];
++  const serviceTitle = previewAllServices ? "كل الخدمات" : (previewServiceItem?.name || getServiceTitle(q));
+   const visibleItems = getVisibleItems(q);
+   const templateId = normalizeTemplateId(q.templateId);
+ 
+@@ -1577,6 +1586,11 @@ function QuotationPreviewCard({ previewServiceItem,
+         .oq-rich p { margin:.35em 0; }
+         .oq-rich ul, .oq-rich ol { display:inline-block; text-align:right; margin:.25em auto; padding-right:24px; }
+         .oq-rich li { margin:.25em 0; }
++        .oq-all-services-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; width:100%; text-align:right; }
++        .oq-all-service-card { border:1px solid var(--tpl-soft,#e2e8f0); background:var(--tpl-light,#f8fafc); border-radius:16px; padding:16px; min-height:150px; }
++        .oq-all-service-title { font-size:17px; font-weight:900; color:var(--tpl-primary,#0f2f57); margin-bottom:8px; }
++        .oq-all-service-description { font-size:14px; line-height:1.65; margin:0; color:var(--tpl-muted,#475569); }
++        .oq-all-service-code { margin-top:8px; font-size:11px; direction:ltr; text-align:left; opacity:.55; }
+         .oq-table-wrap { position:absolute; top:181px; left:144px; right:144px; z-index:3; }
+         .oq-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:15px; }
+         .oq-table th { background:var(--tpl-accent,#e3bf6f); color:var(--tpl-table-head-text,#111); border:1.8px solid var(--tpl-border,#222); padding:8px 7px; font-weight:900; text-decoration:underline; text-align:center; }
+@@ -1621,7 +1635,17 @@ function QuotationPreviewCard({ previewServiceItem,
+         <img className="oq-logo" src={logoUrl} alt="تميّز" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+         <div className="oq-page-title">{serviceTitle}</div>
+         <div className="oq-service-content">
+-          {previewServiceItem ? (
++          {previewAllServices ? (
++            <div className="oq-all-services-grid">
++              {allPreviewItems.map((item) => (
++                <div key={item.code} className="oq-all-service-card">
++                  <div className="oq-all-service-title">{item.name}</div>
++                  <p className="oq-all-service-description">{item.description}</p>
++                  <div className="oq-all-service-code">{item.code}</div>
++                </div>
++              ))}
++            </div>
++          ) : previewServiceItem ? (
+             <div className="oq-rich">
+               <p>{previewServiceItem.description}</p>
+               {previewServiceItem.deliverables && (
