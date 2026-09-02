@@ -1,0 +1,130 @@
+diff --git a/client/src/pages/RenewalPipeline.tsx b/client/src/pages/RenewalPipeline.tsx
+--- a/client/src/pages/RenewalPipeline.tsx
++++ b/client/src/pages/RenewalPipeline.tsx
+@@ -689,6 +689,125 @@
+   return (
+     <CRMLayout>
+-      <div className="am-polish page-transition p-4 md:p-6 space-y-6" dir={isRTL ? "rtl" : "ltr"}>
++      <div className="am-polish renewal-pipeline-v3 page-transition p-4 md:p-6 space-y-6" dir={isRTL ? "rtl" : "ltr"}>
++        <style>{`
++          .dark .renewal-pipeline-v3 {
++            color-scheme: dark;
++            --rp-bg: #080c12;
++            --rp-surface: #0f151d;
++            --rp-surface-raised: #121923;
++            --rp-surface-hover: #18212c;
++            --rp-border: #26313f;
++            --rp-border-soft: #202a36;
++            --rp-text: #f1f5f9;
++            --rp-text-soft: #cbd5e1;
++            --rp-muted: #94a3b8;
++            --rp-muted-soft: #64748b;
++          }
++
++          .dark .renewal-pipeline-v3 [class~="bg-white"] {
++            background-color: var(--rp-surface) !important;
++          }
++          .dark .renewal-pipeline-v3 [class~="bg-slate-50"],
++          .dark .renewal-pipeline-v3 [class~="bg-slate-50/50"],
++          .dark .renewal-pipeline-v3 [class~="bg-slate-50/60"] {
++            background-color: var(--rp-surface-raised) !important;
++          }
++          .dark .renewal-pipeline-v3 [class~="bg-slate-100"] {
++            background-color: var(--rp-surface-hover) !important;
++          }
++          .dark .renewal-pipeline-v3 [class~="bg-slate-200"],
++          .dark .renewal-pipeline-v3 [class~="bg-slate-200/60"] {
++            background-color: #202a36 !important;
++          }
++
++          .dark .renewal-pipeline-v3 [class~="border-slate-50"],
++          .dark .renewal-pipeline-v3 [class~="border-slate-100"],
++          .dark .renewal-pipeline-v3 [class~="border-slate-200"],
++          .dark .renewal-pipeline-v3 [class~="border-slate-300"] {
++            border-color: var(--rp-border) !important;
++          }
++
++          .dark .renewal-pipeline-v3 [class~="text-slate-800"] { color: var(--rp-text) !important; }
++          .dark .renewal-pipeline-v3 [class~="text-slate-700"],
++          .dark .renewal-pipeline-v3 [class~="text-slate-600"] { color: var(--rp-text-soft) !important; }
++          .dark .renewal-pipeline-v3 [class~="text-slate-500"] { color: var(--rp-muted) !important; }
++          .dark .renewal-pipeline-v3 [class~="text-slate-400"],
++          .dark .renewal-pipeline-v3 [class~="text-slate-300"] { color: var(--rp-muted-soft) !important; }
++
++          .dark .renewal-pipeline-v3 [class~="bg-violet-50"] {
++            background-color: rgb(139 92 246 / 0.12) !important;
++          }
++          .dark .renewal-pipeline-v3 [class~="text-violet-700"],
++          .dark .renewal-pipeline-v3 [class~="text-violet-600"] {
++            color: #c4b5fd !important;
++          }
++
++          .dark .renewal-pipeline-v3 [class~="bg-gradient-to-b"] {
++            background-image: none !important;
++            background-color: #101720 !important;
++          }
++
++          .dark .renewal-pipeline-v3 [class~="bg-rose-50"] { background-color: rgb(244 63 94 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-red-50"] { background-color: rgb(239 68 68 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-orange-50"] { background-color: rgb(249 115 22 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-amber-50"],
++          .dark .renewal-pipeline-v3 [class~="bg-amber-50/40"],
++          .dark .renewal-pipeline-v3 [class~="bg-amber-50/50"] { background-color: rgb(245 158 11 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-blue-50"] { background-color: rgb(59 130 246 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-sky-50"] { background-color: rgb(14 165 233 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-purple-50"] { background-color: rgb(168 85 247 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-indigo-50"] { background-color: rgb(99 102 241 / 0.08) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-emerald-50"] { background-color: rgb(16 185 129 / 0.08) !important; }
++
++          .dark .renewal-pipeline-v3 [class~="bg-rose-100"] { background-color: rgb(244 63 94 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-red-100"] { background-color: rgb(239 68 68 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-orange-100"] { background-color: rgb(249 115 22 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-amber-100"] { background-color: rgb(245 158 11 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-blue-100"] { background-color: rgb(59 130 246 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-sky-100"] { background-color: rgb(14 165 233 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-purple-100"] { background-color: rgb(168 85 247 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-indigo-100"] { background-color: rgb(99 102 241 / 0.14) !important; }
++          .dark .renewal-pipeline-v3 [class~="bg-emerald-100"] { background-color: rgb(16 185 129 / 0.14) !important; }
++
++          .dark .renewal-pipeline-v3 [class~="text-rose-700"],
++          .dark .renewal-pipeline-v3 [class~="text-red-600"] { color: #fda4af !important; }
++          .dark .renewal-pipeline-v3 [class~="text-orange-600"] { color: #fdba74 !important; }
++          .dark .renewal-pipeline-v3 [class~="text-amber-700"],
++          .dark .renewal-pipeline-v3 [class~="text-amber-600"] { color: #fcd34d !important; }
++          .dark .renewal-pipeline-v3 [class~="text-blue-700"],
++          .dark .renewal-pipeline-v3 [class~="text-blue-600"] { color: #93c5fd !important; }
++          .dark .renewal-pipeline-v3 [class~="text-sky-700"] { color: #7dd3fc !important; }
++          .dark .renewal-pipeline-v3 [class~="text-purple-700"] { color: #d8b4fe !important; }
++          .dark .renewal-pipeline-v3 [class~="text-indigo-700"] { color: #a5b4fc !important; }
++          .dark .renewal-pipeline-v3 [class~="text-emerald-700"] { color: #6ee7b7 !important; }
++
++          .dark .renewal-pipeline-v3 [class~="border-rose-200"] { border-color: rgb(244 63 94 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-red-200"] { border-color: rgb(239 68 68 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-amber-200"] { border-color: rgb(245 158 11 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-blue-200"] { border-color: rgb(59 130 246 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-sky-200"] { border-color: rgb(14 165 233 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-purple-200"] { border-color: rgb(168 85 247 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-indigo-200"] { border-color: rgb(99 102 241 / 0.22) !important; }
++          .dark .renewal-pipeline-v3 [class~="border-emerald-200"] { border-color: rgb(16 185 129 / 0.22) !important; }
++
++          .dark .renewal-pipeline-v3 [class~="shadow-sm"] {
++            box-shadow: 0 1px 2px rgb(0 0 0 / 0.28) !important;
++          }
++          .dark .renewal-pipeline-v3 select,
++          .dark .renewal-pipeline-v3 label,
++          .dark .renewal-pipeline-v3 button {
++            transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
++          }
++          .dark .renewal-pipeline-v3 select {
++            background-color: var(--rp-surface-raised) !important;
++            border-color: var(--rp-border) !important;
++            color: var(--rp-text-soft) !important;
++          }
++          .dark .renewal-pipeline-v3 select:focus {
++            background-color: var(--rp-surface-hover) !important;
++            border-color: rgb(139 92 246 / 0.6) !important;
++          }
++        `}</style>
+         <div className="relative overflow-hidden rounded-2xl px-6 py-5 slide-up" style={{ background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)" }}>
+           <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle at 15% 50%, white 1.5px, transparent 1.5px)", backgroundSize: "22px 22px" }} />
+           <div className="absolute -top-10 -right-10 w-36 h-36 rounded-full bg-white/[0.05]" />
