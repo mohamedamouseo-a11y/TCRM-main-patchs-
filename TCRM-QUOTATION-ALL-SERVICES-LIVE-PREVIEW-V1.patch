@@ -20,7 +20,7 @@ diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/Quo
                          subTotal={subTotal}
                          vat={vat}
                          total={total}
-@@ -1528,17 +1531,23 @@ function OfficialFooter() {
+@@ -1528,17 +1531,22 @@ function OfficialFooter() {
    );
  }
  
