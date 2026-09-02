@@ -1,0 +1,71 @@
+diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
+index a3e00e6..947d3f4 100644
+--- a/client/src/pages/AdminSettings.tsx
++++ b/client/src/pages/AdminSettings.tsx
+@@ -2,6 +2,7 @@ import MetaLeadgenSettingsTab from "@/components/MetaLeadgenSettingsTab";
+ import CurrencySettingsTab from "@/components/CurrencySettingsTab";
+ import RakanSettingsTab from "@/components/RakanSettingsTab";
+ import DarwishAiProvidersSettingsTab from "@/components/DarwishAiProvidersSettingsTabV2";
++import DarwishMatchingAnalyticsTab from "@/components/DarwishMatchingAnalyticsTab";
+ import TamaraSettingsTab from "@/components/TamaraSettingsTab";
+ import PaymobSettingsTab from "@/components/PaymobSettingsTab";
+ import InnoCallSettingsTab from "@/components/InnoCallSettingsTab";
+@@ -20,7 +21,7 @@ import InnoCallSettingsTab from "@/components/InnoCallSettingsTab";
+     "preferences", "users", "pipeline", "campaigns", "fields", "theme", "sla", "notifications", "meetingNotifs",
+     "leadSources", "landingPageIntegrations", "authIntegrations", "backup", "databaseBackup", "googleDriveStorage", "fileShareSecurity", "waGateway", "metaWhatsapp", "tosIntegration",
+     "tfsIntegration", "thrsIntegration", "meta", "tiktok", "googleAds", "snapchat", "linkedin", "metaLeadgen",
+-    "rakan", "darwishAiProviders", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
++    "rakan", "darwishAiProviders", "darwishMatchingAnalytics", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
+     "dynamicServices", "packages",
+   ];
+ 
+@@ -36,6 +37,7 @@ import InnoCallSettingsTab from "@/components/InnoCallSettingsTab";
+       tabs: [
+         { value: "rakan", label: isRTL ? "راكان AI" : "Rakan AI", description: isRTL ? "مساعد النظام الذكي" : "AI assistant settings", icon: <Sparkles size={14} />, visible: true, badge: "AI" },
+         { value: "darwishAiProviders", label: isRTL ? "مزودو درويش AI" : "Darwish AI Providers", description: isRTL ? "المزودون والموديلات والتوجيه" : "Providers, models, and routing", icon: <Sparkles size={14} />, visible: isAdmin || isDeveloper, badge: "AI" },
++        { value: "darwishMatchingAnalytics", label: isRTL ? "جودة مطابقة درويش" : "Darwish Matching Quality", description: isRTL ? "قياس جودة ترشيحات جروبات واتساب" : "WhatsApp group matching analytics", icon: <BarChart3 size={14} />, visible: isAdmin || isDeveloper, badge: "AI" },
+         { value: "demoSync", label: isRTL ? "مزامنة الديمو" : "Demo Sync", description: isRTL ? "مزامنة نسخة العرض" : "Demo environment sync", icon: <RefreshCw size={14} />, visible: isSuperAdmin, badge: "Admin" },
+         { value: "developerHub", label: isRTL ? "لوحة المطورين" : "Developer Hub", description: isRTL ? "GitHub وأدوات التطوير" : "GitHub and developer tools", icon: <Terminal size={14} />, visible: isSuperAdmin, badge: "Dev" },
+         { value: "dashboardAudit", label: isRTL ? "تدقيق لوحة التحكم" : "Dashboard Audit", description: isRTL ? "مراجعة أرقام الداشبورد" : "Dashboard numbers audit", icon: <BarChart3 size={14} />, visible: canAccessDashboardAudit, badge: "Audit" },
+@@ -54,7 +56,7 @@ import InnoCallSettingsTab from "@/components/InnoCallSettingsTab";
+       id: "development",
+       label: isRTL ? "التطوير" : "Development",
+       icon: <Terminal size={15} />,
+-      values: ["developerHub", "rakan", "darwishAiProviders"],
++      values: ["developerHub", "rakan", "darwishAiProviders", "darwishMatchingAnalytics"],
+     },
+     {
+       id: "admin",
+@@ -72,6 +74,10 @@ import InnoCallSettingsTab from "@/components/InnoCallSettingsTab";
+             <DarwishAiProvidersSettingsTab />
+           </TabsContent>}
+ 
++          {(isAdmin || isDeveloper) && <TabsContent value="darwishMatchingAnalytics" className="mt-4">
++            <DarwishMatchingAnalyticsTab />
++          </TabsContent>}
++
+           {/* ── Currency / Exchange Rates Tab ── */}
+           {isAdmin && <TabsContent value="tamara" className="mt-4">
+             <TamaraSettingsTab />
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+index 1f4b638..af2dc0e 100644
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -1,6 +1,7 @@
+ } from "./darwishActionService";
+ import { rankDarwishGroupCandidatesForClient } from "./darwishSmartGroupMatchingService";
+ import { recordDarwishGroupMatchingFeedbackSafely } from "./darwishGroupMatchingFeedbackService";
++import { getDarwishGroupMatchingAnalytics } from "./darwishGroupMatchingAnalyticsService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   const role = String(ctx.user.role || "");
+@@ -19,6 +20,9 @@ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   normalizePendingJobs: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional()).mutation(({ input }) => normalizePendingDarwishJobs(input?.limit || 100)),
+   groupLinks: darwishProcedure.query(() => listDarwishGroupLinks()),
+   groupJobs: darwishProcedure.input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional()).query(({ input }) => listDarwishGroupJobs(input?.limit || 50)),
++  groupMatchingAnalytics: darwishProcedure
++    .input(z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(90)]).default(30) }).optional())
++    .query(({ input }) => getDarwishGroupMatchingAnalytics(input?.days || 30)),
+   clientGroupCandidates: darwishProcedure.input(z.object({
+     clientId: z.number().int().positive(),
+     limit: z.number().int().min(1).max(200).default(200),
