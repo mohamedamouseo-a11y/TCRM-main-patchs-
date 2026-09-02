@@ -1,0 +1,106 @@
+--- a/client/src/pages/RenewalPipeline.tsx
++++ b/client/src/pages/RenewalPipeline.tsx
+@@ -359,21 +359,21 @@
+   return (
+     <div
+       ref={setNodeRef}
+-      className={`rounded-2xl border ${config.borderColor} bg-gradient-to-b ${config.gradient} shadow-sm
++      className={`h-full min-h-0 overflow-hidden rounded-2xl border ${config.borderColor} bg-gradient-to-b ${config.gradient} shadow-sm flex flex-col
+         ${isOver && config.kind === "stage" ? "ring-2 ring-violet-400/50 border-violet-300 shadow-lg" : ""}
+         ${isOver && config.kind === "system" ? "ring-2 ring-amber-300/60" : ""}
+         transition-all duration-200`}
+     >
+-      <div className={`flex items-center justify-between gap-2 ${config.headerBg} rounded-t-2xl px-3 py-2.5 border-b ${config.borderColor}`}>
++      <div className={`sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 ${config.headerBg} rounded-t-2xl px-3 py-2.5 border-b ${config.borderColor} shadow-[0_1px_0_rgba(15,23,42,0.04)]`}>
+         <div className="flex items-center gap-2 min-w-0 flex-1">
+           <div className={`rounded-md p-1 shrink-0 ${config.badgeBg}`}>
+             <Icon className="h-3 w-3" />
+           </div>
+           <div className="min-w-0">
+             <div className="text-[13px] font-semibold text-slate-700 truncate leading-tight">{isRTL ? config.titleAr : config.title}</div>
+-            <div className="text-[10px] text-slate-400 truncate leading-tight">{isRTL ? config.hintAr : config.hint}</div>
++            <div className="text-[11px] text-slate-500 truncate leading-tight">{isRTL ? config.hintAr : config.hint}</div>
+             {totalValue > 0 && (
+-              <div className="text-[10px] text-slate-500 truncate leading-tight">{fmtMoneyShared(totalValue, BASE_CURRENCY)}</div>
++              <div className="text-[11px] font-medium text-slate-600 truncate leading-tight">{fmtMoneyShared(totalValue, BASE_CURRENCY)}</div>
+             )}
+           </div>
+         </div>
+@@ -382,7 +382,7 @@
+         </span>
+       </div>
+ 
+-      <div className="space-y-2.5 p-3 min-h-[120px]">
++      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-3 pr-2 [scrollbar-gutter:stable]">
+         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+           {ids.map((cid) => {
+             const item = byId.get(cid);
+@@ -391,8 +391,8 @@
+           })}
+         </SortableContext>
+         {ids.length === 0 && (
+-          <div className={`rounded-lg border border-dashed ${config.emptyBg} py-3 text-center`}>
+-            <div className="text-[11px] text-slate-400">{isRTL ? "لا توجد عناصر" : "No items"}</div>
++          <div className={`flex min-h-28 items-center justify-center rounded-xl border border-dashed ${config.emptyBg} px-3 py-6 text-center`}>
++            <div className="text-xs font-medium text-slate-500">{isRTL ? "لا توجد عناصر" : "No items"}</div>
+           </div>
+         )}
+       </div>
+@@ -416,10 +416,10 @@
+   iconBg: string;
+ }) {
+   return (
+-    <div className={`relative overflow-hidden rounded-2xl p-4 shadow-sm border border-white/10 ${gradient}`}>
++    <div className={`relative min-h-[112px] overflow-hidden rounded-2xl border border-white/10 p-4 shadow-sm ${gradient}`}>
+       <div className="flex items-start justify-between gap-3">
+         <div className="min-w-0 flex-1">
+-          <p className="text-[12px] font-medium text-white/75 truncate">{title}</p>
++          <p className="text-xs font-semibold text-white/80 truncate">{title}</p>
+           <p className="mt-1.5 text-2xl font-bold text-white leading-tight">
+             {value}
+             {suffix && <span className="text-sm ml-1 text-white/70">{suffix}</span>}
+@@ -1022,10 +1022,23 @@
+           </section>
+         )}
+ 
++        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
++          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
++            <div>
++              <h2 className="text-base font-bold text-slate-800">{isRTL ? "لوحة التجديدات" : "Renewal Board"}</h2>
++              <p className="mt-0.5 text-xs text-slate-500">
++                {isRTL ? "اسحب بين مراحل المتابعة اليدوية، ومرّر داخل كل عمود لعرض بقية العقود." : "Drag between manual stages; scroll inside each column to review more contracts."}
++              </p>
++            </div>
++            <div className="rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
++              {items.length} {isRTL ? "تجديد" : "renewals"}
++            </div>
++          </div>
++
+         {renewalsQ.isLoading ? (
+-          <div className="flex gap-3 overflow-x-auto pb-3">
++          <div className="flex h-[clamp(520px,68vh,760px)] gap-3 overflow-x-auto overscroll-x-contain pb-3 [scrollbar-gutter:stable]">
+             {columnConfig.map((c) => (
+-              <div key={c.key} className={`shrink-0 w-[260px] rounded-2xl border ${c.borderColor} bg-gradient-to-b ${c.gradient}`}>
++              <div key={c.key} className={`h-full w-[280px] shrink-0 rounded-2xl border sm:w-[290px] lg:w-[300px] ${c.borderColor} bg-gradient-to-b ${c.gradient}`}>
+                 <div className={`flex items-center justify-between gap-2 ${c.headerBg} rounded-t-2xl px-3 py-2.5 border-b ${c.borderColor}`}>
+                   <div className="text-[13px] font-semibold text-slate-700 truncate">{isRTL ? c.titleAr : c.title}</div>
+                   <div className="h-5 w-6 rounded-full bg-slate-200/60 animate-pulse" />
+@@ -1048,15 +1061,16 @@
+           </div>
+         ) : (
+           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+-            <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 snap-x" style={{ scrollbarWidth: "thin" }}>
++            <div className="flex h-[clamp(520px,68vh,760px)] gap-3 overflow-x-auto overscroll-x-contain pb-3 -mx-1 px-1 snap-x [scrollbar-gutter:stable]" style={{ scrollbarWidth: "thin" }}>
+               {columnConfig.map((c) => (
+-                <div key={c.key} className="shrink-0 w-[260px] snap-start">
++                <div key={c.key} className="h-full w-[280px] shrink-0 snap-start sm:w-[290px] lg:w-[300px]">
+                   <Column config={c} ids={grouped[c.key]} byId={byId} isRTL={isRTL} />
+                 </div>
+               ))}
+             </div>
+           </DndContext>
+         )}
++        </section>
+       </div>
+     </CRMLayout>
+   );
