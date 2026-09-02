@@ -1,0 +1,104 @@
+diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/QuotationsTab.tsx
+--- a/client/src/components/QuotationsTab.tsx
++++ b/client/src/components/QuotationsTab.tsx
+@@ -545,6 +545,7 @@
+   const [driveLink, setDriveLink] = useState<string | null>(null);
+   const [libraryCategory, setLibraryCategory] = useState<QuotationServiceCategory | "All">("All");
+   const [librarySearch, setLibrarySearch] = useState("");
++  const [previewLibraryItem, setPreviewLibraryItem] = useState<QuotationServiceLibraryItem | null>(null);
+ 
+   useEffect(() => {
+     setQuotations(loadQuotations(entityType, entityId));
+@@ -571,6 +572,7 @@
+   function closeModal() {
+     setModalOpen(false);
+     setCurrent(null);
++    setPreviewLibraryItem(null);
+   }
+ 
+   function handleNew() {
+@@ -705,7 +707,7 @@
+   function openMatchingServiceLibraryFromPreview() {
+     if (!current) return;
+ 
+-    const category = detectQuotationLibraryCategory(current);
++    const category = previewLibraryItem?.category || detectQuotationLibraryCategory(current);
+     if (!category) return;
+ 
+     setLibraryCategory(category);
+@@ -729,6 +731,20 @@
+     window.requestAnimationFrame(scrollToLibrary);
+   }
+ 
++  function handleLibraryCategorySelect(category: QuotationServiceCategory | "All") {
++    setLibraryCategory(category);
++
++    if (category === "All") {
++      setPreviewLibraryItem(null);
++      return;
++    }
++
++    const item = QUOTATION_SERVICE_LIBRARY.find(
++      (service) => service.active && service.category === category
++    ) || null;
++    setPreviewLibraryItem(item);
++  }
++
+   function setField<K extends keyof Quotation>(k: K, v: Quotation[K]) {
+     setCurrent((c) => c ? { ...c, [k]: v } : c);
+   }
+@@ -1224,7 +1238,7 @@
+                             <button
+                               key={cat}
+                               type="button"
+-                              onClick={() => setLibraryCategory(cat)}
++                              onClick={() => handleLibraryCategorySelect(cat)}
+                               className={`rounded-full border px-3 py-1 text-[11px] font-bold transition ${
+                                 libraryCategory === cat
+                                   ? "border-orange-400 bg-orange-500 text-white shadow-sm"
+@@ -1447,6 +1461,7 @@
+                         vat={vat}
+                         total={total}
+                         onServicePageClick={openMatchingServiceLibraryFromPreview}
++                        previewServiceItem={previewLibraryItem}
+                       />
+                     </div>
+                   </div>
+@@ -1514,18 +1529,22 @@
+ }
+ 
+ function QuotationPreviewCard({
+-  q, subTotal, vat, total, onServicePageClick,
++  q, subTotal, vat, total, onServicePageClick, previewServiceItem,
+ }: {
+   q: Quotation;
+   subTotal: number;
+   vat: number;
+   total: number;
+   onServicePageClick?: () => void;
++  previewServiceItem?: QuotationServiceLibraryItem | null;
+ }) {
+   const logoUrl = (import.meta.env.BASE_URL || "/").replace(/\/$/, "") + "/logo.png";
+-  const serviceTitle = getServiceTitle(q);
++  const serviceTitle = previewServiceItem?.name || getServiceTitle(q);
+   const visibleItems = getVisibleItems(q);
+   const templateId = normalizeTemplateId(q.templateId);
++  const previewServiceLines = previewServiceItem
++    ? [previewServiceItem.description, ...String(previewServiceItem.deliverables || "").split("\n").map((line) => line.trim()).filter(Boolean)]
++    : [];
+ 
+   return (
+     <div dir="rtl" className={`oq-doc font-sans qtpl-${templateId}`} style={templateCssVars(templateId)}>
+@@ -1606,7 +1624,11 @@
+         <img className="oq-logo" src={logoUrl} alt="تميّز" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+         <div className="oq-page-title">{serviceTitle}</div>
+         <div className="oq-service-content">
+-          {q.servicesDescription ? (
++          {previewServiceItem ? (
++            <ol className="oq-service-list">
++              {previewServiceLines.map((line, index) => <li key={`${previewServiceItem.code}-preview-${index}`}>{line}</li>)}
++            </ol>
++          ) : q.servicesDescription ? (
+             <div className="oq-rich" dangerouslySetInnerHTML={{ __html: toHtml(q.servicesDescription) }} />
+           ) : (
+             <ol className="oq-service-list">
