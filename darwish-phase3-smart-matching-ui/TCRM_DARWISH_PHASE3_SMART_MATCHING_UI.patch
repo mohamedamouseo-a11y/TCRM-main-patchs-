@@ -1,0 +1,151 @@
+diff --git a/client/src/components/ClientWhatsAppGroupsCard.tsx b/client/src/components/ClientWhatsAppGroupsCard.tsx
+--- a/client/src/components/ClientWhatsAppGroupsCard.tsx
++++ b/client/src/components/ClientWhatsAppGroupsCard.tsx
+@@ -22,7 +22,13 @@ type GroupCandidate = {
+   linkedClientId: number | null;
+   status: "unlinked" | "linked_current" | "linked_other";
+   eligible: boolean;
++  smartMatchStatus: "ranked" | "unavailable" | "not_evaluated";
++  smartConfidence: number | null;
++  smartConfidenceLevel: "high" | "medium" | "low" | "none";
++  smartReasons: string[];
++  smartSignals: string[];
++  darwishRecommended: boolean;
+ };
+ 
+ function formatActivity(value: unknown, isRTL: boolean) {
+   if (!value) return isRTL ? "لا يوجد نشاط مسجل" : "No recorded activity";
+@@ -43,6 +49,37 @@ function candidateKey(candidate: Pick<GroupCandidate, "groupJid" | "evolution
+   return `${candidate.evolutionInstance}::${candidate.groupJid}`;
+ }
+ 
++function getSmartMatchPresentation(candidate: GroupCandidate, isRTL: boolean) {
++  if (!candidate.eligible || candidate.status === "linked_other") return null;
++
++  if (candidate.darwishRecommended) {
++    return {
++      label: isRTL ? "موصى به" : "Recommended",
++      className: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
++    };
++  }
++
++  if (candidate.smartMatchStatus === "ranked") {
++    if ((candidate.smartConfidence ?? 0) < 55) {
++      return {
++        label: isRTL ? "لا يوجد تطابق" : "No Match",
++        className: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300",
++      };
++    }
++    return {
++      label: isRTL ? "يحتاج مراجعة" : "Review",
++      className: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
++    };
++  }
++
++  return candidate.smartMatchStatus === "unavailable"
++    ? {
++        label: isRTL ? "مراجعة يدوية" : "Manual Review",
++        className: "border-border bg-muted/50 text-muted-foreground",
++      }
++    : null;
++}
++
+ export default function ClientWhatsAppGroupsCard({
+   clientId,
+   groups,
+@@ -76,7 +110,13 @@ export default function ClientWhatsAppGroupsCard({
+     const query = candidateSearch.trim().toLowerCase();
+     if (!query) return selectableCandidates;
+     return selectableCandidates.filter((candidate) =>
+-      [candidate.groupName, candidate.groupJid, candidate.evolutionInstance]
++      [
++        candidate.groupName,
++        candidate.groupJid,
++        candidate.evolutionInstance,
++        ...(candidate.smartReasons ?? []),
++        ...(candidate.smartSignals ?? []),
++      ]
+         .filter(Boolean)
+         .some((value) => String(value).toLowerCase().includes(query)),
+     );
+@@ -164,8 +204,8 @@ export default function ClientWhatsAppGroupsCard({
+                       </DialogTitle>
+                       <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+                         {isRTL
+-                          ? "اختر جروبًا حقيقيًا تم رصده بواسطة درويش من Evolution / Chatwoot. الربط دقيق ولا يعتمد على تخمين أو إدخال JID يدوي."
+-                          : "Choose a real WhatsApp group observed by Darwish through Evolution / Chatwoot. Linking is deterministic with no manual JID or guessed mapping."}
++                          ? "درويش يرتب الجروبات الحقيقية حسب احتمالية مطابقتها للعميل. الترشيح استرشادي فقط، والربط لا يتم إلا بعد اختيارك."
++                          : "Darwish ranks real observed groups by likely client match. The recommendation is advisory only; linking happens only after your selection."}
+                       </p>
+                     </div>
+                   </div>
+@@ -176,8 +216,8 @@ export default function ClientWhatsAppGroupsCard({
+                     <Info size={18} className="mt-0.5 shrink-0 text-violet-500" />
+                     <p className="leading-6 text-muted-foreground">
+                       {isRTL
+-                        ? "نعرض الجروبات التي رصدها درويش فعليًا. الجروب المرتبط بعميل آخر سيظهر كغير متاح ولن يتم نقله تلقائيًا."
+-                        : "Only groups actually observed by Darwish are shown. A group linked to another client remains unavailable and will never be reassigned automatically."}
++                        ? "موصى به / يحتاج مراجعة / لا يوجد تطابق تعكس ثقة درويش والأدلة المتاحة فقط. لا يوجد ربط تلقائي، والجروب المرتبط بعميل آخر لن يتم نقله."
++                        : "Recommended / Review / No Match reflect Darwish confidence and available evidence only. There is no automatic linking, and groups linked to another client are never reassigned."}
+                     </p>
+                   </div>
+ 
+@@ -244,6 +284,8 @@ export default function ClientWhatsAppGroupsCard({
+                       {visibleCandidates.map((candidate) => {
+                         const key = candidateKey(candidate);
+                         const selected = key === selectedCandidateKey;
++                        const smartPresentation = getSmartMatchPresentation(candidate, isRTL);
++                        const smartConfidence = candidate.smartConfidence == null ? null : Math.round(Math.max(0, Math.min(100, candidate.smartConfidence)));
+                         return (
+                           <button
+                             key={key}
+@@ -253,7 +295,9 @@ export default function ClientWhatsAppGroupsCard({
+                             className={`group w-full rounded-2xl border px-4 py-3.5 text-start transition-all ${
+                               selected
+                                 ? "border-violet-500/60 bg-violet-500/[0.08] shadow-sm ring-1 ring-violet-500/15"
+-                                : "border-border/70 bg-card hover:border-violet-500/30 hover:bg-muted/20"
++                                : candidate.darwishRecommended
++                                  ? "border-violet-500/40 bg-violet-500/[0.04] shadow-sm hover:border-violet-500/60"
++                                  : "border-border/70 bg-card hover:border-violet-500/30 hover:bg-muted/20"
+                             } ${!candidate.eligible ? "cursor-not-allowed opacity-55 hover:border-border/70 hover:bg-card" : ""}`}
+                           >
+                             <div className="flex items-center gap-3.5">
+@@ -273,11 +317,38 @@ export default function ClientWhatsAppGroupsCard({
+                                       <Badge variant="outline" className="shrink-0 border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-300">
+                                         {isRTL ? `مرتبط بعميل #${candidate.linkedClientId}` : `Client #${candidate.linkedClientId}`}
+                                       </Badge>
++                                    ) : smartPresentation ? (
++                                      <Badge variant="outline" className={`shrink-0 text-[10px] ${smartPresentation.className}`}>
++                                        {smartPresentation.label}
++                                      </Badge>
+                                     ) : null}
+                                   </div>
+                                   <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground" dir="ltr">
+                                     {candidate.groupJid}
+                                   </p>
++                                  {smartConfidence !== null ? (
++                                    <div className="mt-2 flex items-center gap-2 text-[11px]">
++                                      <span className="text-muted-foreground">
++                                        {isRTL ? "ثقة درويش" : "Darwish confidence"}
++                                      </span>
++                                      <span className="font-semibold tabular-nums text-foreground">{smartConfidence}%</span>
++                                    </div>
++                                  ) : null}
++                                  {candidate.smartReasons?.length ? (
++                                    <div className="mt-1.5 space-y-0.5">
++                                      {candidate.smartReasons.slice(0, 2).map((reason, reasonIndex) => (
++                                        <p key={`${key}-reason-${reasonIndex}`} className="line-clamp-1 text-[10px] leading-4 text-muted-foreground">
++                                          • {reason}
++                                        </p>
++                                      ))}
++                                    </div>
++                                  ) : candidate.smartMatchStatus === "unavailable" && candidate.eligible ? (
++                                    <p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">
++                                      {isRTL
++                                        ? "الترتيب الذكي غير متاح حاليًا؛ ما زال بإمكانك اختيار الجروب يدويًا."
++                                        : "Smart ranking is unavailable right now; manual selection remains available."}
++                                    </p>
++                                  ) : null}
+                                 </div>
+ 
+                                 <div className="min-w-0">
