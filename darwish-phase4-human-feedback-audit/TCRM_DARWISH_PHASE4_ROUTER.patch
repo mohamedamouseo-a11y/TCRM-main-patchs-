@@ -1,0 +1,59 @@
+diff --git a/server/services/darwish/chatwoot/darwishRouter.ts b/server/services/darwish/chatwoot/darwishRouter.ts
+--- a/server/services/darwish/chatwoot/darwishRouter.ts
++++ b/server/services/darwish/chatwoot/darwishRouter.ts
+@@ -44,6 +44,7 @@ import {
+   rejectDarwishAction,
+ } from "./darwishActionService";
+ import { rankDarwishGroupCandidatesForClient } from "./darwishSmartGroupMatchingService";
++import { recordDarwishGroupMatchingFeedbackSafely } from "./darwishGroupMatchingFeedbackService";
+ 
+ const darwishProcedure = protectedProcedure.use(({ ctx, next }) => {
+   const role = String(ctx.user.role || "");
+@@ -151,10 +152,13 @@ export const darwishRouter = router({
+     clientId: z.number().int().positive(),
+     groupJid: z.string().trim().min(3).max(255),
+     evolutionInstance: z.string().trim().min(1).max(160),
+-  })).mutation(async ({ input }) => {
++  })).mutation(async ({ input, ctx }) => {
+     const groupJid = input.groupJid.trim();
+     const evolutionInstance = input.evolutionInstance.trim();
+-    const jobs = await listDarwishGroupJobs(200);
++    const [jobs, linksBefore] = await Promise.all([
++      listDarwishGroupJobs(200),
++      listDarwishGroupLinks(),
++    ]);
+     const candidate = (jobs as any[]).find((job) =>
+       String(job?.groupJid || "").trim() === groupJid
+       && String(job?.evolutionInstance || "").trim() === evolutionInstance
+@@ -174,6 +178,7 @@ export const darwishRouter = router({
+       });
+     }
+ 
++    let feedback: Awaited<ReturnType<typeof recordDarwishGroupMatchingFeedbackSafely>> | null = null;
+     if (!existing) {
+       await upsertDarwishGroupLink({
+         clientId: input.clientId,
+@@ -182,6 +187,14 @@ export const darwishRouter = router({
+         evolutionInstance,
+         enabled: true,
+       });
++      feedback = await recordDarwishGroupMatchingFeedbackSafely({
++        clientId: input.clientId,
++        actorUserId: Number(ctx.user.id),
++        selectedGroupJid: groupJid,
++        selectedEvolutionInstance: evolutionInstance,
++        jobs: jobs as any[],
++        linksBefore: linksBefore as any[],
++      });
+     }
+ 
+     return {
+@@ -191,6 +204,8 @@ export const darwishRouter = router({
+       clientId: input.clientId,
+       groupJid,
+       evolutionInstance,
++      feedbackRecorded: feedback?.recorded ?? false,
++      feedbackDecisionType: feedback?.decisionType ?? null,
+     };
+   }),
+   intelligenceStats: darwishProcedure.query(() => getDarwishIntelligenceStats()),
