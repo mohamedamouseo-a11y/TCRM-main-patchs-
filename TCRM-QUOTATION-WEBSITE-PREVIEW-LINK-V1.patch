@@ -22,7 +22,7 @@ diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/Quo
  
      setLibraryCategory(category);
      setLibrarySearch("");
-@@ -1088,7 +1086,7 @@
+@@ -1088,8 +1086,8 @@
                  <div className="flex-1 overflow-y-auto bg-slate-50" style={{ minWidth: 0 }}>
                    <div className="max-w-2xl mx-auto px-6 py-6 space-y-4">
  
