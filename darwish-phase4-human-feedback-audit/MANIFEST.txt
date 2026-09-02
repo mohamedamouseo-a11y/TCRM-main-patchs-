@@ -1,0 +1,20 @@
+DARWISH_PHASE=4
+NAME=Human Feedback + Matching Audit
+APP_BASE_COMMIT=eca548fc2939ffd2d1faf927a228fe5b9895f910
+
+COPY_TO_APP:
+files/20260902_darwish_phase4_group_matching_feedback_audit.sql -> drizzle/migrations/20260902_darwish_phase4_group_matching_feedback_audit.sql
+files/darwishGroupMatchingFeedbackService.ts -> server/services/darwish/chatwoot/darwishGroupMatchingFeedbackService.ts
+files/darwishGroupMatchingFeedbackService.test.ts -> server/services/darwish/chatwoot/darwishGroupMatchingFeedbackService.test.ts
+
+APPLY_TO_APP:
+TCRM_DARWISH_PHASE4_ROUTER.patch
+
+SAFETY:
+- Audit-only human feedback.
+- No automatic linking or remapping.
+- No model training or auto-learning.
+- No outbound behavior change.
+- No raw messages, participants, free-text AI reasons, prompts, provider secrets, or API keys persisted.
+- Existing deterministic link validation and cross-client conflict protection remain authoritative.
+- Audit failure must never roll back or fail an already successful deterministic group link.
