@@ -27,13 +27,11 @@ for rel in ["server/_core/trpc.ts", "server/routers.ts", "server/db.ts"]:
     (BACKUP / rel).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(dst, BACKUP / rel)
 
-# Install new files first.
 for rel in ["server/security/phase3bScope.ts", "scripts/verify-advanced-permissions-phase3b.ts"]:
     src, dst = FILES / rel, TARGET / rel
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
-# tRPC permission wrappers.
 trpc_path = TARGET / "server/_core/trpc.ts"
 trpc = trpc_path.read_text()
 anchor = 'export const clientsExportScope = phase3Scope("clients.export");\n'
@@ -43,7 +41,6 @@ if "ADVANCED_PERMISSIONS_PHASE3B_V1" not in trpc:
     trpc = trpc.replace(anchor, insert, 1)
     trpc_path.write_text(trpc)
 
-# Scoped activity feed at DB source.
 db_path = TARGET / "server/db.ts"
 db = db_path.read_text()
 anchor = '''export async function getActivitiesByUser(userId: number, limit = 20): Promise<Activity[]> {\n  const db = await getDb();\n  if (!db) return [];\n  return db\n    .select()\n    .from(activities)\n    .where(and(eq(activities.userId, userId), isNull(activities.deletedAt)))\n    .orderBy(desc(activities.activityTime))\n    .limit(limit);\n}\n'''
@@ -55,8 +52,6 @@ if "getActivitiesByUserScoped" not in db:
 
 rp = TARGET / "server/routers.ts"
 r = rp.read_text()
-
-# Extend existing imports.
 old = 'import { protectedProcedure, publicProcedure, router, leadsViewScope, leadsCreateScope, leadsEditScope, leadsDeleteScope, leadsRestoreScope, leadsImportScope, leadsExportScope, dealsViewScope, dealsCreateScope, dealsEditScope, dealsDeleteScope, dealsExportScope, clientsViewScope, clientsCreateScope, clientsEditScope, clientsDeleteScope, clientsExportScope } from "./_core/trpc";'
 new = 'import { protectedProcedure, publicProcedure, router, leadsViewScope, leadsCreateScope, leadsEditScope, leadsDeleteScope, leadsRestoreScope, leadsImportScope, leadsExportScope, dealsViewScope, dealsCreateScope, dealsEditScope, dealsDeleteScope, dealsExportScope, clientsViewScope, clientsCreateScope, clientsEditScope, clientsDeleteScope, clientsExportScope, activitiesViewScope, activitiesCreateScope, activitiesEditScope, activitiesDeleteScope, tasksViewScope, tasksCreateScope, tasksEditScope, tasksDeleteScope, contractsViewScope, contractsCreateScope, contractsEditScope } from "./_core/trpc";'
 if old in r: r = r.replace(old, new, 1)
@@ -80,6 +75,7 @@ r = r.replace('        const existing = await getActivityById(input.id);\n      
 
 # Client Tasks.
 r = r.replace('    assignedContext: taskOpsProcedure\n', '    assignedContext: taskOpsProcedure.use(tasksViewScope)\n', 1)
+r = r.replace('      .query(async ({ input, ctx }) => getAssignedTaskContext({ id: Number(ctx.user.id), role: normalizeUserRole(ctx.user.role), teamId: ctx.user.teamId }, input.taskId)),', '      .query(async ({ input, ctx }) => {\n        const task = await getAssignedTaskContext({ id: Number(ctx.user.id), role: normalizeUserRole(ctx.user.role), teamId: ctx.user.teamId }, input.taskId);\n        await assertTaskPermissionScope((ctx as any).permissionDecision, ctx.user as any, task, `Task #${input.taskId}`);\n        return task;\n      }),', 1)
 r = r.replace('    list: taskOpsProcedure\n', '    list: taskOpsProcedure.use(tasksViewScope)\n', 1)
 r = r.replace('        const rows = await getClientTasks(input.clientId);', '        const rows = await getClientTasks(input.clientId);\n        const scopedRows = await filterTasksByPermissionScope((ctx as any).permissionDecision, ctx.user as any, rows as any[]);', 1)
 r = r.replace('          return (rows as any[]).filter((row) => Number(row.assignedTo ?? 0) === Number(ctx.user.id));', '          return scopedRows.filter((row: any) => Number(row.assignedTo ?? 0) === Number(ctx.user.id));', 1)
