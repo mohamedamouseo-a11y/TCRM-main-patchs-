@@ -1,0 +1,46 @@
+diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/QuotationsTab.tsx
+--- a/client/src/components/QuotationsTab.tsx
++++ b/client/src/components/QuotationsTab.tsx
+@@ -35,6 +35,14 @@ interface QuotationItem {
+   cost: number;
+ }
+ 
++type QuotationServiceContentOverride = {
++  name?: string;
++  description?: string;
++  deliverables?: string;
++  duration?: string;
++  pricingModel?: string;
++};
++
+ type QuotationTemplateId = "classic-navy" | "clean-green" | "purple-modern" | "arabic-gold" | "dark-premium" | "blue-corporate";
+ 
+ interface Quotation {
+@@ -54,6 +62,7 @@ interface Quotation {
+   clientName: string;
+   clientPhone: string;
+   clientEmail: string;
++  serviceContentOverrides?: Record<string, QuotationServiceContentOverride>;
+   createdAt: string;
+   updatedAt: string;
+ }
+@@ -386,6 +395,18 @@ function getVisibleItems(q: Quotation): QuotationItem[] {
+   return q.items.filter(hasVisibleItemContent);
+ }
+ 
++function getEffectiveQuotationServiceItem(
++  q: Quotation,
++  item: QuotationServiceLibraryItem
++): QuotationServiceLibraryItem {
++  const override = q.serviceContentOverrides?.[item.code];
++  return override ? { ...item, ...override } : item;
++}
++
++function hasQuotationServiceOverride(q: Quotation, code: string): boolean {
++  return Boolean(q.serviceContentOverrides?.[code]);
++}
++
+ function richOrDefaultList(html: string): string {
+   if (html && html.trim()) return `<div class="official-rich">${toHtml(html)}</div>`;
+   return `<ol class="official-service-list">${DEFAULT_SERVICE_LINES.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ol>`;
+ }
