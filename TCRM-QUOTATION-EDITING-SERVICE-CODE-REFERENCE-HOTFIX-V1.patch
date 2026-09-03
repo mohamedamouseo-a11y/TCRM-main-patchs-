@@ -1,0 +1,11 @@
+diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/QuotationsTab.tsx
+--- a/client/src/components/QuotationsTab.tsx
++++ b/client/src/components/QuotationsTab.tsx
+@@ -548,6 +548,7 @@ export default function QuotationsTab({
+   const [libraryCategory, setLibraryCategory] = useState<QuotationServiceCategory | "All">("All");
+   const [librarySearch, setLibrarySearch] = useState("");
+   const [previewLibraryItem, setPreviewLibraryItem] = useState<QuotationServiceLibraryItem | null>(null);
++  const [editingServiceCode, setEditingServiceCode] = useState<string | null>(null);
+ 
+   useEffect(() => {
+     setQuotations(loadQuotations(entityType, entityId));
