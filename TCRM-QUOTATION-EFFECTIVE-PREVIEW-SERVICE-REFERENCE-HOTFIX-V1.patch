@@ -1,0 +1,13 @@
+diff --git a/client/src/components/QuotationsTab.tsx b/client/src/components/QuotationsTab.tsx
+--- a/client/src/components/QuotationsTab.tsx
++++ b/client/src/components/QuotationsTab.tsx
+@@ -1790,6 +1790,9 @@ function QuotationPreviewCard({
+   const allPreviewItems = previewAllServices
+     ? QUOTATION_SERVICE_LIBRARY.filter((item) => item.active).map((item) => getEffectiveQuotationServiceItem(q, item))
+     : [];
++  const effectivePreviewServiceItem = previewServiceItem
++    ? getEffectiveQuotationServiceItem(q, previewServiceItem)
++    : null;
+   const serviceTitle = previewAllServices
+     ? "كل الخدمات"
+     : (effectivePreviewServiceItem?.name || getServiceTitle(q));
