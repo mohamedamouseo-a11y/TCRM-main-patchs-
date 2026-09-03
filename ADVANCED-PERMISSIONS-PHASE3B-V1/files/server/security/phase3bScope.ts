@@ -83,3 +83,22 @@ export async function assertContractPermissionScope(decision: PermissionDecision
   if (!(await isContractInPermissionScope(decision, user, contract))) deny(label ?? `Contract #${contract?.id ?? "?"}`);
   return true;
 }
+
+export async function filterContractsByPermissionScope(decision: PermissionDecision, user: PermissionUser, contracts: any[]) {
+  if (decision.scope === "all") return contracts;
+  const allowed: any[] = [];
+  for (const contract of contracts) if (await isContractInPermissionScope(decision, user, contract)) allowed.push(contract);
+  return allowed;
+}
+
+export async function assertContractCreatePermissionScope(decision: PermissionDecision, user: PermissionUser, clientId: number, renewalAssignedTo?: number | null) {
+  if (decision.scope === "all") return true;
+  if (decision.scope === "assigned") {
+    if (Number(renewalAssignedTo ?? 0) !== uid(user)) deny("Contract create assignment");
+    return true;
+  }
+  if (decision.scope === "own" || decision.scope === "team") {
+    return assertClientPermissionScope(decision, user, clientId, `Client #${clientId} (contract create)`);
+  }
+  deny("Contract create");
+}
