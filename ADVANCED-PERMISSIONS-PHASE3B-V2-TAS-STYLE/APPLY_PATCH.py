@@ -12,8 +12,6 @@ BACKUP = TARGET / ".patch-backups" / f"advanced-permissions-phase3b-v2-{int(time
 if not V1.exists():
     raise SystemExit(f"Missing Phase3B V1 applier: {V1}")
 
-# Continue safely from the current working tree. If Phase3B V1 is already applied,
-# do NOT replay it; otherwise apply it once before the V2 additions.
 routers_path = TARGET / "server/routers.ts"
 trpc_path = TARGET / "server/_core/trpc.ts"
 if not routers_path.exists() or not trpc_path.exists():
@@ -49,28 +47,36 @@ for rel in [
     "server/roleUtils.ts",
     "client/src/lib/roles.ts",
     "scripts/apply-advanced-permissions-phase1-migration.ts",
+    "scripts/verify-advanced-permissions-phase3b-v2.ts",
 ]:
     src = TARGET / rel
+    if not src.exists():
+        continue
     dst = BACKUP / rel
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
-# Replace active role catalogs; legacy compatibility remains inside the files.
-for rel in ["server/roleUtils.ts", "client/src/lib/roles.ts", "server/security/permissionUserOverrideAdmin.ts"]:
+for rel in [
+    "server/roleUtils.ts",
+    "client/src/lib/roles.ts",
+    "server/security/permissionUserOverrideAdmin.ts",
+    "scripts/verify-advanced-permissions-phase3b-v2.ts",
+]:
     src = FILES / rel
     dst = TARGET / rel
+    if not src.exists():
+        raise SystemExit(f"Missing V2 package file: {src}")
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
-# Future installs: do not seed automotive-only roles into TCRM RBAC.
 migration_path = TARGET / "scripts/apply-advanced-permissions-phase1-migration.ts"
 migration = migration_path.read_text()
 migration = migration.replace('  "ServiceAdvisor", "PartsAgent", "CrmFollowUp", "Viewer", "MediaBuyer", "AccountManager",\n', '  "Viewer", "MediaBuyer", "AccountManager",\n')
-if "ServiceAdvisor\", \"PartsAgent\", \"CrmFollowUp" in migration.split("const LEGACY_ROLES", 1)[1].split("];", 1)[0]:
+legacy_block = migration.split("const LEGACY_ROLES", 1)[1].split("];", 1)[0]
+if any(role in legacy_block for role in ["ServiceAdvisor", "PartsAgent", "CrmFollowUp"]):
     raise SystemExit("Could not remove automotive-only roles from Phase1 LEGACY_ROLES")
 migration_path.write_text(migration)
 
-# Hide any previously seeded automotive system roles from the RBAC admin list without deleting DB rows.
 service_path = TARGET / "server/security/permissionAdminService.ts"
 service = service_path.read_text()
 needle = "    FROM roles r\n    LEFT JOIN user_roles ur ON ur.role_id = r.id\n    LEFT JOIN role_permissions rp ON rp.role_id = r.id\n    GROUP BY r.id\n"
@@ -81,7 +87,6 @@ if replacement not in service:
     service = service.replace(needle, replacement, 1)
 service_path.write_text(service)
 
-# Add user-override admin API routes.
 router_path = TARGET / "server/permissionsAdminRouter.ts"
 r = router_path.read_text()
 if 'permissionUserOverrideAdmin' not in r:
@@ -100,5 +105,6 @@ if "listUsersForPermissions:" not in r:
 router_path.write_text(r)
 
 print("Phase 3B V2 backend/role cleanup applied.")
+print("V2 verifier installed from patch package.")
 print(f"Backup: {BACKUP}")
 print("IMPORTANT: follow README UI step to implement TAS-style Basic/Advanced matrix + User Overrides tab.")
