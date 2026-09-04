@@ -1,4 +1,6 @@
-نفّذ فقط Advanced Permissions Phase 3B V2 من هذا الفولدر على `/var/www/TCRM-MAIN`.
+كمّل من نفس working tree الحالي الذي عليه Phase 3B V1 بالفعل. نفّذ فقط Advanced Permissions Phase 3B V2 من هذا الفولدر على `/var/www/TCRM-MAIN`.
+
+مهم: لا تعيد تطبيق V1 يدويًا. الـV2 applier أصبح يكتشف V1 الحالية ويكمل فوقها فقط.
 
 1) اقرأ `README.md` بالكامل.
 2) شغّل:
@@ -21,4 +23,4 @@ NODE_OPTIONS=--max-old-space-size=8192 pnpm test
 ```
 8) لا commit/push/merge/reset/rebase، ولا تصلح failures قديمة غير مرتبطة.
 
-في النهاية ابعت: files changed + verify/check/build/test + git status/diff stat/name-only + أي manual adaptations، ثم توقف.
+في النهاية ابعت: files changed + verify/check/build/test + git status/diff stat/name-only + أي manual adaptations + تأكيد أن V1 لم تُعاد + تأكيد أن Automotive roles غير selectable + تأكيد أن Meetings/Felfel/TAM meetings لم تُمس، ثم توقف.
