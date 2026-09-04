@@ -1,6 +1,6 @@
 # Advanced Permissions Phase 3B V2 — TAS-style simple UX + per-user overrides
 
-This package **supersedes** `ADVANCED-PERMISSIONS-PHASE3B-V1` for execution. Do not run V1 separately; this V2 applier invokes it first.
+This package continues safely from the current working tree. If `ADVANCED-PERMISSIONS-PHASE3B-V1` is already applied, the V2 applier detects it and **does not replay V1**. If V1 is missing, V2 applies it once before the V2 additions.
 
 Baseline: TCRM main at/after `a56f832ce06654d3c0e39ee673b306ae2daa74eb` (Phase 3A reviewed fixes landed).
 
@@ -45,7 +45,8 @@ python3 ADVANCED-PERMISSIONS-PHASE3B-V2-TAS-STYLE/APPLY_PATCH.py /var/www/TCRM-M
 ```
 
 The applier:
-- applies the Phase3B V1 backend enforcement;
+- detects whether Phase3B V1 is already present and skips replay when it is;
+- otherwise applies V1 once;
 - installs `permissionUserOverrideAdmin.ts`;
 - adds permission-admin API routes for users and overrides;
 - removes Automotive-only roles from active role catalogs/new migration seed;
