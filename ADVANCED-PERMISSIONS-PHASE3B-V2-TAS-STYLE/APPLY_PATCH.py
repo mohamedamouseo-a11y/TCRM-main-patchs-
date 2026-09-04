@@ -12,8 +12,24 @@ BACKUP = TARGET / ".patch-backups" / f"advanced-permissions-phase3b-v2-{int(time
 if not V1.exists():
     raise SystemExit(f"Missing Phase3B V1 applier: {V1}")
 
-# Apply reviewed Phase3B backend enforcement first.
-subprocess.run([sys.executable, str(V1), str(TARGET)], check=True)
+# Continue safely from the current working tree. If Phase3B V1 is already applied,
+# do NOT replay it; otherwise apply it once before the V2 additions.
+routers_path = TARGET / "server/routers.ts"
+trpc_path = TARGET / "server/_core/trpc.ts"
+if not routers_path.exists() or not trpc_path.exists():
+    raise SystemExit("Missing TCRM Phase3B baseline files")
+routers_text = routers_path.read_text()
+trpc_text = trpc_path.read_text()
+v1_already_applied = (
+    "ADVANCED_PERMISSIONS_PHASE3B_V1" in routers_text
+    and "ADVANCED_PERMISSIONS_PHASE3B_V1" in trpc_text
+    and (TARGET / "server/security/phase3bScope.ts").exists()
+    and (TARGET / "scripts/verify-advanced-permissions-phase3b.ts").exists()
+)
+if v1_already_applied:
+    print("Phase 3B V1 already present in working tree; continuing with V2 only.")
+else:
+    subprocess.run([sys.executable, str(V1), str(TARGET)], check=True)
 
 required = [
     TARGET / "server/permissionsAdminRouter.ts",
