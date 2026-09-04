@@ -1,1 +1,0 @@
-Tara V1 patch branch initialization.
