@@ -6,11 +6,20 @@ function must(file: string, needle: string) {
   return text;
 }
 
+function between(text: string, start: string, end: string, label: string) {
+  const startIndex = text.indexOf(start);
+  if (startIndex < 0) throw new Error(`${label}: missing start marker ${start}`);
+  const afterStart = startIndex + start.length;
+  const endIndex = text.indexOf(end, afterStart);
+  if (endIndex < 0) throw new Error(`${label}: missing end marker ${end}`);
+  return text.slice(afterStart, endIndex);
+}
+
 const serverRoles = must("server/roleUtils.ts", "Legacy compatibility only");
 const clientRoles = must("client/src/lib/roles.ts", "Legacy-only compatibility values");
+const serverActive = between(serverRoles, "export const APP_USER_ROLES", "] as const", "server APP_USER_ROLES");
+const clientActive = between(clientRoles, "export const APP_USER_ROLES", "] as const", "client APP_USER_ROLES");
 for (const role of ["ServiceAdvisor", "PartsAgent", "CrmFollowUp"]) {
-  const serverActive = serverRoles.split("export const APP_USER_ROLES", 1)[1].split("] as const", 1)[0];
-  const clientActive = clientRoles.split("export const APP_USER_ROLES", 1)[1].split("] as const", 1)[0];
   if (serverActive.includes(`\"${role}\"`) || clientActive.includes(`\"${role}\"`)) {
     throw new Error(`Automotive-only role still active/selectable: ${role}`);
   }
@@ -26,35 +35,27 @@ for (const table of ["user_permission_overrides", "permission_audit_logs"]) {
   if (!overrideService.includes(table)) throw new Error(`override service missing ${table}`);
 }
 
-const phase3b = must("server/security/phase3bScope.ts", "assertTaskPermissionScope");
+must("server/security/phase3bScope.ts", "assertTaskPermissionScope");
 must("server/_core/trpc.ts", "activitiesViewScope");
 must("server/_core/trpc.ts", "tasksViewScope");
 must("server/_core/trpc.ts", "contractsViewScope");
 must("server/db.ts", "getActivitiesByUserScoped");
 
 const ui = fs.readFileSync("client/src/pages/RolesPermissions.tsx", "utf8");
-const uiSignals = [
-  "User Overrides",
-  "استثناءات المستخدمين",
-  "listUsersForPermissions",
-  "replaceUserOverrides",
-];
-if (!uiSignals.some((needle) => ui.includes(needle))) {
-  throw new Error("RolesPermissions UI has not been adapted with User Overrides yet");
-}
-if (!ui.includes("listUsersForPermissions") || !ui.includes("replaceUserOverrides")) {
-  throw new Error("RolesPermissions UI is not wired to per-user override APIs");
+for (const needle of ["User Overrides", "listUsersForPermissions", "replaceUserOverrides"]) {
+  if (!ui.includes(needle)) throw new Error(`RolesPermissions UI missing ${needle}`);
 }
 
 console.log(JSON.stringify({
   ok: true,
-  phase: "3B-v2-tas-style-user-overrides",
+  phase: "3B-v2-tas-style-user-overrides-package-fix1",
   verified: [
     "activities-tasks-contracts-enforcement",
     "tas-style-simple-role-ux-marker",
     "per-user-overrides-api-and-ui",
     "automotive-roles-not-selectable",
     "legacy-automotive-compatibility-retained",
+    "verifier-role-section-parser-fixed",
   ],
   untouchedByDesign: ["meetings", "felfel", "tam-meeting-flows"],
   scopePolicy: "advanced-engine/simple-ui/user-overrides-win",
