@@ -1,0 +1,35 @@
+diff --git a/server/security/phase3ScopeFilters.ts b/server/security/phase3ScopeFilters.ts
+--- a/server/security/phase3ScopeFilters.ts
++++ b/server/security/phase3ScopeFilters.ts
+@@
+ export async function assertRowScope(kind: ScopeEntityKind, decision: PermissionDecision, user: PermissionUser, row: any, entityLabel: string) {
+   const ok = await isRowInScope(kind, decision, user, row);
+   if (!ok) {
++    const rawUserId = (user as any)?.id;
++    const rawOwnerId = row?.ownerId;
++    const rowId = Number(row?.id ?? 0);
++    if (kind === "lead" && Number(rawUserId) === 130 && [2139, 2147].includes(rowId)) {
++      console.error("[RBAC_SCOPE_DENY_DIAG]", JSON.stringify({
++        pid: process.pid,
++        kind,
++        entityLabel,
++        decisionAllowed: decision.allowed,
++        decisionScope: decision.scope,
++        decisionSource: (decision as any)?.source ?? null,
++        rawUserId,
++        userIdType: typeof rawUserId,
++        normalizedUserId: userIdOf(user),
++        role: String((user as any)?.role ?? ""),
++        teamId: (user as any)?.teamId ?? null,
++        rowId,
++        rawOwnerId,
++        ownerIdType: typeof rawOwnerId,
++        normalizedOwnerId: Number(rawOwnerId),
++        timestamp: new Date().toISOString(),
++      }));
++    }
+     const { TRPCError } = await import("@trpc/server");
+     throw new TRPCError({ code: "FORBIDDEN", message: `Access denied: ${entityLabel} is outside your permission scope` });
+   }
+   return true;
+ }
