@@ -1,0 +1,343 @@
+diff --git a/client/src/pages/AgentDashboard.tsx b/client/src/pages/AgentDashboard.tsx
+--- a/client/src/pages/AgentDashboard.tsx
++++ b/client/src/pages/AgentDashboard.tsx
+@@ -1,4 +1,5 @@
+ // TCRM_CURRENT_MONTH_DEFAULT_DATE_RANGE_FINAL
+ import ReminderCalendar from "@/components/ReminderCalendar";
++import "../dashboard-premium-luminous.css";
+ import CRMLayout from "@/components/CRMLayout";
+ import { PageBanner } from "@/components/PageBanner";
+@@ -184,6 +185,6 @@
+   };
+ 
+   return (
+     <CRMLayout>
+-      <div className="p-6 space-y-6 fade-in" dir={isRTL ? "rtl" : "ltr"}>
++      <div className="tcrm-premium-dashboard p-6 lg:p-7 space-y-6 fade-in" dir={isRTL ? "rtl" : "ltr"}>
+         {/* Page Banner */}
+diff --git a/client/src/dashboard-premium-luminous.css b/client/src/dashboard-premium-luminous.css
+new file mode 100644
+--- /dev/null
++++ b/client/src/dashboard-premium-luminous.css
+@@ -0,0 +1,321 @@
++/* TCRM Dashboard Premium Luminous V1
++   Visual-only enhancement. Scoped to AgentDashboard via .tcrm-premium-dashboard.
++   No business logic, data flow, permissions, or API behavior is changed.
++*/
++
++.tcrm-premium-dashboard {
++  --premium-violet: 124, 58, 237;
++  --premium-indigo: 79, 70, 229;
++  --premium-blue: 59, 130, 246;
++  position: relative;
++  isolation: isolate;
++  background:
++    radial-gradient(circle at 92% 2%, rgba(var(--premium-violet), 0.10), transparent 31rem),
++    radial-gradient(circle at 4% 96%, rgba(var(--premium-blue), 0.07), transparent 28rem),
++    linear-gradient(180deg, rgba(248, 250, 255, 0.76), rgba(255, 255, 255, 0));
++}
++
++.tcrm-premium-dashboard::before {
++  content: "";
++  position: absolute;
++  inset: 0;
++  pointer-events: none;
++  z-index: -1;
++  opacity: 0.42;
++  background-image:
++    linear-gradient(rgba(99, 102, 241, 0.025) 1px, transparent 1px),
++    linear-gradient(90deg, rgba(99, 102, 241, 0.025) 1px, transparent 1px);
++  background-size: 42px 42px;
++  mask-image: linear-gradient(to bottom, black, transparent 78%);
++}
++
++/* Hero / page banner */
++.tcrm-premium-dashboard > div:first-child {
++  isolation: isolate;
++  border: 1px solid rgba(255, 255, 255, 0.24) !important;
++  background:
++    radial-gradient(circle at 86% 16%, rgba(196, 181, 253, 0.42), transparent 24rem),
++    radial-gradient(circle at 14% 110%, rgba(96, 165, 250, 0.24), transparent 21rem),
++    linear-gradient(118deg, #4c1d95 0%, #6d28d9 36%, #6366f1 70%, #818cf8 100%) !important;
++  box-shadow:
++    0 24px 60px -30px rgba(76, 29, 149, 0.88),
++    0 12px 28px -22px rgba(99, 102, 241, 0.86),
++    inset 0 1px 0 rgba(255, 255, 255, 0.26),
++    inset 0 -1px 0 rgba(30, 27, 75, 0.24);
++}
++
++.tcrm-premium-dashboard > div:first-child::after {
++  content: "";
++  position: absolute;
++  inset: 0;
++  z-index: 0;
++  pointer-events: none;
++  background:
++    linear-gradient(105deg, transparent 0 42%, rgba(255,255,255,.10) 49%, transparent 57%),
++    radial-gradient(circle at 72% 0%, rgba(255,255,255,.18), transparent 20rem);
++  mix-blend-mode: screen;
++}
++
++.tcrm-premium-dashboard > div:first-child > .relative {
++  z-index: 2;
++}
++
++.tcrm-premium-dashboard > div:first-child h1 {
++  letter-spacing: -0.025em;
++  text-shadow: 0 4px 18px rgba(30, 27, 75, 0.34);
++}
++
++.tcrm-premium-dashboard > div:first-child p {
++  color: rgba(255, 255, 255, 0.92) !important;
++}
++
++.tcrm-premium-dashboard > div:first-child .banner-btn {
++  border-color: rgba(255, 255, 255, 0.38) !important;
++  background: rgba(255, 255, 255, 0.15) !important;
++  color: #fff !important;
++  backdrop-filter: blur(14px) saturate(140%);
++  box-shadow:
++    inset 0 1px 0 rgba(255,255,255,.24),
++    0 8px 24px -14px rgba(15,23,42,.65);
++  transition: transform .24s ease, background-color .24s ease, box-shadow .24s ease;
++}
++
++.tcrm-premium-dashboard > div:first-child .banner-btn:hover {
++  transform: translateY(-1px);
++  background: rgba(255, 255, 255, 0.23) !important;
++  box-shadow: 0 12px 26px -14px rgba(15,23,42,.72), inset 0 1px 0 rgba(255,255,255,.32);
++}
++
++/* KPI strip */
++.tcrm-premium-dashboard > .stagger-children [data-slot="card"] {
++  position: relative;
++  overflow: hidden;
++  border: 1px solid rgba(255, 255, 255, 0.92);
++  border-radius: 18px;
++  background:
++    linear-gradient(145deg, rgba(255,255,255,.98), rgba(248,250,255,.92)) !important;
++  box-shadow:
++    0 14px 34px -24px rgba(79, 70, 229, 0.54),
++    0 4px 14px -10px rgba(15, 23, 42, 0.22),
++    inset 0 1px 0 rgba(255,255,255,.96);
++  transition:
++    transform .26s cubic-bezier(.2,.8,.2,1),
++    box-shadow .26s ease,
++    border-color .26s ease;
++}
++
++.tcrm-premium-dashboard > .stagger-children [data-slot="card"]::before {
++  content: "";
++  position: absolute;
++  inset: 0 0 auto;
++  height: 3px;
++  background: linear-gradient(90deg, #60a5fa, #818cf8);
++  opacity: .9;
++}
++
++.tcrm-premium-dashboard > .stagger-children > a:nth-child(3n+2) [data-slot="card"]::before {
++  background: linear-gradient(90deg, #818cf8, #a78bfa);
++}
++
++.tcrm-premium-dashboard > .stagger-children > a:nth-child(3n) [data-slot="card"]::before {
++  background: linear-gradient(90deg, #34d399, #60a5fa);
++}
++
++.tcrm-premium-dashboard > .stagger-children [data-slot="card"]::after {
++  content: "";
++  position: absolute;
++  width: 84px;
++  height: 84px;
++  top: -48px;
++  right: -42px;
++  border-radius: 999px;
++  background: rgba(129, 140, 248, 0.10);
++  filter: blur(2px);
++}
++
++.tcrm-premium-dashboard > .stagger-children [data-slot="card"]:hover {
++  transform: translateY(-4px);
++  border-color: rgba(167, 139, 250, 0.56);
++  box-shadow:
++    0 20px 42px -22px rgba(79, 70, 229, 0.46),
++    0 8px 20px -14px rgba(15, 23, 42, 0.22),
++    inset 0 1px 0 rgba(255,255,255,1);
++}
++
++.tcrm-premium-dashboard .kpi-icon {
++  position: relative;
++  box-shadow:
++    0 10px 22px -10px rgba(79, 70, 229, 0.68),
++    0 0 0 4px rgba(255,255,255,.92),
++    0 0 0 5px rgba(129,140,248,.10) !important;
++  transition: transform .25s ease, filter .25s ease;
++}
++
++.tcrm-premium-dashboard [data-slot="card"]:hover .kpi-icon {
++  transform: translateY(-1px) scale(1.06);
++  filter: saturate(1.1) brightness(1.04);
++}
++
++.tcrm-premium-dashboard > .stagger-children [data-slot="card-content"] > .text-2xl {
++  letter-spacing: -0.035em;
++  font-weight: 800;
++}
++
++/* Main dashboard surfaces */
++.tcrm-premium-dashboard > div:nth-of-type(3) [data-slot="card"] {
++  border-radius: 20px;
++  border-color: rgba(226, 232, 240, 0.82);
++  background:
++    linear-gradient(155deg, rgba(255,255,255,.97), rgba(250,250,255,.91));
++  box-shadow:
++    0 18px 45px -32px rgba(30, 41, 59, 0.48),
++    0 8px 24px -20px rgba(79, 70, 229, 0.34),
++    inset 0 1px 0 rgba(255,255,255,.92);
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) [role="tablist"] {
++  padding: 4px;
++  border-radius: 13px;
++  border: 1px solid rgba(224, 231, 255, 0.88);
++  background: linear-gradient(180deg, rgba(238,242,255,.92), rgba(245,243,255,.68));
++  box-shadow: inset 0 1px 2px rgba(79,70,229,.06);
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) [role="tab"][data-state="active"] {
++  border-radius: 10px;
++  background: rgba(255,255,255,.98);
++  color: rgb(79,70,229);
++  box-shadow:
++    0 7px 18px -12px rgba(79,70,229,.55),
++    inset 0 1px 0 rgba(255,255,255,1);
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) [class*="divide-y"][class*="rounded-lg"][class*="border"] {
++  overflow: hidden;
++  border-radius: 15px;
++  border-color: rgba(226,232,240,.82);
++  background: rgba(255,255,255,.72);
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.86);
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) [class*="divide-y"] > a > div {
++  transition: background .2s ease, transform .2s ease, box-shadow .2s ease;
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) [class*="divide-y"] > a > div:hover {
++  background:
++    linear-gradient(90deg, rgba(238,242,255,.78), rgba(250,245,255,.72)) !important;
++  box-shadow: inset 3px 0 0 rgba(124,58,237,.34);
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) [class*="rounded-full"][class*="text-white"] {
++  box-shadow:
++    0 8px 18px -10px rgba(79,70,229,.70),
++    0 0 0 3px rgba(255,255,255,.95),
++    0 0 0 4px rgba(129,140,248,.12) !important;
++}
++
++/* Right rail: tasks, calendar, SLA, activity */
++.tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"] {
++  overflow: hidden;
++  backdrop-filter: blur(12px);
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child {
++  border-color: rgba(199, 210, 254, 0.84) !important;
++  background:
++    radial-gradient(circle at 100% 0%, rgba(196,181,253,.24), transparent 13rem),
++    linear-gradient(145deg, rgba(255,255,255,.98), rgba(238,242,255,.76)) !important;
++}
++
++.tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card-header"] {
++  border-bottom: 1px solid rgba(226,232,240,.52);
++}
++
++.tcrm-premium-dashboard button.bg-indigo-600 {
++  background: linear-gradient(145deg, #6d28d9, #6366f1 58%, #818cf8) !important;
++  box-shadow:
++    0 7px 18px -7px rgba(99,102,241,.72),
++    0 0 0 3px rgba(199,210,254,.34);
++  transform: scale(1.04);
++}
++
++.tcrm-premium-dashboard button.bg-indigo-50 {
++  background: rgba(238,242,255,.95) !important;
++  color: #4f46e5 !important;
++  box-shadow: inset 0 0 0 1px rgba(165,180,252,.48);
++}
++
++.tcrm-premium-dashboard [data-slot="card"].border-destructive\/30 {
++  border-color: rgba(248,113,113,.30) !important;
++  background:
++    radial-gradient(circle at 100% 0%, rgba(254,202,202,.30), transparent 13rem),
++    linear-gradient(145deg, rgba(255,255,255,.98), rgba(255,247,247,.88));
++}
++
++.tcrm-premium-dashboard [data-slot="card-title"] {
++  letter-spacing: -0.012em;
++}
++
++.tcrm-premium-dashboard [data-slot="card-header"] svg {
++  filter: drop-shadow(0 4px 8px rgba(79,70,229,.16));
++}
++
++/* Dark mode */
++.dark .tcrm-premium-dashboard {
++  background:
++    radial-gradient(circle at 92% 2%, rgba(124,58,237,.15), transparent 31rem),
++    radial-gradient(circle at 4% 96%, rgba(59,130,246,.09), transparent 28rem),
++    linear-gradient(180deg, rgba(15,23,42,.30), rgba(2,6,23,0));
++}
++
++.dark .tcrm-premium-dashboard > .stagger-children [data-slot="card"],
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) [data-slot="card"] {
++  border-color: rgba(148,163,184,.14);
++  background:
++    linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.90)) !important;
++  box-shadow:
++    0 18px 42px -28px rgba(0,0,0,.78),
++    0 8px 24px -20px rgba(99,102,241,.40),
++    inset 0 1px 0 rgba(255,255,255,.05);
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) [role="tablist"] {
++  border-color: rgba(129,140,248,.16);
++  background: rgba(30,41,59,.72);
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) [role="tab"][data-state="active"] {
++  background: rgba(51,65,85,.94);
++  color: rgb(196,181,253);
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) [class*="divide-y"][class*="rounded-lg"][class*="border"] {
++  border-color: rgba(148,163,184,.12);
++  background: rgba(15,23,42,.42);
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) [class*="divide-y"] > a > div:hover {
++  background: linear-gradient(90deg, rgba(79,70,229,.15), rgba(124,58,237,.10)) !important;
++}
++
++@media (max-width: 1023px) {
++  .tcrm-premium-dashboard {
++    padding-inline: 1rem;
++  }
++
++  .tcrm-premium-dashboard > .stagger-children [data-slot="card"]:hover {
++    transform: none;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .tcrm-premium-dashboard *,
++  .tcrm-premium-dashboard *::before,
++  .tcrm-premium-dashboard *::after {
++    scroll-behavior: auto !important;
++    transition-duration: 0.01ms !important;
++    animation-duration: 0.01ms !important;
++    animation-iteration-count: 1 !important;
++  }
++}
