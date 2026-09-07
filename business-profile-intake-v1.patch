@@ -1,7 +1,7 @@
 diff --git a/shared/landingPageIntegration.types.ts b/shared/landingPageIntegration.types.ts
 --- a/shared/landingPageIntegration.types.ts
 +++ b/shared/landingPageIntegration.types.ts
-@@
+@@ -96,8 +96,9 @@
  export const publicLeadPayloadSchema = z.object({
    name: z.string().optional(),
    phone: z.string().min(5),
@@ -14,7 +14,7 @@ diff --git a/shared/landingPageIntegration.types.ts b/shared/landingPageIntegrat
 diff --git a/server/services/landingPageLeadIntakeService.ts b/server/services/landingPageLeadIntakeService.ts
 --- a/server/services/landingPageLeadIntakeService.ts
 +++ b/server/services/landingPageLeadIntakeService.ts
-@@
+@@ -203,8 +203,12 @@
    const leadId = await createLead({
      name: payload.name || null,
      phone,
@@ -27,3 +27,4 @@ diff --git a/server/services/landingPageLeadIntakeService.ts b/server/services/l
      campaignName: payload.utm_campaign || payload.pageTitle || integration.name,
      ownerId: ownerId ?? null,
      stage: integration.defaultStage || "New",
+     sourceId: null,
