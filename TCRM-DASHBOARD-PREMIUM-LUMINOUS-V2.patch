@@ -1,0 +1,81 @@
+diff --git a/client/src/dashboard-premium-luminous.css b/client/src/dashboard-premium-luminous.css
+--- a/client/src/dashboard-premium-luminous.css
++++ b/client/src/dashboard-premium-luminous.css
+@@ -299,5 +299,77 @@
+ .dark .tcrm-premium-dashboard > div:nth-of-type(3) [class*="divide-y"] > a > div:hover {
+   background: linear-gradient(90deg, rgba(79,70,229,.15), rgba(124,58,237,.10)) !important;
+ }
+ 
++/* TCRM Dashboard Premium Luminous V2
++   Incremental visual polish after V1: dark task surface, ambient depth, stronger dark separation.
++*/
++
++.tcrm-premium-dashboard::after {
++  content: "";
++  position: absolute;
++  inset: 16rem 38% 0 -5rem;
++  pointer-events: none;
++  z-index: -1;
++  background:
++    radial-gradient(circle at 26% 20%, rgba(124,58,237,.075), transparent 24rem),
++    radial-gradient(circle at 52% 54%, rgba(59,130,246,.055), transparent 30rem);
++  filter: blur(12px);
++}
++
++.dark .tcrm-premium-dashboard::after {
++  background:
++    radial-gradient(circle at 24% 18%, rgba(124,58,237,.14), transparent 25rem),
++    radial-gradient(circle at 48% 54%, rgba(59,130,246,.085), transparent 31rem),
++    radial-gradient(circle at 12% 82%, rgba(99,102,241,.06), transparent 26rem);
++  opacity: .9;
++}
++
++.dark .tcrm-premium-dashboard > .stagger-children [data-slot="card"] {
++  border-color: rgba(129,140,248,.20);
++  box-shadow:
++    0 18px 42px -28px rgba(0,0,0,.82),
++    0 10px 26px -20px rgba(99,102,241,.52),
++    inset 0 1px 0 rgba(255,255,255,.065);
++}
++
++.dark .tcrm-premium-dashboard > .stagger-children [data-slot="card"]::before {
++  opacity: 1;
++  filter: drop-shadow(0 0 7px rgba(129,140,248,.26));
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) [data-slot="card"] {
++  border-color: rgba(129,140,248,.17);
++  box-shadow:
++    0 20px 48px -32px rgba(0,0,0,.88),
++    0 9px 25px -20px rgba(99,102,241,.42),
++    inset 0 1px 0 rgba(255,255,255,.055);
++}
++
++/* V1 light-mode :first-child rule was more specific than the generic dark rule.
++   Match that selector in dark mode so Today Tasks is a true dark surface. */
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child {
++  border-color: rgba(129,140,248,.24) !important;
++  background:
++    radial-gradient(circle at 100% 0%, rgba(124,58,237,.16), transparent 14rem),
++    linear-gradient(145deg, rgba(30,41,59,.98), rgba(15,23,42,.96)) !important;
++  box-shadow:
++    0 22px 48px -31px rgba(0,0,0,.88),
++    0 10px 28px -20px rgba(99,102,241,.50),
++    inset 0 1px 0 rgba(255,255,255,.06) !important;
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child [data-slot="card-header"] {
++  border-bottom-color: rgba(129,140,248,.14) !important;
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child [data-slot="card-title"] {
++  color: rgb(248,250,252) !important;
++}
++
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child [data-slot="card-content"],
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child [data-slot="card-content"] p,
++.dark .tcrm-premium-dashboard > div:nth-of-type(3) > .space-y-4 [data-slot="card"]:first-child [data-slot="card-content"] span {
++  color: rgba(226,232,240,.72) !important;
++}
++
+ @media (max-width: 1023px) {
