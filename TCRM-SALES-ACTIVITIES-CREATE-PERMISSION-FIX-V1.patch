@@ -1,0 +1,139 @@
+diff --git a/scripts/fix-sales-activities-create-permission.ts b/scripts/fix-sales-activities-create-permission.ts
+new file mode 100644
+index 0000000..e9a818b
+--- /dev/null
++++ b/scripts/fix-sales-activities-create-permission.ts
+@@ -0,0 +1,133 @@
++import { sql } from "drizzle-orm";
++import { getDb } from "../server/db";
++
++type SalesRoleKey = "SalesManager" | "SalesAgent" | "ColdSalesAgent";
++type PermissionScope = "all" | "team" | "department" | "own" | "assigned" | "created_by" | "custom" | "none";
++
++const TARGET_ROLES: Array<{ role: SalesRoleKey; fallbackScope: PermissionScope }> = [
++  { role: "SalesManager", fallbackScope: "team" },
++  { role: "SalesAgent", fallbackScope: "assigned" },
++  { role: "ColdSalesAgent", fallbackScope: "own" },
++];
++
++const VALID_SCOPES = new Set<PermissionScope>([
++  "all",
++  "team",
++  "department",
++  "own",
++  "assigned",
++  "created_by",
++  "custom",
++  "none",
++]);
++
++function rows(result: any): any[] {
++  if (Array.isArray(result) && Array.isArray(result[0])) return result[0];
++  if (Array.isArray(result)) return result;
++  return [];
++}
++
++function resolveCreateScope(role: SalesRoleKey, leadsViewEffect: unknown, leadsViewScope: unknown): PermissionScope {
++  // Cold Sales was explicitly designed to create activities only on owned leads.
++  if (role === "ColdSalesAgent") return "own";
++
++  const candidate = String(leadsViewScope ?? "") as PermissionScope;
++  if (String(leadsViewEffect ?? "") === "allow" && VALID_SCOPES.has(candidate) && candidate !== "none") {
++    return candidate;
++  }
++
++  return TARGET_ROLES.find(item => item.role === role)?.fallbackScope ?? "own";
++}
++
++async function main() {
++  const db: any = await getDb();
++  if (!db) throw new Error("DATABASE_URL is required");
++
++  const permissionRows = rows(await db.execute(sql`
++    SELECT id
++    FROM permissions
++    WHERE permission_key = 'activities.create'
++      AND is_active = 1
++    LIMIT 1
++  `));
++  const permissionId = Number(permissionRows[0]?.id ?? 0);
++  if (!permissionId) throw new Error("Missing active permission: activities.create");
++
++  const roleRows = rows(await db.execute(sql`
++    SELECT
++      r.id,
++      r.legacy_role_key AS legacyRoleKey,
++      view_rp.effect AS leadsViewEffect,
++      view_rp.data_scope AS leadsViewScope
++    FROM roles r
++    LEFT JOIN permissions view_p
++      ON view_p.permission_key = 'leads.view'
++     AND view_p.is_active = 1
++    LEFT JOIN role_permissions view_rp
++      ON view_rp.role_id = r.id
++     AND view_rp.permission_id = view_p.id
++    WHERE r.is_active = 1
++      AND r.legacy_role_key IN ('SalesManager', 'SalesAgent', 'ColdSalesAgent')
++  `));
++
++  const byRole = new Map(roleRows.map((row: any) => [String(row.legacyRoleKey), row]));
++  const missingRoles = TARGET_ROLES.filter(item => !byRole.has(item.role)).map(item => item.role);
++  if (missingRoles.length) {
++    throw new Error(`Missing active sales permission roles: ${missingRoles.join(", ")}`);
++  }
++
++  const applied: Array<{ role: SalesRoleKey; scope: PermissionScope }> = [];
++
++  await db.transaction(async (tx: any) => {
++    for (const target of TARGET_ROLES) {
++      const roleRow = byRole.get(target.role) as any;
++      const roleId = Number(roleRow.id);
++      const scope = resolveCreateScope(target.role, roleRow.leadsViewEffect, roleRow.leadsViewScope);
++
++      await tx.execute(sql`
++        INSERT INTO role_permissions
++          (role_id, permission_id, effect, data_scope, scope_config, created_by)
++        VALUES
++          (${roleId}, ${permissionId}, 'allow', ${scope}, NULL, NULL)
++        ON DUPLICATE KEY UPDATE
++          effect = 'allow',
++          data_scope = ${scope},
++          scope_config = NULL,
++          updated_at = CURRENT_TIMESTAMP
++      `);
++
++      applied.push({ role: target.role, scope });
++    }
++  });
++
++  const verifyRows = rows(await db.execute(sql`
++    SELECT r.legacy_role_key AS role, rp.effect, rp.data_scope AS dataScope
++    FROM roles r
++    JOIN role_permissions rp ON rp.role_id = r.id
++    JOIN permissions p ON p.id = rp.permission_id
++    WHERE r.legacy_role_key IN ('SalesManager', 'SalesAgent', 'ColdSalesAgent')
++      AND p.permission_key = 'activities.create'
++      AND p.is_active = 1
++    ORDER BY r.legacy_role_key
++  `));
++
++  const verified = new Map(verifyRows.map((row: any) => [String(row.role), row]));
++  for (const target of TARGET_ROLES) {
++    const row = verified.get(target.role) as any;
++    if (!row || String(row.effect) !== "allow") {
++      throw new Error(`activities.create grant verification failed for ${target.role}`);
++    }
++  }
++
++  console.log(JSON.stringify({
++    ok: true,
++    permission: "activities.create",
++    roles: applied,
++    note: "Role-level grants updated. Explicit per-user deny overrides remain authoritative.",
++  }));
++}
++
++main().catch((error) => {
++  console.error(error);
++  process.exit(1);
++});
