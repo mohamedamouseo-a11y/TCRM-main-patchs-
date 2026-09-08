@@ -1,0 +1,373 @@
+diff --git a/client/src/components/DateRangePicker.tsx b/client/src/components/DateRangePicker.tsx
+index 576c3e6..e920a19 100644
+--- a/client/src/components/DateRangePicker.tsx
++++ b/client/src/components/DateRangePicker.tsx
+@@ -11,7 +11,7 @@
+   );
+ 
+   return (
+-    <div className={cn("grid gap-2", className)} dir={isRTL ? "rtl" : "ltr"}>
++    <div className={cn("tcrm-date-range-picker grid gap-2", className)} dir={isRTL ? "rtl" : "ltr"}>
+       <Popover open={open} onOpenChange={setOpen}>
+         <PopoverTrigger asChild>
+           <Button
+@@ -19,6 +19,7 @@
+             variant="outline"
+             disabled={disabled}
+             className={cn(
++              "tcrm-date-range-trigger",
+               "min-w-[260px] justify-start text-left font-medium h-10 px-3.5 gap-2",
+               "bg-white/15 hover:bg-white/25 border-white/40 text-white hover:text-white backdrop-blur-sm shadow-sm rounded-xl",
+               "[&_svg]:text-white [&_svg]:opacity-95 transition disabled:cursor-not-allowed disabled:opacity-60",
+@@ -31,13 +32,13 @@
+           </Button>
+         </PopoverTrigger>
+         <PopoverContent
+-          className="w-auto p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl"
++          className="tcrm-date-range-popover w-auto p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl"
+           align="start"
+           sideOffset={8}
+         >
+-          <div className="flex flex-col sm:flex-row bg-white dark:bg-slate-900">
++          <div className="tcrm-date-range-shell flex flex-col sm:flex-row bg-white dark:bg-slate-900">
+             {/* Presets sidebar */}
+-            <div className="flex flex-col gap-0.5 p-3 border-b sm:border-b-0 sm:border-r border-slate-100 dark:border-slate-800 min-w-[150px] bg-slate-50/60 dark:bg-slate-900/40">
++            <div className="tcrm-date-range-presets flex flex-col gap-0.5 p-3 border-b sm:border-b-0 sm:border-r border-slate-100 dark:border-slate-800 min-w-[150px] bg-slate-50/60 dark:bg-slate-900/40">
+               <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold px-2.5 py-1.5">
+                 {isRTL ? "اختصارات" : "Presets"}
+               </div>
+@@ -50,6 +51,7 @@
+                     onClick={() => setDraft(preset.getValue())}
+                     disabled={disabled}
+                     className={cn(
++                      "tcrm-date-range-preset",
+                       "px-2.5 py-1.5 rounded-lg text-sm transition flex items-center gap-2",
+                       isRTL ? "text-right justify-end" : "text-left justify-start",
+                       isActive
+@@ -67,7 +69,7 @@
+ 
+             {/* Calendar */}
+             <div className="flex flex-col">
+-              <div className="p-2">
++              <div className="tcrm-date-range-calendar p-2">
+                 <Calendar
+                   initialFocus
+                   mode="range"
+@@ -78,21 +80,21 @@
+                   classNames={{
+                     months: "flex gap-3 flex-col md:flex-row relative",
+                     day: "relative w-full h-full p-0 text-center group/day aspect-square select-none [&:first-child[data-selected=true]_button]:rounded-l-md [&:last-child[data-selected=true]_button]:rounded-r-md",
+-                    range_start: "rounded-l-lg",
+-                    range_middle: "rounded-none bg-blue-50 dark:bg-blue-950/40",
+-                    range_end: "rounded-r-lg",
+-                    today: "font-bold ring-1 ring-blue-400 ring-inset rounded-md",
++                    range_start: "tcrm-date-range-start rounded-l-lg",
++                    range_middle: "tcrm-date-range-middle rounded-none bg-blue-50 dark:bg-blue-950/40",
++                    range_end: "tcrm-date-range-end rounded-r-lg",
++                    today: "tcrm-date-range-today font-bold ring-1 ring-blue-400 ring-inset rounded-md",
+                   }}
+                   modifiersClassNames={{
+-                    range_middle: "!bg-blue-50 dark:!bg-blue-950/40 !text-blue-900 dark:!text-blue-200 hover:!bg-blue-100 rounded-none",
+-                    range_start: "!bg-blue-600 !text-white hover:!bg-blue-700 rounded-l-lg shadow",
+-                    range_end: "!bg-blue-600 !text-white hover:!bg-blue-700 rounded-r-lg shadow",
++                    range_middle: "tcrm-date-range-middle !bg-blue-50 dark:!bg-blue-950/40 !text-blue-900 dark:!text-blue-200 hover:!bg-blue-100 rounded-none",
++                    range_start: "tcrm-date-range-start !bg-blue-600 !text-white hover:!bg-blue-700 rounded-l-lg shadow",
++                    range_end: "tcrm-date-range-end !bg-blue-600 !text-white hover:!bg-blue-700 rounded-r-lg shadow",
+                   }}
+                 />
+               </div>
+ 
+               {/* Footer with summary + actions */}
+-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
++              <div className="tcrm-date-range-footer flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
+                 <div className="text-xs text-slate-600 dark:text-slate-400">
+                   {draft?.from && draft?.to ? (
+                     <>
+@@ -114,7 +116,7 @@
+                     type="button"
+                     onClick={clear}
+                     disabled={disabled}
+-                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-60"
++                    className="tcrm-date-range-clear px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition flex items-center gap-1 disabled:cursor-not-allowed disabled:opacity-60"
+                   >
+                     <X className="h-3.5 w-3.5" />
+                     {isRTL ? "مسح" : "Clear"}
+@@ -123,7 +125,7 @@
+                     type="button"
+                     onClick={apply}
+                     disabled={disabled || !draft?.from || !draft?.to}
+-                    className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition shadow-sm"
++                    className="tcrm-date-range-apply px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed transition shadow-sm"
+                   >
+                     {isRTL ? "تطبيق" : "Apply"}
+                   </button>
+diff --git a/client/src/dashboard-premium-luminous-v14.css b/client/src/dashboard-premium-luminous-v14.css
+new file mode 100644
+index 0000000..b8045a0
+--- /dev/null
++++ b/client/src/dashboard-premium-luminous-v14.css
+@@ -0,0 +1,252 @@
++/* TCRM Dashboard Premium Luminous V14
++   Targeted luxury correction layer loaded AFTER the existing V1-V13 stylesheet.
++   Scope: date control + popup, light-mode clarity, Today Tasks, SLA treatment.
++*/
++
++.tcrm-premium-dashboard .tcrm-date-range-picker,
++.tcrm-premium-dashboard .tcrm-luxury-date-control {
++  position: relative;
++}
++
++.tcrm-premium-dashboard .tcrm-date-range-trigger,
++.tcrm-premium-dashboard .tcrm-luxury-header-action {
++  border: 1px solid rgba(255, 255, 255, 0.46) !important;
++  background: linear-gradient(145deg, rgba(255,255,255,.34), rgba(255,255,255,.16)) !important;
++  color: rgba(255,255,255,.98) !important;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.48), inset 0 -1px 0 rgba(79,70,229,.10), 0 10px 24px -16px rgba(30,27,75,.52) !important;
++  backdrop-filter: blur(18px) saturate(150%);
++  -webkit-backdrop-filter: blur(18px) saturate(150%);
++  transition: border-color .24s ease, background .24s ease, box-shadow .24s ease, transform .24s ease;
++}
++
++.tcrm-premium-dashboard .tcrm-date-range-trigger svg,
++.tcrm-premium-dashboard .tcrm-luxury-header-action svg {
++  color: currentColor !important;
++  opacity: .96 !important;
++}
++
++.tcrm-premium-dashboard .tcrm-date-range-trigger:hover,
++.tcrm-premium-dashboard .tcrm-luxury-header-action:hover {
++  transform: translateY(-1px);
++  border-color: rgba(255,255,255,.68) !important;
++  background: linear-gradient(145deg, rgba(255,255,255,.42), rgba(255,255,255,.22)) !important;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.58), 0 14px 30px -18px rgba(49,46,129,.52) !important;
++}
++
++:root:not(.dark) .tcrm-premium-dashboard .tcrm-luxury-date-control .tcrm-date-range-trigger,
++:root:not(.dark) .tcrm-premium-dashboard .tcrm-luxury-date-control .tcrm-date-range-trigger span,
++:root:not(.dark) .tcrm-premium-dashboard .tcrm-luxury-date-control .tcrm-date-range-trigger svg {
++  color: #312e81 !important;
++}
++
++:root:not(.dark) .tcrm-premium-dashboard .tcrm-luxury-date-control .tcrm-date-range-trigger {
++  border-color: rgba(255,255,255,.66) !important;
++  background: linear-gradient(145deg, rgba(255,255,255,.88), rgba(238,242,255,.62)) !important;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.98), 0 9px 24px -16px rgba(79,70,229,.34) !important;
++}
++
++.dark .tcrm-premium-dashboard .tcrm-date-range-trigger,
++.dark .tcrm-premium-dashboard .tcrm-luxury-header-action {
++  color: rgba(255,255,255,.98) !important;
++  border-color: rgba(196,181,253,.28) !important;
++  background: linear-gradient(145deg, rgba(49,46,129,.34), rgba(15,23,42,.36)) !important;
++}
++
++.tcrm-date-range-popover {
++  border: 1px solid rgba(129,140,248,.20) !important;
++  background: transparent !important;
++  box-shadow: 0 34px 80px -34px rgba(30,41,59,.44), 0 18px 42px -28px rgba(79,70,229,.34), inset 0 1px 0 rgba(255,255,255,.94) !important;
++  backdrop-filter: blur(24px) saturate(145%);
++  -webkit-backdrop-filter: blur(24px) saturate(145%);
++}
++
++.tcrm-date-range-shell {
++  background: radial-gradient(circle at 88% 4%, rgba(196,181,253,.18), transparent 18rem), linear-gradient(155deg, rgba(255,255,255,.98), rgba(247,248,255,.96)) !important;
++}
++
++.tcrm-date-range-presets {
++  border-color: rgba(129,140,248,.12) !important;
++  background: linear-gradient(180deg, rgba(248,250,255,.94), rgba(238,242,255,.72)) !important;
++}
++
++.tcrm-date-range-preset {
++  border: 1px solid transparent;
++  color: #475569 !important;
++}
++
++.tcrm-date-range-preset:hover {
++  border-color: rgba(129,140,248,.16);
++  background: rgba(238,242,255,.94) !important;
++  color: #4338ca !important;
++}
++
++.tcrm-date-range-preset.bg-blue-600 {
++  border-color: rgba(196,181,253,.52) !important;
++  background: linear-gradient(135deg, #6d28d9, #6366f1 58%, #818cf8) !important;
++  color: #fff !important;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.26), 0 8px 20px -12px rgba(79,70,229,.56) !important;
++}
++
++.tcrm-date-range-calendar {
++  background: radial-gradient(circle at 50% 0%, rgba(224,231,255,.36), transparent 18rem), rgba(255,255,255,.78);
++}
++
++.tcrm-date-range-calendar button {
++  transition: background-color .18s ease, color .18s ease, box-shadow .18s ease, transform .18s ease;
++}
++
++.tcrm-date-range-calendar button:hover {
++  background: rgba(238,242,255,.94) !important;
++  color: #4338ca !important;
++}
++
++.tcrm-date-range-middle,
++.tcrm-date-range-middle button {
++  background: rgba(237,233,254,.88) !important;
++  color: #4c1d95 !important;
++}
++
++.tcrm-date-range-start,
++.tcrm-date-range-end,
++.tcrm-date-range-start button,
++.tcrm-date-range-end button {
++  background: linear-gradient(135deg, #6d28d9, #6366f1 62%, #818cf8) !important;
++  color: #fff !important;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 7px 18px -10px rgba(79,70,229,.62) !important;
++}
++
++.tcrm-date-range-today,
++.tcrm-date-range-today button {
++  box-shadow: inset 0 0 0 1px rgba(99,102,241,.58) !important;
++}
++
++.tcrm-date-range-footer {
++  border-color: rgba(129,140,248,.12) !important;
++  background: linear-gradient(180deg, rgba(248,250,255,.84), rgba(238,242,255,.76)) !important;
++}
++
++.tcrm-date-range-footer .text-blue-600,
++.tcrm-date-range-footer .dark\:text-blue-400 {
++  color: #6366f1 !important;
++}
++
++.tcrm-date-range-clear { border: 1px solid transparent; }
++.tcrm-date-range-clear:hover {
++  border-color: rgba(129,140,248,.15);
++  background: rgba(238,242,255,.92) !important;
++  color: #4338ca !important;
++}
++
++.tcrm-date-range-apply {
++  border: 1px solid rgba(196,181,253,.42) !important;
++  background: linear-gradient(135deg, #6d28d9, #6366f1 58%, #818cf8) !important;
++  color: #fff !important;
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 8px 20px -12px rgba(79,70,229,.62) !important;
++}
++
++.tcrm-date-range-apply:hover:not(:disabled) { filter: brightness(1.06) saturate(1.06); }
++.tcrm-date-range-apply:disabled { filter: saturate(.45); opacity: .58; }
++
++.dark .tcrm-date-range-popover {
++  border-color: rgba(129,140,248,.24) !important;
++  box-shadow: 0 34px 90px -38px rgba(0,0,0,.88), 0 18px 46px -30px rgba(99,102,241,.36) !important;
++}
++
++.dark .tcrm-date-range-shell {
++  background: radial-gradient(circle at 88% 4%, rgba(124,58,237,.18), transparent 18rem), linear-gradient(155deg, rgba(15,23,42,.98), rgba(2,6,23,.98)) !important;
++}
++
++.dark .tcrm-date-range-presets,
++.dark .tcrm-date-range-footer {
++  border-color: rgba(129,140,248,.13) !important;
++  background: rgba(15,23,42,.72) !important;
++}
++
++.dark .tcrm-date-range-calendar {
++  background: radial-gradient(circle at 50% 0%, rgba(99,102,241,.10), transparent 18rem), rgba(2,6,23,.40);
++}
++
++.dark .tcrm-date-range-preset { color: #cbd5e1 !important; }
++.dark .tcrm-date-range-preset:hover {
++  background: rgba(79,70,229,.14) !important;
++  color: #ddd6fe !important;
++}
++
++.dark .tcrm-date-range-middle,
++.dark .tcrm-date-range-middle button {
++  background: rgba(76,29,149,.36) !important;
++  color: #ddd6fe !important;
++}
++
++.dark .tcrm-date-range-calendar button:hover {
++  background: rgba(79,70,229,.16) !important;
++  color: #ede9fe !important;
++}
++
++.dark .tcrm-date-range-clear:hover {
++  background: rgba(79,70,229,.14) !important;
++  color: #ddd6fe !important;
++}
++
++.tcrm-luxury-tasks-card { position: relative; overflow: hidden; }
++.tcrm-luxury-empty-state { position: relative; isolation: isolate; }
++.tcrm-luxury-empty-state::before {
++  content: "";
++  display: block;
++  width: 42px;
++  height: 42px;
++  margin: 2px auto 10px;
++  border-radius: 15px;
++  border: 1px solid rgba(129,140,248,.22);
++  background: radial-gradient(circle at 34% 28%, rgba(255,255,255,.94) 0 8%, transparent 9%), radial-gradient(circle at 50% 50%, rgba(167,139,250,.34), rgba(224,231,255,.62) 58%, rgba(255,255,255,.68));
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.96), 0 10px 26px -16px rgba(99,102,241,.52), 0 0 24px rgba(129,140,248,.10);
++}
++
++.tcrm-luxury-empty-state::after {
++  content: "";
++  position: absolute;
++  width: 84px;
++  height: 84px;
++  left: 50%;
++  top: -18px;
++  transform: translateX(-50%);
++  border-radius: 999px;
++  z-index: -1;
++  background: radial-gradient(circle, rgba(129,140,248,.12), transparent 68%);
++  filter: blur(5px);
++}
++
++.dark .tcrm-luxury-empty-state::before {
++  border-color: rgba(129,140,248,.28);
++  background: radial-gradient(circle at 34% 28%, rgba(255,255,255,.62) 0 7%, transparent 8%), radial-gradient(circle at 50% 50%, rgba(99,102,241,.48), rgba(30,41,59,.92) 62%, rgba(15,23,42,.96));
++  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 12px 28px -16px rgba(99,102,241,.54), 0 0 28px rgba(99,102,241,.12);
++}
++
++.tcrm-luxury-sla-card {
++  border-color: rgba(226,232,240,.86) !important;
++  box-shadow: 0 18px 42px -32px rgba(30,41,59,.32), inset 3px 0 0 rgba(239,68,68,.56), inset 0 1px 0 rgba(255,255,255,.92) !important;
++}
++.tcrm-luxury-sla-card::before { opacity: .30 !important; }
++.dark .tcrm-luxury-sla-card {
++  border-color: rgba(148,163,184,.14) !important;
++  box-shadow: 0 20px 46px -34px rgba(0,0,0,.80), inset 3px 0 0 rgba(248,113,113,.50), inset 0 1px 0 rgba(255,255,255,.05) !important;
++}
++
++:root:not(.dark) .tcrm-premium-dashboard > div:nth-of-type(3) [data-slot="card"] {
++  border-color: rgba(203,213,225,.72) !important;
++  box-shadow: 0 18px 42px -34px rgba(51,65,85,.26), 0 7px 22px -20px rgba(79,70,229,.16), inset 0 1px 0 rgba(255,255,255,.96) !important;
++}
++
++:root:not(.dark) .tcrm-premium-dashboard { filter: saturate(1.015); }
++
++@media (prefers-reduced-motion: reduce) {
++  .tcrm-date-range-trigger,
++  .tcrm-date-range-preset,
++  .tcrm-date-range-calendar button,
++  .tcrm-date-range-clear,
++  .tcrm-date-range-apply,
++  .tcrm-luxury-header-action {
++    transition: none !important;
++    transform: none !important;
++  }
++}
+diff --git a/client/src/pages/AgentDashboard.tsx b/client/src/pages/AgentDashboard.tsx
+index 15a116b..0752cbe 100644
+--- a/client/src/pages/AgentDashboard.tsx
++++ b/client/src/pages/AgentDashboard.tsx
+@@ -1,6 +1,7 @@
+ // TCRM_CURRENT_MONTH_DEFAULT_DATE_RANGE_FINAL
+ import ReminderCalendar from "@/components/ReminderCalendar";
+ import "../dashboard-premium-luminous.css";
++import "../dashboard-premium-luminous-v14.css";
+ import CRMLayout from "@/components/CRMLayout";
+ import { PageBanner } from "@/components/PageBanner";
+ import LeadQualityBadge from "@/components/LeadQualityBadge";
