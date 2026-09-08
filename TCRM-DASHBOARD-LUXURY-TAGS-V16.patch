@@ -1,0 +1,247 @@
+diff --git a/client/src/pages/AgentDashboard.tsx b/client/src/pages/AgentDashboard.tsx
+--- a/client/src/pages/AgentDashboard.tsx
++++ b/client/src/pages/AgentDashboard.tsx
+@@ -1,8 +1,9 @@
+ // TCRM_CURRENT_MONTH_DEFAULT_DATE_RANGE_FINAL
+ import ReminderCalendar from "@/components/ReminderCalendar";
+ import "../dashboard-premium-luminous.css";
+ import "../dashboard-premium-luminous-v14.css";
+ import "../dashboard-premium-luminous-v15.css";
++import "../dashboard-premium-luminous-v16.css";
+ import CRMLayout from "@/components/CRMLayout";
+ import { PageBanner } from "@/components/PageBanner";
+ import LeadQualityBadge from "@/components/LeadQualityBadge";
+diff --git a/client/src/components/LeadQualityBadge.tsx b/client/src/components/LeadQualityBadge.tsx
+--- a/client/src/components/LeadQualityBadge.tsx
++++ b/client/src/components/LeadQualityBadge.tsx
+@@ -1,11 +1,12 @@
+ import { useLanguage } from "@/contexts/LanguageContext";
+ import { cn } from "@/lib/utils";
++import { CircleHelp, Flame, Snowflake, Sun, ThumbsDown } from "lucide-react";
+ 
+ const qualityConfig = {
+-  Hot: { class: "lead-quality-hot", icon: "🔥" },
+-  Warm: { class: "lead-quality-warm", icon: "☀️" },
+-  Cold: { class: "lead-quality-cold", icon: "❄️" },
+-  Bad: { class: "lead-quality-bad", icon: "👎" },
+-  Unknown: { class: "lead-quality-unknown", icon: "❓" },
++  Hot: { class: "lead-quality-hot", icon: Flame },
++  Warm: { class: "lead-quality-warm", icon: Sun },
++  Cold: { class: "lead-quality-cold", icon: Snowflake },
++  Bad: { class: "lead-quality-bad", icon: ThumbsDown },
++  Unknown: { class: "lead-quality-unknown", icon: CircleHelp },
+ };
+ 
+ interface Props {
+@@ -16,16 +17,20 @@
+ export default function LeadQualityBadge({ quality, size = "md" }: Props) {
+   const { t } = useLanguage();
+   const config = qualityConfig[quality as keyof typeof qualityConfig] ?? qualityConfig.Unknown;
++  const Icon = config.icon;
+ 
+   return (
+     <span
+       className={cn(
+-        "inline-flex items-center gap-1 rounded-full border font-medium",
++        "lead-quality-premium inline-flex items-center gap-1 rounded-full border font-medium",
+         config.class,
+         size === "sm" ? "text-xs px-2 py-0.5" : "text-sm px-2.5 py-1"
+       )}
+     >
+-      <span>{config.icon}</span>
++      <span className="lead-quality-premium-icon-shell" aria-hidden="true">
++        <Icon className="lead-quality-premium-icon" strokeWidth={2.15} />
++      </span>
+       <span>{t(quality as any)}</span>
+     </span>
+   );
+diff --git a/client/src/dashboard-premium-luminous-v16.css b/client/src/dashboard-premium-luminous-v16.css
+new file mode 100644
+--- /dev/null
++++ b/client/src/dashboard-premium-luminous-v16.css
+@@ -0,0 +1,198 @@
++/* TCRM Dashboard Premium Luminous V16
++   Luxury lead-quality micro badges.
++   Replaces emoji-like Hot/Warm/Cold/Bad/Unknown treatment with restrained Lucide jewel chips.
++*/
++
++.tcrm-premium-dashboard .lead-quality-premium {
++  --quality-rgb: 99, 102, 241;
++  --quality-ink: #4338ca;
++  --quality-surface-a: rgba(255, 255, 255, .96);
++  --quality-surface-b: rgba(238, 242, 255, .88);
++  position: relative;
++  isolation: isolate;
++  overflow: hidden;
++  min-height: 24px;
++  gap: 6px !important;
++  border-radius: 999px !important;
++  border: 1px solid rgba(var(--quality-rgb), .24) !important;
++  background:
++    linear-gradient(145deg, var(--quality-surface-a), var(--quality-surface-b)) !important;
++  color: var(--quality-ink) !important;
++  font-weight: 650 !important;
++  letter-spacing: -.01em;
++  box-shadow:
++    inset 0 1px 0 rgba(255,255,255,.96),
++    inset 0 -1px 0 rgba(var(--quality-rgb), .05),
++    0 7px 18px -14px rgba(var(--quality-rgb), .62),
++    0 1px 3px rgba(15,23,42,.05) !important;
++  backdrop-filter: blur(10px) saturate(130%);
++  -webkit-backdrop-filter: blur(10px) saturate(130%);
++  transition:
++    transform .2s ease,
++    border-color .2s ease,
++    box-shadow .2s ease,
++    filter .2s ease;
++}
++
++.tcrm-premium-dashboard .lead-quality-premium::before {
++  content: "";
++  position: absolute;
++  inset: 1px 12% auto;
++  height: 1px;
++  border-radius: 999px;
++  background: linear-gradient(90deg, transparent, rgba(255,255,255,.92), transparent);
++  opacity: .78;
++  pointer-events: none;
++}
++
++.tcrm-premium-dashboard .lead-quality-premium:hover {
++  transform: translateY(-1px);
++  border-color: rgba(var(--quality-rgb), .36) !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255,255,255,.98),
++    0 9px 20px -14px rgba(var(--quality-rgb), .72),
++    0 2px 5px rgba(15,23,42,.06) !important;
++  filter: saturate(1.04);
++}
++
++.tcrm-premium-dashboard .lead-quality-premium-icon-shell {
++  position: relative;
++  display: inline-grid;
++  place-items: center;
++  flex: 0 0 auto;
++  width: 17px;
++  height: 17px;
++  border-radius: 999px;
++  border: 1px solid rgba(var(--quality-rgb), .22);
++  background:
++    radial-gradient(circle at 32% 24%, rgba(255,255,255,.98) 0 9%, transparent 10%),
++    linear-gradient(145deg, rgba(255,255,255,.92), rgba(var(--quality-rgb), .12));
++  color: var(--quality-ink);
++  box-shadow:
++    inset 0 1px 0 rgba(255,255,255,.96),
++    0 3px 8px -6px rgba(var(--quality-rgb), .9);
++}
++
++.tcrm-premium-dashboard .lead-quality-premium-icon {
++  width: 10.5px;
++  height: 10.5px;
++  color: currentColor !important;
++  filter: drop-shadow(0 1px 2px rgba(var(--quality-rgb), .18));
++}
++
++/* Hot — coral/ember jewel, not cartoon fire. */
++.tcrm-premium-dashboard .lead-quality-premium.lead-quality-hot {
++  --quality-rgb: 244, 92, 67;
++  --quality-ink: #c2412d;
++  --quality-surface-a: rgba(255, 251, 247, .98);
++  --quality-surface-b: rgba(255, 237, 226, .90);
++}
++
++/* Warm — champagne/amber glass. */
++.tcrm-premium-dashboard .lead-quality-premium.lead-quality-warm {
++  --quality-rgb: 217, 158, 34;
++  --quality-ink: #9a6700;
++  --quality-surface-a: rgba(255, 253, 244, .98);
++  --quality-surface-b: rgba(255, 246, 207, .90);
++}
++
++/* Cold — icy sapphire glass. */
++.tcrm-premium-dashboard .lead-quality-premium.lead-quality-cold {
++  --quality-rgb: 59, 130, 246;
++  --quality-ink: #2459b8;
++  --quality-surface-a: rgba(248, 252, 255, .98);
++  --quality-surface-b: rgba(224, 242, 254, .90);
++}
++
++/* Bad — restrained ruby warning, not a loud error pill. */
++.tcrm-premium-dashboard .lead-quality-premium.lead-quality-bad {
++  --quality-rgb: 225, 70, 94;
++  --quality-ink: #b42346;
++  --quality-surface-a: rgba(255, 249, 250, .98);
++  --quality-surface-b: rgba(255, 228, 233, .90);
++}
++
++/* Unknown — neutral violet/slate crystal. */
++.tcrm-premium-dashboard .lead-quality-premium.lead-quality-unknown {
++  --quality-rgb: 100, 116, 139;
++  --quality-ink: #475569;
++  --quality-surface-a: rgba(250, 251, 255, .98);
++  --quality-surface-b: rgba(238, 242, 255, .88);
++}
++
++.tcrm-premium-dashboard .lead-quality-premium.lead-quality-unknown .lead-quality-premium-icon-shell {
++  --quality-rgb: 124, 58, 237;
++  --quality-ink: #6d28d9;
++}
++
++/* Dark: smoked-glass chips with controlled colored edge light. */
++.dark .tcrm-premium-dashboard .lead-quality-premium {
++  --quality-surface-a: rgba(30, 41, 59, .88);
++  --quality-surface-b: rgba(15, 23, 42, .92);
++  border-color: rgba(var(--quality-rgb), .28) !important;
++  color: #e2e8f0 !important;
++  box-shadow:
++    inset 0 1px 0 rgba(255,255,255,.07),
++    inset 0 -1px 0 rgba(0,0,0,.18),
++    0 8px 20px -15px rgba(var(--quality-rgb), .62) !important;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium::before {
++  opacity: .32;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium-icon-shell {
++  border-color: rgba(var(--quality-rgb), .34);
++  background:
++    radial-gradient(circle at 32% 24%, rgba(255,255,255,.28) 0 7%, transparent 8%),
++    linear-gradient(145deg, rgba(var(--quality-rgb), .24), rgba(15,23,42,.76));
++  color: rgb(var(--quality-rgb));
++  box-shadow:
++    inset 0 1px 0 rgba(255,255,255,.10),
++    0 0 12px rgba(var(--quality-rgb), .10);
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium.lead-quality-hot {
++  --quality-rgb: 251, 113, 79;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium.lead-quality-warm {
++  --quality-rgb: 245, 188, 58;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium.lead-quality-cold {
++  --quality-rgb: 96, 165, 250;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium.lead-quality-bad {
++  --quality-rgb: 251, 113, 133;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium.lead-quality-unknown {
++  --quality-rgb: 148, 163, 184;
++}
++
++.dark .tcrm-premium-dashboard .lead-quality-premium.lead-quality-unknown .lead-quality-premium-icon-shell {
++  --quality-rgb: 167, 139, 250;
++  color: #c4b5fd;
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .tcrm-premium-dashboard .lead-quality-premium {
++    transition: none !important;
++    transform: none !important;
++  }
++}
