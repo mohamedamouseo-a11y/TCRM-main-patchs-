@@ -1,0 +1,81 @@
+diff --git a/server/services/felfel/felfelAdapter.ts b/server/services/felfel/felfelAdapter.ts
+--- a/server/services/felfel/felfelAdapter.ts
++++ b/server/services/felfel/felfelAdapter.ts
+@@ -1,11 +1,8 @@
+-import { execFile as execFileCallback } from "node:child_process";
+ import { existsSync, readFileSync } from "node:fs";
+-import { promisify } from "node:util";
+-
+-const execFile = promisify(execFileCallback);
+ 
+ export const FELFEL_GATEWAY_URL = "http://127.0.0.1:18056";
+ export const FELFEL_AGENT_URL = "http://127.0.0.1:18100";
+-const FELFEL_ADMIN_API_URL = "http://127.0.0.1:8001";
+-const FELFEL_CONTAINER = "vexa-lite";
++const FELFEL_ADMIN_API_URL = "http://127.0.0.1:18057";
+ const FELFEL_SERVICE_EMAIL = "tcrm-felfel-adapter@internal.local";
+ const REQUEST_TIMEOUT_MS = 15_000;
+ const SUPPORTED_PLATFORMS = ["google_meet", "teams", "zoom", "jitsi"] as const;
+@@ -197,43 +194,49 @@ export function detectFelfelMeetingUrl(value: string): FelfelMeetingUrl | null {
+ }
+ 
+-async function runAdminCurl(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<unknown> {
++async function runAdminRequest(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<unknown> {
+   const adminToken = getAdminToken();
+   if (!adminToken) {
+     throw new FelfelAdapterError("Felfel admin authentication is not configured");
+   }
+ 
+-  const bodyJson = body ? JSON.stringify(body) : "";
+-  const script = [
+-    "set -eu",
+-    "if [ -n \"${ADMIN_JSON:-}\" ]; then",
+-    "  curl -sS -X \"$ADMIN_METHOD\" -H \"X-Admin-API-Key: $ADMIN_API_TOKEN\" -H \"Content-Type: application/json\" -d \"$ADMIN_JSON\" \"$ADMIN_URL\" -w '\\n__FELFEL_STATUS__:%{http_code}'",
+-    "else",
+-    "  curl -sS -X \"$ADMIN_METHOD\" -H \"X-Admin-API-Key: $ADMIN_API_TOKEN\" \"$ADMIN_URL\" -w '\\n__FELFEL_STATUS__:%{http_code}'",
+-    "fi",
+-  ].join("\n");
+-
+-  let stdout: string;
++  let response: Response;
+   try {
+-    ({ stdout } = await execFile("docker", [
+-      "exec",
+-      "-e", `ADMIN_API_TOKEN=${adminToken}`,
+-      "-e", `ADMIN_METHOD=${method}`,
+-      "-e", `ADMIN_URL=${FELFEL_ADMIN_API_URL}${path}`,
+-      "-e", `ADMIN_JSON=${bodyJson}`,
+-      FELFEL_CONTAINER,
+-      "sh",
+-      "-lc",
+-      script,
+-    ], { timeout: REQUEST_TIMEOUT_MS, maxBuffer: 1024 * 1024 }));
++    response = await fetch(`${FELFEL_ADMIN_API_URL}${path}`, {
++      method,
++      headers: {
++        Accept: "application/json",
++        "X-Admin-API-Key": adminToken,
++        ...(body ? { "Content-Type": "application/json" } : {}),
++      },
++      ...(body ? { body: JSON.stringify(body) } : {}),
++      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
++    });
+   } catch {
+     throw new FelfelAdapterError("Felfel admin API is unavailable");
+   }
+ 
+-  const marker = "\n__FELFEL_STATUS__:";
+-  const markerIndex = stdout.lastIndexOf(marker);
+-  if (markerIndex < 0) throw new FelfelAdapterError("Felfel admin API returned an invalid response");
+-  const payloadText = stdout.slice(0, markerIndex).trim();
+-  const status = Number(stdout.slice(markerIndex + marker.length).trim());
+-  const payload = payloadText ? parseJson<unknown>(payloadText, "admin API") : null;
+-  if (status < 200 || status >= 300) {
++  const text = await response.text();
++  const payload = text ? parseJson<unknown>(text, "admin API") : null;
++  if (!response.ok) {
+     throw new FelfelAdapterError(safeErrorMessage(payload) || "Felfel admin API request failed", status);
+   }
+   return payload;
+ }
+*** End Patch
