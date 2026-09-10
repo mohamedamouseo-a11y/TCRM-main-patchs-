@@ -178,6 +178,7 @@ export function getPermissionForPath(rawLocation: string): string | null {
   if (pathname === "/settings" && query.get("tab") === "developerHub") {
     return "developer.view";
   }
+  if (pathname === "/admin") return "settings.view";
 
   const mappings: Array<[string, string]> = [
     ["/settings/roles-permissions", "roles.view"],
@@ -208,7 +209,6 @@ export function getPermissionForPath(rawLocation: string): string | null {
     ["/wa-gateway", "whatsapp.view"],
     ["/tara", "tara.view"],
     ["/settings", "settings.view"],
-    ["/admin", "settings.view"],
     ["/dashboard", "dashboard.view"],
   ];
 
