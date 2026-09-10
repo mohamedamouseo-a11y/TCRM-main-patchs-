@@ -11,7 +11,7 @@ diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services
  
  function asDate(value: unknown) {
    return value instanceof Date ? value : value ? new Date(String(value)) : null;
-@@ -92,6 +95,46 @@ export async function createLinkedFelfelMeeting(input: {
+@@ -92,6 +95,47 @@ export async function createLinkedFelfelMeeting(input: {
    return { created: true, meeting: rows[0] };
  }
  
@@ -36,8 +36,16 @@ diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services
 +      }
 +
 +      const remote = await getFelfelMeetingStatus(meeting.platform, meeting.nativeMeetingId);
++      const remoteStatus = String(remote.status || "").toLowerCase();
 +      const lifecycle = mapLifecycle(remote.status, remote.active, meeting.status);
-+      if (lifecycle === "ended") {
++      const explicitRemoteEnd = ["ended", "stopped", "completed", "finished", "not_running"].includes(remoteStatus);
++      const wasKnownLive = ["live", "processing"].includes(String(meeting.status || "").toLowerCase());
++
++      // Never treat an early `not_running` response as a completed meeting:
++      // Vexa can legitimately remain in requested/joining state while the bot
++      // is still starting. Only finalize after a known-live meeting stops, or
++      // when Vexa explicitly reports a terminal state.
++      if (lifecycle === "ended" && (wasKnownLive || (explicitRemoteEnd && remoteStatus !== "not_running"))) {
 +        const db = (await loadMeeting(id)).db;
 +        await db.update(crmMeetings).set({
 +          status: "ended",
@@ -68,7 +76,7 @@ diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services
  export async function launchLinkedFelfelMeeting(id: number, botName = "Felfel") {
    const { db, meeting } = await loadMeeting(id);
    if (!meeting.meetingUrl) throw new Error("Meeting URL is required before joining with Felfel");
-@@ -123,6 +166,7 @@ export async function launchLinkedFelfelMeeting(id: number, botName = "Felfel") {
+@@ -123,6 +167,7 @@ export async function launchLinkedFelfelMeeting(id: number, botName = "Felfel") {
        felfelMeetingId: created.meetingId || created.id,
        auditData: jsonValue([...(meeting.auditData || []), { event: "bot_join_requested", botName: "Felfel", at: new Date().toISOString() }]),
      }).where(eq(crmMeetings.id, id));
@@ -76,7 +84,7 @@ diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services
    } catch (error) {
      await db.update(crmMeetings).set({ status: "failed", felfelStatus: "failed", failedAt: new Date(), lastError: error instanceof Error ? error.message : "Felfel join failed" }).where(eq(crmMeetings.id, id));
      throw error;
-@@ -176,6 +220,7 @@ export async function leaveLinkedFelfelMeeting(id: number) {
+@@ -176,6 +221,7 @@ export async function leaveLinkedFelfelMeeting(id: number) {
    if (!meeting.platform || !meeting.nativeMeetingId) throw new Error("Felfel meeting identity is not available");
    await leaveFelfelMeeting(meeting.platform, meeting.nativeMeetingId);
    await db.update(crmMeetings).set({ status: "ended", felfelStatus: "ended", endedAt: new Date() }).where(eq(crmMeetings.id, id));
