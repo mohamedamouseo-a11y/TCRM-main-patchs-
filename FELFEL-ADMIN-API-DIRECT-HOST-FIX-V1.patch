@@ -16,11 +16,10 @@ diff --git a/server/services/felfel/felfelAdapter.ts b/server/services/felfel/fe
  const FELFEL_SERVICE_EMAIL = "tcrm-felfel-adapter@internal.local";
  const REQUEST_TIMEOUT_MS = 15_000;
  const SUPPORTED_PLATFORMS = ["google_meet", "teams", "zoom", "jitsi"] as const;
-@@ -197,43 +194,49 @@ export function detectFelfelMeetingUrl(value: string): FelfelMeetingUrl | null {
+@@ -197,43 +194,40 @@ export function detectFelfelMeetingUrl(value: string): FelfelMeetingUrl | null {
  }
  
--async function runAdminCurl(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<unknown> {
-+async function runAdminRequest(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<unknown> {
+ async function runAdminCurl(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<unknown> {
    const adminToken = getAdminToken();
    if (!adminToken) {
      throw new FelfelAdapterError("Felfel admin authentication is not configured");
@@ -71,11 +70,11 @@ diff --git a/server/services/felfel/felfelAdapter.ts b/server/services/felfel/fe
 -  const status = Number(stdout.slice(markerIndex + marker.length).trim());
 -  const payload = payloadText ? parseJson<unknown>(payloadText, "admin API") : null;
 -  if (status < 200 || status >= 300) {
+-    throw new FelfelAdapterError(safeErrorMessage(payload) || "Felfel admin API request failed", status);
 +  const text = await response.text();
 +  const payload = text ? parseJson<unknown>(text, "admin API") : null;
 +  if (!response.ok) {
-     throw new FelfelAdapterError(safeErrorMessage(payload) || "Felfel admin API request failed", status);
++    throw new FelfelAdapterError(safeErrorMessage(payload) || "Felfel admin API request failed", response.status);
    }
    return payload;
  }
-*** End Patch
