@@ -70,7 +70,7 @@ page = replace_once(
 page = replace_once(
     page,
     '''                      onAction={composerMode === "note" ? undefined : () => setShowActivity(true)}\n''',
-    page.find('                      onAction={composerMode === "note" ? undefined : () => setShowActivity(true)}\n') >= 0 and '''                      onAction={composerMode === "note" ? undefined : (canCreateActivity ? () => setShowActivity(true) : undefined)}\n''' or '',
+    '''                      onAction={composerMode === "note" ? undefined : (canCreateActivity ? () => setShowActivity(true) : undefined)}\n''',
     'leadprofile_empty_activity_action',
 )
 
