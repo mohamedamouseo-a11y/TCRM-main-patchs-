@@ -1,0 +1,308 @@
+TCRM — LEAD PROFILE PREMIUM V2.1
+STRUCTURAL CORRECTION — REFERENCE FIDELITY
+
+YOU ARE ALREADY INSIDE THE CURRENT LIVE TCRM PROJECT DIRECTORY.
+
+CURRENT BASE:
+Lead Profile Premium V2 is already applied locally and is NOT pushed yet.
+This is expected.
+Do NOT reject LeadProfile.tsx merely because it is dirty relative to git if it contains:
+TCRM_LEAD_PROFILE_PREMIUM_V2_STRUCTURAL_FIDELITY_TEAM_DASHBOARD
+
+GOAL:
+Apply V2.1 Structural Correction on top of CURRENT V2.
+The main problem being fixed is structural, not color:
+- V2 RTL grid made the legacy right rail become the huge primary column.
+- Overview became squeezed into a narrow area.
+- Empty Deal / Team / Attachments areas dominated the page.
+- The approved Lead Profile reference has a balanced 3-zone command center.
+
+V2.1 must correct those problems while PRESERVING the Team Dashboard color system already used by V2.
+
+TARGET ROUTE:
+/leads/:id
+
+VISUAL QA LEAD:
+/leads/2175
+
+PATCH:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-1-STRUCTURAL-CORRECTION.py
+
+PATCH REPO:
+https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+
+==================================================
+PRIMARY VISUAL TARGET
+==================================================
+
+STRUCTURE must move materially closer to the approved Lead Profile concept:
+
+1) Compact executive Hero
+   - strong lead identity anchor
+   - existing actions preserved
+   - status information stays readable
+   - no oversized dead air
+
+2) Five KPI signal cards directly under Hero
+   - Lead Score
+   - SLA
+   - Last Contact
+   - Next Action / Stage
+   - Lead Source
+   - stronger proportions than V2 but still compact
+
+3) One clear horizontal navigation strip
+
+4) OVERVIEW = TRUE 3-ZONE COMMAND CENTER
+   PHYSICAL DESKTOP ORDER must look like the reference:
+   - LEFT: Contact & Business + Additional Information
+   - CENTER: Activity Timeline + Notes
+   - RIGHT: Deal / Opportunity + Ownership + Upcoming Tasks
+
+5) IMPORTANT RTL CORRECTION
+   The Arabic UI direction MUST NOT make the legacy rail the huge left-side primary column again.
+   The structural grid must remain visually balanced like the approved reference.
+
+6) The old full functional rail must NOT be deleted.
+   It should remain available on Details / other tabs.
+   On Overview only, V2.1 uses the new compact right executive zone to avoid duplicate giant cards.
+
+==================================================
+COLOR SYSTEM — DO NOT CHANGE
+==================================================
+
+Team Dashboard remains the PRIMARY color reference.
+
+LIGHT:
+- pearl / soft-lilac surfaces
+- indigo / blue / violet accents
+- soft premium depth
+- no flat washed-out white
+
+DARK:
+- deep navy layered surfaces
+- restrained electric blue / indigo / violet edges
+- no black flat cards
+- no excessive neon
+
+Do NOT introduce a new palette.
+Do NOT change semantic business colors such as green success / red danger.
+
+==================================================
+CRITICAL WORKFLOW RULES
+==================================================
+
+The CURRENT directory is the live TCRM application.
+
+DO NOT clone the TCRM application repo.
+DO NOT git pull the application repo.
+DO NOT git fetch the application repo.
+DO NOT checkout/reset/rebase/merge/switch the application repo.
+DO NOT commit the application repo.
+DO NOT push the application repo.
+
+The user performs the application Push manually after ChatGPT visual approval.
+
+Unrelated dirty working-tree files are ALLOWED.
+Do NOT clean, stash, reset, or alter unrelated files.
+
+The V2 modifications in LeadProfile.tsx and lead-profile-premium-v2.css are expected local work.
+DO NOT revert V1 or V2.
+
+==================================================
+PROTECTED FILES
+==================================================
+
+Before patching, record sha256 for these files if present:
+
+client/src/pages/AgentDashboard.tsx
+client/src/pages/TeamDashboard.tsx
+client/src/pages/LeadsList.tsx
+client/src/components/InnoCallWebCallWidget.tsx
+server/security/permissionEngine.ts
+server/security/corePermissionPolicy.ts
+
+After patch/build/restart, verify hashes are identical.
+
+Do NOT modify any protected file.
+
+==================================================
+APPLY PATCH
+==================================================
+
+PROJECT_ROOT="$(pwd)"
+
+rm -rf /tmp/tcrm-lead-profile-v2-1-patches
+
+git clone --depth 1 \
+  https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git \
+  /tmp/tcrm-lead-profile-v2-1-patches
+
+cd "$PROJECT_ROOT"
+
+python3 /tmp/tcrm-lead-profile-v2-1-patches/TCRM-LEAD-PROFILE-PREMIUM-V2-1-STRUCTURAL-CORRECTION.py
+
+Verify markers in LeadProfile.tsx:
+
+TCRM_LEAD_PROFILE_PREMIUM_V2_STRUCTURAL_FIDELITY_TEAM_DASHBOARD
+TCRM_LEAD_PROFILE_PREMIUM_V2_1_STRUCTURAL_CORRECTION
+
+Verify imports:
+
+../lead-profile-premium-v1.css
+../lead-profile-premium-v2.css
+../lead-profile-premium-v2-1.css
+
+Expected files changed by THIS patch only:
+
+client/src/pages/LeadProfile.tsx
+client/src/lead-profile-premium-v2-1.css
+
+Do NOT modify backend, API, queries, mutations, permissions, routes, or existing business logic.
+
+==================================================
+BUILD + SERVICE
+==================================================
+
+Run:
+
+npm run build
+
+If build fails:
+STOP.
+Do NOT push.
+Return the actual build error.
+
+Restart ONLY the currently existing TCRM PM2 production process.
+Do not create another PM2 app.
+If the existing process is `tamiyouz-crm`, restart that exact process.
+
+Verify:
+
+curl -I http://127.0.0.1:3001
+
+Expected:
+HTTP 200
+
+==================================================
+VISUAL QA — DIRECT REFERENCE COMPARISON
+==================================================
+
+Use the existing authenticated browser session.
+
+Open:
+https://sales.tamiyouzplatform.com/leads/2175
+
+Set viewport EXACTLY:
+1920x1080
+
+IMPORTANT:
+For this V2.1 review we need the TOP VIEWPORT, not a long full-page screenshot.
+The approved reference itself is judged by the 1920x1080 command-center composition.
+
+Ensure OVERVIEW is selected.
+Use the SAME lead and SAME state in both themes.
+
+DO NOT:
+- edit lead data
+- change stage
+- create activity
+- create note
+- create deal
+- assign anyone
+- upload a file
+- open dialogs
+- open dropdowns
+- save anything
+
+CAPTURE EXACTLY TWO SCREENSHOTS:
+
+1) LIGHT MODE
+Filename:
+TCRM__LEAD-PROFILE__V2-1__STRUCTURAL-CORRECTION__LIGHT__1920x1080.png
+
+2) DARK MODE
+Filename:
+TCRM__LEAD-PROFILE__V2-1__STRUCTURAL-CORRECTION__DARK__1920x1080.png
+
+Before accepting screenshots, visually verify ALL of these:
+
+- Hero visible and compact
+- identity initials/avatar visible near lead name
+- five KPI cards visible in one row at 1920 width
+- navigation visible
+- Overview visibly uses THREE balanced zones
+- Contact/Additional Information on LEFT
+- Activity Timeline/Notes in CENTER
+- Deal/Ownership/Tasks on RIGHT
+- legacy giant rail is NOT visible on Overview
+- no giant empty Deal/Team/Attachments cards dominating the page
+- no clipping or horizontal overflow
+- Light keeps Team Dashboard pearl depth
+- Dark keeps Team Dashboard deep navy / indigo / blue / violet system
+
+If Overview still appears as one giant column + narrow squeezed cards:
+VISUAL_QA=FAILED
+and clearly report RTL_COLUMN_ORDER_FIXED=NO.
+
+==================================================
+GOOGLE DRIVE
+==================================================
+
+Upload both screenshots with the existing uploader:
+
+node /home/openhands/.openhands/qa-tools/67-gdrive-root-upload.mjs
+
+Destination:
+MY_DRIVE_ROOT
+
+Return the actual new Google Drive file IDs.
+Do not upload screenshots to GitHub.
+
+==================================================
+FINAL VERIFICATION
+==================================================
+
+Verify protected-file hashes still match.
+
+DO NOT PUSH THE APPLICATION REPO.
+
+RETURN ONLY:
+
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V2_BASE_PRESERVED=YES/NO
+LEAD_PROFILE_PREMIUM_V2_1=YES/NO
+STRUCTURAL_CORRECTION=YES/NO
+RTL_COLUMN_ORDER_FIXED=YES/NO
+OVERVIEW_THREE_ZONE_FIXED=YES/NO
+LEGACY_RAIL_HIDDEN_ON_OVERVIEW=YES/NO
+LEGACY_RAIL_PRESERVED_OTHER_TABS=YES/NO
+HERO_IDENTITY_ANCHOR_ADDED=YES/NO
+KPI_PROPORTIONS_CORRECTED=YES/NO
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<STATUS>
+VISUAL_QA=DONE/FAILED
+CAPTURE_MODE=TOP_VIEWPORT_1920x1080
+SCREENSHOT_COUNT=2/0
+LIGHT_SCREENSHOT_FILENAME=
+LIGHT_IMAGE_WIDTH=
+LIGHT_IMAGE_HEIGHT=
+LIGHT_DRIVE_FILE_ID=
+DARK_SCREENSHOT_FILENAME=
+DARK_IMAGE_WIDTH=
+DARK_IMAGE_HEIGHT=
+DARK_DRIVE_FILE_ID=
+SAME_LEAD_BOTH_THEMES=YES/NO
+SAME_PAGE_STATE_BOTH_THEMES=YES/NO
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
