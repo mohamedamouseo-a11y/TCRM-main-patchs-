@@ -1,0 +1,261 @@
+TCRM — NEW LEAD PREMIUM V1.3
+TEAM DASHBOARD LUXURY REFERENCE
+
+YOU ARE ALREADY INSIDE THE CURRENT LIVE TCRM PROJECT DIRECTORY.
+
+THIS IS THE LIVE APPLICATION DIRECTORY.
+DO NOT CLONE / SWITCH / RESET / CLEAN THE APPLICATION REPOSITORY.
+
+IMPORTANT:
+The application working tree MAY already contain unrelated valid changes from other workflows.
+A dirty working tree is ALLOWED.
+DO NOT STOP because git status is dirty.
+DO NOT CLEAN, STASH, RESET, CHECKOUT, OR DISCARD ANY EXISTING CHANGE.
+
+PUBLIC PATCH REPO ONLY:
+https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+
+PATCH:
+TCRM-NEW-LEAD-MODAL-PREMIUM-V1-3-TEAM-DASHBOARD-LUXURY.py
+
+PATCH COMMIT:
+536158536147ba34e4508d4b9b44200c3e627af8
+
+==================================================
+DESIGN REFERENCE LOCK
+==================================================
+
+PRIMARY UX/UI REFERENCE FOR THIS WORKFLOW:
+TCRM TEAM DASHBOARD PREMIUM.
+
+The Team Dashboard is the strongest approved TCRM visual reference and MUST remain the reference throughout this task.
+
+Reference characteristics to preserve:
+- pearl/pastel light-mode depth, never flat white
+- luminous indigo / violet / electric-blue accents
+- restrained glass, not noisy glassmorphism
+- crisp executive SaaS hierarchy
+- premium thin borders and inset highlights
+- controlled ambient glow
+- deep navy dark-mode surfaces
+- dark cards around rgba(12,27,51) / rgba(7,18,36)
+- high contrast readable labels
+- subtle premium hover/focus states
+
+DO NOT introduce another visual identity.
+DO NOT introduce gold, orange, teal, or unrelated palettes.
+
+==================================================
+SCOPE
+==================================================
+
+ONLY:
+Leads -> New Lead modal
+
+V1.3 layers over the existing applied New Lead V1.2.
+
+NO backend changes.
+NO DB changes.
+NO form/business logic changes.
+NO validation changes.
+NO createLead mutation changes.
+NO permission changes.
+NO PhoneInput logic changes.
+NO CountrySelect logic changes.
+NO campaign logic changes.
+NO assignment logic changes.
+NO unrelated Leads UI changes.
+NO Dashboard / Team Dashboard / InnoCall changes.
+
+==================================================
+PATCH EXECUTION
+==================================================
+
+PROJECT_ROOT="$(pwd)"
+cd "$PROJECT_ROOT"
+
+test -f client/src/pages/LeadsList.tsx
+test -f client/src/new-lead-premium-v1.css
+test -f client/src/new-lead-premium-v1-1.css
+test -f client/src/new-lead-premium-v1-2.css
+
+grep -n 'TCRM_NEW_LEAD_MODAL_PREMIUM_V1_2_EXECUTIVE_FIDELITY' client/src/pages/LeadsList.tsx
+
+# Record current status for reporting only. DIRTY IS ALLOWED.
+git status --short > /tmp/tcrm-newlead-v1-3-status-before.txt || true
+
+# Protect critical unrelated files exactly as they currently exist, including any valid uncommitted state.
+PROTECTED=/tmp/tcrm-newlead-v1-3-protected.sha256
+: > "$PROTECTED"
+for f in \
+  client/src/pages/AgentDashboard.tsx \
+  client/src/pages/TeamDashboard.tsx \
+  client/src/components/InnoCallWebCallWidget.tsx \
+  client/src/contexts/PermissionContext.tsx \
+  server/security/corePermissionPolicy.ts \
+  server/security/permissionEngine.ts
+ do
+  if [ -f "$f" ]; then sha256sum "$f" >> "$PROTECTED"; fi
+ done
+
+rm -rf /tmp/tcrm-newlead-v1-3-patch
+
+git clone --depth 1 --branch main \
+  https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git \
+  /tmp/tcrm-newlead-v1-3-patch
+
+cd /tmp/tcrm-newlead-v1-3-patch
+git rev-parse HEAD
+# The clone may be newer than PATCH COMMIT, but the patch file MUST contain the committed V1.3 script.
+test -f TCRM-NEW-LEAD-MODAL-PREMIUM-V1-3-TEAM-DASHBOARD-LUXURY.py
+
+cd "$PROJECT_ROOT"
+python3 /tmp/tcrm-newlead-v1-3-patch/TCRM-NEW-LEAD-MODAL-PREMIUM-V1-3-TEAM-DASHBOARD-LUXURY.py
+
+IF PATCH RETURNS ERROR:
+STOP.
+DO NOT FIX MANUALLY.
+
+==================================================
+VERIFY SOURCE SCOPE
+==================================================
+
+grep -n 'TCRM_NEW_LEAD_MODAL_PREMIUM_V1_3_TEAM_DASHBOARD_LUXURY' client/src/pages/LeadsList.tsx
+test -f client/src/new-lead-premium-v1-3.css
+grep -n 'TCRM_NEW_LEAD_MODAL_PREMIUM_V1_3_TEAM_DASHBOARD_LUXURY' client/src/new-lead-premium-v1-3.css
+
+sha256sum -c "$PROTECTED"
+
+ALL PROTECTED FILES MUST RETURN OK.
+
+Do NOT require a clean working tree.
+Do NOT remove unrelated existing changes.
+
+The V1.3 patch itself is expected to touch only:
+- client/src/pages/LeadsList.tsx
+- client/src/new-lead-premium-v1-3.css
+
+==================================================
+BUILD / SERVICE
+==================================================
+
+npm run build
+
+IF BUILD FAILS:
+STOP.
+
+Restart ONLY the existing TCRM PM2 application process.
+DO NOT modify PM2 configuration.
+
+Then verify:
+
+curl -I --max-time 10 http://127.0.0.1:3001/
+
+Expected HTTP response: 200.
+
+==================================================
+VISUAL QA — REQUIRED
+==================================================
+
+Use the existing authenticated browser/session.
+Open:
+https://sales.tamiyouzplatform.com/leads
+
+Open New Lead.
+DO NOT enter data.
+DO NOT save.
+DO NOT create a lead.
+
+VIEWPORT:
+1920x1080
+
+Capture EXACTLY TWO screenshots after V1.3:
+
+1) LIGHT MODE
+Capture the full `.tcrm-new-lead-modal` element.
+Filename:
+TCRM__NEW-LEAD__V1-3__TEAM-DASHBOARD-LUXURY__LIGHT__FULL-FORM__1920x1080__<RUNSTAMP>.png
+
+2) DARK MODE
+Switch theme only. Do not modify form values.
+Capture the full `.tcrm-new-lead-modal` element.
+Filename:
+TCRM__NEW-LEAD__V1-3__TEAM-DASHBOARD-LUXURY__DARK__FULL-FORM__1920x1080__<RUNSTAMP>.png
+
+If modal height exceeds viewport:
+use full-element screenshot of `.tcrm-new-lead-modal`.
+Do NOT manually crop.
+
+VISUAL TARGET:
+- visibly more luxurious than V1.2
+- Team Dashboard visual language obvious
+- pearl depth in Light
+- deep navy luminous surfaces in Dark
+- premium section cards
+- stronger icon tiles
+- richer but controlled header glow
+- 52px polished controls
+- premium footer / Save CTA
+- no clipping
+- no broken RTL
+- no field overlap
+- existing dropdown fix preserved
+
+==================================================
+GOOGLE DRIVE QA UPLOAD
+==================================================
+
+Use the already-discovered existing uploader:
+/home/openhands/.openhands/qa-tools/67-gdrive-root-upload.mjs
+
+Do NOT invent new Google authentication.
+Do NOT inspect or print secrets.
+
+Read the helper itself or use its supported help/usage to invoke it correctly.
+Upload ONLY the two new V1.3 screenshots to:
+MY_DRIVE_ROOT
+
+Return Drive file IDs and actual links when the helper supports them.
+Preferred link form:
+https://drive.google.com/file/d/<FILE_ID>/view?usp=drivesdk
+
+Do NOT upload application source files.
+Do NOT push the TCRM application repository.
+
+==================================================
+FINAL REPORT — RETURN ONLY
+==================================================
+
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+NEW_LEAD_PREMIUM_V1_3=YES/NO
+TEAM_DASHBOARD_REFERENCE=YES/NO
+TEAM_DASHBOARD_V2_2_LIGHT_PEARL_DEPTH=YES/NO
+TEAM_DASHBOARD_V2_1_DARK_SURFACE_SYSTEM=YES/NO
+LUXURY_MODAL_SHELL=YES/NO
+LUMINOUS_HEADER=YES/NO
+EXECUTIVE_SECTION_CARDS=YES/NO
+PREMIUM_CONTROLS=YES/NO
+PREMIUM_FOOTER=YES/NO
+DROPDOWN_FIX_PRESERVED=YES/NO
+PALETTE_CHANGED=YES/NO
+FORM_LOGIC_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+DIRTY_WORKTREE_ALLOWED=YES
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/FAILED
+VISUAL_QA=DONE/FAILED/UNAVAILABLE
+SCREENSHOT_COUNT=2/0
+LIGHT_SCREENSHOT_FILENAME=
+LIGHT_DRIVE_FILE_ID=
+LIGHT_DRIVE_FILE_LINK=
+DARK_SCREENSHOT_FILENAME=
+DARK_DRIVE_FILE_ID=
+DARK_DRIVE_FILE_LINK=
+DRIVE_UPLOAD=OK/FAILED/UNAVAILABLE
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
