@@ -1,0 +1,210 @@
+TCRM — LEAD PROFILE PREMIUM V1
+TEAM DASHBOARD EXECUTIVE COMMAND CENTER
+
+YOU ARE ALREADY INSIDE THE CURRENT LIVE TCRM PROJECT DIRECTORY.
+
+GOAL:
+Apply Lead Profile Premium V1 to the CURRENT live project, build it, restart the existing TCRM service, then capture ONLY two visual-QA screenshots: Light + Dark.
+
+PRIMARY UX/UI REFERENCE:
+TCRM Sales Team Dashboard.
+
+TARGET:
+/leads/:id
+Visual QA lead:
+/leads/2175
+
+PATCH:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V1-TEAM-DASHBOARD-COMMAND-CENTER.py
+
+PATCH REPO:
+https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+
+==================================================
+CRITICAL WORKFLOW RULES
+==================================================
+
+The CURRENT directory is the live TCRM application.
+
+DO NOT clone the TCRM application repo.
+DO NOT git pull the application repo.
+DO NOT git fetch the application repo.
+DO NOT checkout/reset/rebase/merge/switch the application repo.
+DO NOT commit the application repo.
+DO NOT push the application repo.
+
+The user performs the application Push manually later.
+
+UNRELATED dirty working-tree files are ALLOWED.
+Do NOT stop because unrelated files are dirty.
+Do NOT clean, stash, reset or alter unrelated files.
+
+However, before applying, verify the TARGET file itself is not carrying unrelated local edits:
+
+client/src/pages/LeadProfile.tsx
+
+If this exact target file is already modified before this workflow and does NOT already contain the V1 marker, STOP with:
+ERROR=LEAD_PROFILE_TARGET_ALREADY_DIRTY
+
+==================================================
+PROTECTED FILES
+==================================================
+
+Before patching, record sha256 for these files if present:
+
+client/src/pages/AgentDashboard.tsx
+client/src/pages/TeamDashboard.tsx
+client/src/pages/LeadsList.tsx
+client/src/components/InnoCallWebCallWidget.tsx
+server/security/permissionEngine.ts
+server/security/corePermissionPolicy.ts
+
+After patch/build/restart, verify their hashes are identical.
+
+Do NOT modify any of them.
+
+==================================================
+APPLY PATCH
+==================================================
+
+PROJECT_ROOT="$(pwd)"
+
+rm -rf /tmp/tcrm-lead-profile-v1-patches
+
+git clone --depth 1 \
+  https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git \
+  /tmp/tcrm-lead-profile-v1-patches
+
+cd "$PROJECT_ROOT"
+
+python3 /tmp/tcrm-lead-profile-v1-patches/TCRM-LEAD-PROFILE-PREMIUM-V1-TEAM-DASHBOARD-COMMAND-CENTER.py
+
+Verify marker:
+
+TCRM_LEAD_PROFILE_PREMIUM_V1_TEAM_DASHBOARD_COMMAND_CENTER
+
+Verify files created/changed by THIS patch:
+
+client/src/pages/LeadProfile.tsx
+client/src/lead-profile-premium-v1.css
+
+Do NOT alter backend/business logic.
+
+==================================================
+BUILD + SERVICE
+==================================================
+
+Run the project's normal production build:
+
+npm run build
+
+If build fails:
+STOP.
+Do NOT push.
+Return the real build error.
+
+Restart ONLY the existing TCRM PM2 service.
+Prefer the currently running TCRM process name; if it is still `tamiyouz-crm`, restart that exact process.
+Do not create a duplicate PM2 service.
+
+Verify:
+
+curl -I http://127.0.0.1:3001
+
+Expected HTTP status:
+200
+
+==================================================
+VISUAL QA
+==================================================
+
+Use the existing authenticated browser session.
+
+Open:
+https://sales.tamiyouzplatform.com/leads/2175
+
+Do NOT edit the lead.
+Do NOT change stage.
+Do NOT add activity.
+Do NOT create deal.
+Do NOT assign owner.
+Do NOT save anything.
+Do NOT modify any business data.
+
+Use viewport:
+1920x1080
+
+CAPTURE ONLY TWO SCREENSHOTS.
+
+1) LIGHT MODE
+Filename:
+TCRM__LEAD-PROFILE__V1__TEAM-DASHBOARD-COMMAND-CENTER__LIGHT__1920x1080.png
+
+2) DARK MODE
+Same lead and same default tab/state.
+Filename:
+TCRM__LEAD-PROFILE__V1__TEAM-DASHBOARD-COMMAND-CENTER__DARK__1920x1080.png
+
+Capture the visible top viewport exactly as the user would see it after loading the Lead Profile.
+Do not open dialogs or dropdowns.
+
+Before accepting each screenshot, verify pixels visibly contain:
+- Lead identity/header zone
+- lead actions
+- Lead Score / SLA area
+- profile navigation strip
+- main information card
+- Deal / Team / Smart Notes rail where visible
+
+==================================================
+GOOGLE DRIVE
+==================================================
+
+Upload both screenshots using the existing working uploader:
+
+node /home/openhands/.openhands/qa-tools/67-gdrive-root-upload.mjs
+
+Destination:
+MY_DRIVE_ROOT
+
+Return NEW Google Drive file IDs.
+Do not upload to GitHub.
+
+==================================================
+FINAL VERIFICATION
+==================================================
+
+Verify protected-file hashes match pre-patch values.
+
+Do NOT push the application repo.
+
+RETURN ONLY:
+
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+LEAD_PROFILE_PREMIUM_V1=YES/NO
+TEAM_DASHBOARD_PRIMARY_REFERENCE=YES/NO
+EXECUTIVE_COMMAND_CENTER=YES/NO
+LIGHT_PEARL_SYSTEM=YES/NO
+DARK_DEEP_NAVY_LUMINOUS_SYSTEM=YES/NO
+HERO_UPGRADED=YES/NO
+NAVIGATION_STRIP_UPGRADED=YES/NO
+INFORMATION_CARDS_UPGRADED=YES/NO
+DEAL_TEAM_SMART_NOTES_RAIL_INTEGRATED=YES/NO
+FORM_LOGIC_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<STATUS>
+VISUAL_QA=DONE/FAILED
+SCREENSHOT_COUNT=2/0
+LIGHT_SCREENSHOT_FILENAME=
+LIGHT_DRIVE_FILE_ID=
+DARK_SCREENSHOT_FILENAME=
+DARK_DRIVE_FILE_ID=
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
