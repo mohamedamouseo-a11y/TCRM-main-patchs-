@@ -1,0 +1,170 @@
+TCRM — NEW LEAD PREMIUM V1.4 TEAM DASHBOARD FIDELITY
+
+YOU ARE ALREADY INSIDE THE CURRENT LIVE TCRM PROJECT DIRECTORY.
+
+PRIMARY UX/UI REFERENCE:
+TCRM Team Dashboard Premium V2.2 Light + V2.1 Dark.
+
+CURRENT LIVE STATE:
+- New Lead V1.3 is already applied.
+- Working tree MAY contain unrelated pre-existing changes from other successful workflows.
+- DIRTY WORKTREE IS ALLOWED.
+- DO NOT clean, stash, reset, checkout, or revert unrelated changes.
+
+GOAL:
+Apply V1.4 visual-fidelity correction to the CURRENT New Lead modal.
+Fix exactly what visual QA showed:
+1) Lead Details select triggers are undersized / content-width instead of full field width.
+2) Dark controls are visually inconsistent: some fields/selects appear black while others use navy surfaces.
+3) Light mode is too washed/flat; restore Team Dashboard pearl depth without changing palette.
+4) Keep premium luminous header, section cards, dropdown interaction fix, RTL/LTR, and all form logic.
+
+PATCH REPO ONLY:
+https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+
+PATCH:
+TCRM-NEW-LEAD-MODAL-PREMIUM-V1-4-TEAM-DASHBOARD-FIDELITY.py
+
+PATCH COMMIT:
+9c7f1376ff92d810b78f3f60b986907ae8d3a64a
+
+STRICTLY FORBIDDEN:
+- git pull/fetch application repo
+- checkout/reset/rebase/merge/switch
+- clean/stash/revert unrelated dirty files
+- commit/push TCRM source
+- backend changes
+- DB changes
+- permissions changes
+- form logic changes
+- create a lead
+- save form data
+
+PROJECT_ROOT="$(pwd)"
+cd "$PROJECT_ROOT"
+
+test -f client/src/pages/LeadsList.tsx
+test -f client/src/new-lead-premium-v1-3.css
+grep -n 'TCRM_NEW_LEAD_MODAL_PREMIUM_V1_3_TEAM_DASHBOARD_LUXURY' client/src/pages/LeadsList.tsx
+
+# Protect key unrelated UX/security files. Existing unrelated dirty files are allowed.
+sha256sum \
+  client/src/pages/AgentDashboard.tsx \
+  client/src/pages/TeamDashboard.tsx \
+  client/src/components/InnoCallWebCallWidget.tsx \
+  server/security/permissionEngine.ts \
+  > /tmp/tcrm-newlead-v1-4-protected.sha256
+
+rm -rf /tmp/tcrm-newlead-v1-4
+git clone --depth 1 --branch main \
+  https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git \
+  /tmp/tcrm-newlead-v1-4
+
+test -f /tmp/tcrm-newlead-v1-4/TCRM-NEW-LEAD-MODAL-PREMIUM-V1-4-TEAM-DASHBOARD-FIDELITY.py
+
+cd "$PROJECT_ROOT"
+python3 /tmp/tcrm-newlead-v1-4/TCRM-NEW-LEAD-MODAL-PREMIUM-V1-4-TEAM-DASHBOARD-FIDELITY.py
+
+IF PATCH ERROR: STOP. DO NOT FIX MANUALLY.
+
+grep -n 'TCRM_NEW_LEAD_MODAL_PREMIUM_V1_4_TEAM_DASHBOARD_FIDELITY' client/src/pages/LeadsList.tsx
+test -f client/src/new-lead-premium-v1-4.css
+grep -n 'TCRM_NEW_LEAD_MODAL_PREMIUM_V1_4_TEAM_DASHBOARD_FIDELITY' client/src/new-lead-premium-v1-4.css
+
+sha256sum -c /tmp/tcrm-newlead-v1-4-protected.sha256
+ALL PROTECTED FILES MUST RETURN OK.
+
+# Do not fail because other pre-existing files are dirty.
+git status --short
+
+npm run build
+IF BUILD FAILS: STOP.
+
+Restart ONLY the existing TCRM PM2 process. Do not change PM2 config.
+curl -I --max-time 10 http://127.0.0.1:3001/
+
+==================================================
+VISUAL QA — REQUIRED
+==================================================
+Open:
+https://sales.tamiyouzplatform.com/leads
+
+Use existing authenticated session.
+Open New Lead.
+DO NOT enter or change data.
+
+Viewport: 1920x1080.
+
+Capture TWO screenshots only using the actual modal element:
+.tcrm-new-lead-modal
+
+1) LIGHT MODE
+Filename:
+TCRM__NEW-LEAD__V1-4__TEAM-DASHBOARD-FIDELITY__LIGHT__FULL-FORM__1920x1080__<RUNSTAMP>.png
+
+Verify visually before capture:
+- Contact fields are balanced.
+- Lead Quality / Fit Status / Stage / Campaign triggers are FULL WIDTH in their grid cells, not tiny buttons.
+- No odd alignment or collapsed select widths.
+- Pearl light surfaces have visible depth but remain clean.
+- Footer is balanced and premium.
+
+2) DARK MODE
+Filename:
+TCRM__NEW-LEAD__V1-4__TEAM-DASHBOARD-FIDELITY__DARK__FULL-FORM__1920x1080__<RUNSTAMP>.png
+
+Verify visually before capture:
+- ALL text inputs, datetime input, select triggers, country field, phone field and Ad Creative share the SAME deep-navy Team Dashboard surface family.
+- NO random black controls.
+- Full-width select layout remains correct.
+- Text/placeholder contrast is readable.
+- Footer uses matching navy surface.
+
+DO NOT create a lead.
+DO NOT select values just for screenshots.
+
+==================================================
+GOOGLE DRIVE UPLOAD
+==================================================
+Use the existing authenticated visual-QA uploader already discovered:
+/home/openhands/.openhands/qa-tools/67-gdrive-root-upload.mjs
+
+Upload ONLY the two V1.4 screenshots to:
+MY_DRIVE_ROOT
+
+Do not invent new auth.
+Do not expose credentials.
+
+Return file IDs and actual Drive URLs if the uploader provides them.
+
+==================================================
+FINAL REPORT — RETURN ONLY
+==================================================
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+NEW_LEAD_PREMIUM_V1_4=YES/NO
+TEAM_DASHBOARD_PRIMARY_REFERENCE=YES/NO
+FULL_WIDTH_SELECT_FIX=YES/NO
+DARK_CONTROL_CONSISTENCY_FIX=YES/NO
+LIGHT_PEARL_DEPTH_REFINED=YES/NO
+DROPDOWN_FIX_PRESERVED=YES/NO
+FORM_LOGIC_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+DIRTY_WORKTREE_ALLOWED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/FAILED
+VISUAL_QA=DONE/FAILED
+SCREENSHOT_COUNT=2/0
+LIGHT_SCREENSHOT_FILENAME=
+LIGHT_DRIVE_FILE_ID=
+LIGHT_DRIVE_FILE_LINK=
+DARK_SCREENSHOT_FILENAME=
+DARK_DRIVE_FILE_ID=
+DARK_DRIVE_FILE_LINK=
+DRIVE_UPLOAD=OK/FAILED
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=client/src/pages/LeadsList.tsx,client/src/new-lead-premium-v1-4.css
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
