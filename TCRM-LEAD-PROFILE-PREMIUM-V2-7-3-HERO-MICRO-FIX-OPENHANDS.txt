@@ -1,0 +1,159 @@
+TCRM LEAD PROFILE — V2.7.3 HERO MICRO-FIX
+TARGET: /leads/2184
+BASE: currently deployed V2.7.2
+VIEWPORT: 1920x1080
+DO NOT PUSH SOURCE PROJECT.
+
+PATCH URL:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-7-3-HERO-MICRO-FIX.py
+
+OBJECTIVE
+Apply a HERO-ONLY micro-fix to the currently deployed V2.7.2 Lead Profile.
+The original approved Lead Profile screenshots are the visual reference.
+V2.7.2 measured 209px and still showed a visible empty bottom band.
+Desktop target after this patch: 185–195px, ideally ~192px.
+
+STRICT SCOPE
+Allowed source changes only:
+1) client/src/pages/LeadProfile.tsx — ONLY to add the V2.7.3 CSS import/marker.
+2) client/src/lead-profile-premium-v2-7-3-hero-micro-fix.css — new hero-only stylesheet.
+
+DO NOT redesign or alter:
+- KPI cards
+- Tabs/navigation
+- Details content/design
+- Form Data content/design
+- Felfel Meetings
+- Stages & Notes
+- Reminders
+- Quotations
+- secondary 72/28 layout
+- right rail cards/layout/content
+- backend/API/database
+- permissions
+- business logic
+- routes
+- mutations
+- real lead data
+
+SAFETY
+- Create/retain timestamped recovery backups.
+- Capture protected file hashes before applying the patch and confirm unchanged after.
+- Do not save/edit any lead data in the UI.
+- Do not push/commit the source project.
+
+STEPS
+1. Open the live TCRM project root.
+2. Confirm V2.7.2 is currently active:
+   - client/src/lead-profile-premium-v2-7-2-hero-reference-height.css exists
+   - LeadProfile.tsx imports it
+   - /leads/2184 loads successfully
+3. Before patch, at 1920x1080 Light mode, measure the rendered boundingClientRect.height of .tcrm-lp-hero and save as HERO_BEFORE_HEIGHT_PX.
+4. Download and run the exact patch URL above.
+5. Inspect the current live DOM/source to identify the actual hero collapse/expand control.
+   IMPORTANT: If the generic CSS selectors in the new V2.7.3 stylesheet do not match that control, you MAY add the exact selector/class to client/src/lead-profile-premium-v2-7-3-hero-micro-fix.css ONLY. Do not modify component behavior or any other file/section.
+6. Build and restart the same service normally used by this project.
+7. Confirm HTTP 3001 = 200.
+8. Open /leads/2184 at exactly 1920x1080.
+9. Measure .tcrm-lp-hero again in Light and Dark.
+   Required desktop range: 185–195px.
+10. Verify visually and in DOM:
+   - no empty bottom band inside hero
+   - Identity / Context / Actions all fully visible
+   - all action buttons visible
+   - no text clipping that hides essential labels/data
+   - collapse control remains visible
+   - collapse control position is absolute/fixed OUT OF NORMAL FLOW and consumes zero layout height
+   - collapse control does not overlap text/actions
+   - hero does not overlap KPI row
+   - three-cluster composition preserved
+11. Confirm V2.7 Details and Form Data are visually unchanged except that more content appears higher because the common Hero is shorter.
+12. Confirm the 72/28 secondary layout and RTL physical order are unchanged.
+13. Confirm no data changed.
+
+VISUAL QA SCREENSHOTS — EXACTLY 8
+All screenshots use the same lead /leads/2184 and viewport 1920x1080.
+Upload each to Google Drive and return its file ID.
+
+A) OVERVIEW / HERO REGRESSION GUARD
+1. TCRM__LEAD-PROFILE__V2-7-3__OVERVIEW__LIGHT__TOP__1920x1080.png
+2. TCRM__LEAD-PROFILE__V2-7-3__OVERVIEW__DARK__TOP__1920x1080.png
+
+B) HERO CLOSE-UP — must show full hero edges plus beginning of KPI row
+3. TCRM__LEAD-PROFILE__V2-7-3__HERO__LIGHT__REFERENCE-CROP.png
+4. TCRM__LEAD-PROFILE__V2-7-3__HERO__DARK__REFERENCE-CROP.png
+
+C) DETAILS REGRESSION GUARD
+5. TCRM__LEAD-PROFILE__V2-7-3__DETAILS__LIGHT__TOP__1920x1080.png
+6. TCRM__LEAD-PROFILE__V2-7-3__DETAILS__DARK__TOP__1920x1080.png
+
+D) FORM DATA REGRESSION GUARD
+7. TCRM__LEAD-PROFILE__V2-7-3__FORM-DATA__LIGHT__TOP__1920x1080.png
+8. TCRM__LEAD-PROFILE__V2-7-3__FORM-DATA__DARK__TOP__1920x1080.png
+
+IMPORTANT VISUAL ACCEPTANCE RULES
+- HERO_AFTER_HEIGHT_LIGHT_PX must be >=185 and <=195.
+- HERO_AFTER_HEIGHT_DARK_PX must be >=185 and <=195.
+- No visible empty bottom strip/band.
+- Collapse control must be overlayed on the edge, not creating a row.
+- Do not shrink typography/buttons to unreadable size just to hit the height target.
+- If 192px causes clipping, adjust ONLY within the V2.7.3 CSS file and keep final hero inside 185–195px.
+- Do not solve height by hiding real data or action controls.
+
+FINAL REPORT — RETURN EXACTLY THESE KEYS
+PATCH_FETCHED=
+PATCH=
+V2_7_2_BASE_PRESERVED=
+LEAD_PROFILE_PREMIUM_V2_7_3=
+HERO_MICRO_FIX=
+HERO_ONLY_SCOPE=
+HERO_BEFORE_HEIGHT_PX=
+HERO_AFTER_HEIGHT_LIGHT_PX=
+HERO_AFTER_HEIGHT_DARK_PX=
+HERO_TARGET_MIN_PX=185
+HERO_TARGET_MAX_PX=195
+HERO_TARGET_RANGE_MET=
+HERO_EMPTY_BOTTOM_BAND_REMOVED=
+HERO_ALL_CONTROLS_VISIBLE=
+HERO_NO_OVERLAP=
+HERO_NO_ESSENTIAL_TEXT_CLIPPING=
+COLLAPSE_CONTROL_VISIBLE=
+COLLAPSE_CONTROL_OUT_OF_NORMAL_FLOW=
+COLLAPSE_CONTROL_NOT_OVERLAPPING=
+HERO_THREE_CLUSTER_COMPOSITION_PRESERVED=
+KPI_UNCHANGED=
+KPI_NO_OVERLAP=
+DETAILS_V2_7_DESIGN_PRESERVED=
+FORMDATA_V2_7_DESIGN_PRESERVED=
+V2_5_MAIN_72_RAIL_28_PRESERVED=
+RTL_PHYSICAL_ORDER_PRESERVED=
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=
+BACKEND_UNCHANGED=
+PERMISSIONS_UNCHANGED=
+BUSINESS_LOGIC_UNCHANGED=
+PROTECTED_FILES=
+BUILD=
+SERVICE=
+HTTP_3001=
+VISUAL_QA=
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=8
+ACTUAL_SCREENSHOT_COUNT=
+SAME_LEAD_ALL_CAPTURES=
+DATA_CHANGED=NO
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=
+
+OVERVIEW_LIGHT_TOP_DRIVE_FILE_ID=
+OVERVIEW_DARK_TOP_DRIVE_FILE_ID=
+HERO_LIGHT_REFERENCE_CROP_DRIVE_FILE_ID=
+HERO_DARK_REFERENCE_CROP_DRIVE_FILE_ID=
+DETAILS_LIGHT_TOP_DRIVE_FILE_ID=
+DETAILS_DARK_TOP_DRIVE_FILE_ID=
+FORM_DATA_LIGHT_TOP_DRIVE_FILE_ID=
+FORM_DATA_DARK_TOP_DRIVE_FILE_ID=
+
+ERROR=
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES
+
+Do not push the source project. Stop after reporting the measurements and Drive file IDs.
