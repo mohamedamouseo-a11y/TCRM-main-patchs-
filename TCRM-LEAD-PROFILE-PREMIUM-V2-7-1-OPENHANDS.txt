@@ -1,0 +1,212 @@
+TCRM LEAD PROFILE — V2.7.1 FINAL DENSITY CORRECTION
+
+TARGET PROJECT: live TCRM project
+TARGET PAGE: /leads/2184
+BASELINE: V2.7 Reference Fidelity Polish must already be active
+PATCH URL:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-7-1-FINAL-DENSITY-CORRECTION.py
+
+IMPORTANT
+This is a FINAL visual-density micro-correction. Do NOT redesign the page again.
+The V2.7 Details and Form Data main-content design is approved and must stay structurally unchanged.
+
+STRICTLY FORBIDDEN
+- No backend changes
+- No API/query/mutation changes
+- No route changes
+- No permission changes
+- No database/data changes
+- No fake/demo lead data
+- No Save / Update / Assign / Delete / Handover / Mark Won / Mark Lost / Create Deal actions
+- No edits to existing V2.1–V2.7 CSS files
+- No source-project push
+- Do not touch Felfel, Stages & Notes, Reminders, Quotations logic or components
+
+ALLOWED FILE CHANGES ONLY
+1) client/src/pages/LeadProfile.tsx
+   - V2.7.1 marker + CSS import only
+2) client/src/lead-profile-premium-v2-7-1-final-density.css
+   - new CSS-only fidelity layer
+
+GOAL
+Correct the remaining visual-density mismatch against the approved reference:
+1. Hero must become genuinely content-driven instead of retaining a large blank lower canvas.
+2. At desktop 1920x1080, target roughly 25–30% lower Hero height than the current V2.7 runtime while preserving ALL visible controls and data with zero clipping/overlap.
+3. Identity / Lead Context / Actions remain the three Hero clusters.
+4. Status/meta and secondary-action rows remain usable but tighter.
+5. Overview Deal empty state becomes reference-scale and compact.
+6. On secondary tabs, empty Deal / Team / Notes supporting rail cards become compact and stop dominating the page.
+7. Details V2.7 dense structured rows remain unchanged in concept.
+8. Form Data V2.7 compact Q/A rows remain unchanged in concept.
+9. Team Dashboard Light/Dark palette stays exactly in the same visual family.
+10. V2.5 physical 72/28 main/rail split and RTL ordering remain intact.
+
+WORKFLOW
+
+A) PRE-FLIGHT — BEFORE APPLYING PATCH
+1. Confirm page /leads/2184 loads successfully.
+2. Confirm LeadProfile.tsx contains:
+   TCRM_LEAD_PROFILE_PREMIUM_V2_7_REFERENCE_FIDELITY_POLISH
+3. Confirm V2.7 CSS import exists.
+4. Record SHA256 hashes for these protected files/components before changing anything:
+   - server/** relevant lead/backend files if available
+   - client/src/components/FelfelMeetingsHub.tsx
+   - client/src/components/LeadReminders.tsx
+   - client/src/components/QuotationsTab.tsx
+   - client/src/components/TAMWorkflowCard.tsx
+   - client/src/components/SalesContractHandoverPanel.tsx
+   - any permission/role file previously protected in this workflow
+5. Set browser viewport exactly 1920x1080.
+6. Open /leads/2184, LIGHT MODE, scrollY=0.
+7. Measure the current V2.7 Hero with getBoundingClientRect():
+   - HERO_V27_TOP_PX
+   - HERO_V27_BOTTOM_PX
+   - HERO_V27_HEIGHT_PX
+   Record these BEFORE applying V2.7.1.
+
+B) APPLY PATCH
+1. Download the patch from the exact URL above.
+2. Inspect it.
+3. Run it from the live TCRM project root.
+4. Confirm output includes:
+   PATCH=YES (or PATCH=ALREADY_APPLIED)
+   LEAD_PROFILE_PREMIUM_V2_7_1=YES
+   FINAL_DENSITY_CORRECTION=YES
+5. Verify only the two allowed files changed.
+6. Build the project.
+7. Restart/reload the existing service using the same deployment method already used for TCRM.
+8. Confirm service online and HTTP 3001 = 200.
+
+C) POST-PATCH DOM / LAYOUT MEASUREMENTS
+At viewport 1920x1080, LIGHT MODE, /leads/2184, scrollY=0:
+1. Measure Hero again:
+   HERO_V271_TOP_PX
+   HERO_V271_BOTTOM_PX
+   HERO_V271_HEIGHT_PX
+2. Calculate:
+   HERO_HEIGHT_REDUCTION_PERCENT=
+3. Preferred acceptance range: approximately 25–30% reduction from V2.7.
+   A slightly smaller reduction is acceptable ONLY if further compression would clip/wrap controls incorrectly.
+4. Verify all of these are fully visible with no overlap:
+   - Avatar / name / lead status
+   - phone/meta values
+   - Lead Context card
+   - Call
+   - Call history
+   - Mark Won
+   - Mark Lost
+   - Edit
+   - status badges
+   - Handover
+   - Assign
+   - Delete
+5. Verify KPIs begin materially closer to the Hero than V2.7.
+6. Details tab: verify main/rail remains approximately 72/28.
+7. Form Data tab: verify main/rail remains approximately 72/28.
+8. Measure the first empty Deal supporting card and first empty Team supporting card on Details if present and report their rendered heights.
+
+D) VISUAL ACCEPTANCE — IMPORTANT
+Do NOT accept the result merely because the patch ran.
+Reject and adjust ONLY the new V2.7.1 CSS if any of these occur:
+- Hero still contains a large visually empty lower half.
+- Hero controls overlap, clip, truncate incorrectly, or disappear.
+- Identity / Context / Actions lose their clear three-cluster composition.
+- KPI row touches/overlaps the Hero.
+- Details rows revert to V2.6 floating tiles.
+- Form Data Q/A layout changes structurally.
+- 72/28 split regresses.
+- Right rail is still visually dominant due to oversized empty cards.
+- Dark Mode introduces white/light surfaces.
+- Typography becomes too tiny to read.
+
+If CSS tuning is needed, modify ONLY:
+client/src/lead-profile-premium-v2-7-1-final-density.css
+Do not touch older CSS files or JSX structure beyond the marker/import installed by the patch.
+
+E) SCREENSHOTS — SAME LEAD, SAME PAGE STATE
+Viewport screenshots must be 1920x1080 and true scrollY=0 where marked TOP.
+Capture exactly these 10 screenshots:
+
+1. Overview — Light — TOP 1920x1080
+2. Overview — Dark — TOP 1920x1080
+
+3. Details — Light — TOP 1920x1080
+4. Details — Light — TRUE FULL PAGE
+5. Details — Dark — TOP 1920x1080
+6. Details — Dark — TRUE FULL PAGE
+
+7. Form Data — Light — TOP 1920x1080
+8. Form Data — Light — TRUE FULL PAGE
+9. Form Data — Dark — TOP 1920x1080
+10. Form Data — Dark — TRUE FULL PAGE
+
+For TRUE FULL PAGE:
+- use an actual fullPage capture, not a renamed 1920x1080 viewport capture.
+- report PAGE_SCROLL_HEIGHT_PX for each full-page page.
+- if scrollHeight > 1080, the saved image height MUST also be >1080.
+
+Use filenames beginning:
+TCRM__LEAD-PROFILE__V2-7-1__...
+Upload all 10 screenshots to Google Drive and return the Drive file IDs.
+
+F) REGRESSION / SAFETY CHECK
+1. Recalculate protected-file hashes; all must match pre-patch values.
+2. Confirm no data changed.
+3. Confirm no source-project push was performed.
+4. Confirm build PASS, service running, HTTP 3001 = 200.
+
+FINAL REPORT FORMAT
+Return a compact KEY=VALUE report only, including at minimum:
+
+PATCH_FETCHED=YES
+PATCH=YES
+V2_7_BASE_PRESERVED=YES
+LEAD_PROFILE_PREMIUM_V2_7_1=YES
+FINAL_DENSITY_CORRECTION=YES
+HERO_CONTENT_DRIVEN_HEIGHT=YES
+HERO_DEAD_SPACE_CORRECTED=YES
+HERO_V27_HEIGHT_PX=
+HERO_V271_HEIGHT_PX=
+HERO_HEIGHT_REDUCTION_PERCENT=
+HERO_ALL_CONTROLS_VISIBLE=YES
+HERO_NO_OVERLAP=YES
+HERO_THREE_CLUSTER_COMPOSITION_PRESERVED=YES
+KPI_PROXIMITY_IMPROVED=YES
+OVERVIEW_EMPTY_RAIL_COMPACTED=YES
+SECONDARY_EMPTY_RAIL_COMPACTED=YES
+DETAILS_V2_7_DESIGN_PRESERVED=YES
+FORMDATA_V2_7_DESIGN_PRESERVED=YES
+V2_5_MAIN_72_RAIL_28_PRESERVED=YES
+RTL_PHYSICAL_ORDER_PRESERVED=YES
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES
+BACKEND_UNCHANGED=YES
+PERMISSIONS_UNCHANGED=YES
+BUSINESS_LOGIC_UNCHANGED=YES
+PROTECTED_FILES=PASS
+BUILD=PASS
+SERVICE=RUNNING
+HTTP_3001=200
+VISUAL_QA=DONE
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=10
+ACTUAL_SCREENSHOT_COUNT=10
+SAME_LEAD_ALL_CAPTURES=YES
+DATA_CHANGED=NO
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=client/src/pages/LeadProfile.tsx,client/src/lead-profile-premium-v2-7-1-final-density.css
+
+OVERVIEW_LIGHT_TOP_DRIVE_FILE_ID=
+OVERVIEW_DARK_TOP_DRIVE_FILE_ID=
+DETAILS_LIGHT_TOP_DRIVE_FILE_ID=
+DETAILS_LIGHT_FULL_DRIVE_FILE_ID=
+DETAILS_DARK_TOP_DRIVE_FILE_ID=
+DETAILS_DARK_FULL_DRIVE_FILE_ID=
+FORM_DATA_LIGHT_TOP_DRIVE_FILE_ID=
+FORM_DATA_LIGHT_FULL_DRIVE_FILE_ID=
+FORM_DATA_DARK_TOP_DRIVE_FILE_ID=
+FORM_DATA_DARK_FULL_DRIVE_FILE_ID=
+
+ERROR=NONE
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES
+
+STOP after the report. DO NOT PUSH.
