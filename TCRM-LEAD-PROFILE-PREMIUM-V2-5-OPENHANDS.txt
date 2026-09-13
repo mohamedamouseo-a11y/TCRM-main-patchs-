@@ -1,0 +1,178 @@
+TCRM LEAD PROFILE — V2.5 REMAINING TABS LAYOUT UNIFICATION
+
+TARGET
+https://sales.tamiyouzplatform.com/leads/2184
+
+IMPORTANT CONTEXT
+- V2.4 is already approved and pushed.
+- DO NOT redesign or alter the approved Overview tab.
+- This task is ONLY for the remaining tabs:
+  1) Details
+  2) Form Data
+  3) Felfel Meetings
+  4) Stages & Notes
+  5) Reminders
+  6) Quotations
+- Current defect: on non-Overview tabs, the main tab content is physically compressed into a narrow column while the legacy rail becomes visually dominant.
+- Required contract: main content ~72%, supporting legacy rail ~28%, with stable physical ordering under RTL.
+- Quotations Dark Mode also has a white empty-state surface that must be corrected.
+
+STRICT SAFETY
+- Do NOT change backend.
+- Do NOT change APIs.
+- Do NOT change database/data.
+- Do NOT change permissions.
+- Do NOT change business logic.
+- Do NOT change routes.
+- Do NOT alter functional handlers.
+- Do NOT Save/Update/Assign/Delete/Create any business data during QA.
+- Do NOT push the source project. User will push manually after visual approval.
+- Preserve all V2.4 behavior and Overview visuals.
+
+PATCH
+Fetch and run this patch from the LIVE TCRM project root:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-5-REMAINING-TABS-LAYOUT-UNIFICATION.py
+
+REQUIRED PATCH RESULT
+PATCH=YES (or PATCH=ALREADY_APPLIED)
+V2_4_BASE_PRESERVED=YES
+LEAD_PROFILE_PREMIUM_V2_5=YES
+REMAINING_TABS_LAYOUT_UNIFICATION=YES
+OVERVIEW_V2_4_UNTOUCHED=YES
+NON_OVERVIEW_MAIN_72_RAIL_28=YES
+RTL_PHYSICAL_COLUMN_ORDER_FIXED=YES
+DETAILS_WIDTH_RECOVERED=YES
+FORM_DATA_WIDTH_RECOVERED=YES
+FELFEL_MEETINGS_WIDTH_RECOVERED=YES
+STAGES_NOTES_WIDTH_RECOVERED=YES
+REMINDERS_WIDTH_RECOVERED=YES
+QUOTATIONS_WIDTH_RECOVERED=YES
+QUOTATIONS_DARK_SURFACE_FIX=YES
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES
+BACKEND_UNCHANGED=YES
+PERMISSIONS_UNCHANGED=YES
+BUSINESS_LOGIC_UNCHANGED=YES
+
+AFTER PATCH
+1. Inspect git diff.
+2. Confirm changed source files are ONLY:
+   - client/src/pages/LeadProfile.tsx
+   - client/src/lead-profile-premium-v2-5.css
+3. Build the frontend.
+4. Restart/reload only the required frontend service using the existing project procedure.
+5. Confirm service is running.
+6. Confirm HTTP port 3001 returns 200.
+7. Do not push.
+
+VISUAL QA — IMPORTANT
+Use the browser at 1920x1080.
+Use the SAME lead /leads/2184 for every screenshot.
+Do not modify any data.
+For each capture, set window.scrollTo(0,0) first and verify scrollY=0.
+
+A) OVERVIEW REGRESSION GUARD — 2 screenshots
+The Overview was already approved. Capture it only to prove V2.5 did not change it:
+- Light 1920x1080 top viewport
+- Dark 1920x1080 top viewport
+
+B) REMAINING TABS — 12 screenshots
+For each tab below capture Light + Dark at 1920x1080 TOP VIEWPORT:
+- Details
+- Form Data
+- Felfel Meetings
+- Stages & Notes
+- Reminders
+- Quotations
+
+VISUAL ACCEPTANCE CRITERIA
+For ALL six remaining tabs:
+- Main tab content is the dominant column, approximately 70–75% of the internal page width.
+- Legacy rail is the supporting column, approximately 25–30%.
+- No RTL reversal that makes the rail larger than the main content.
+- No narrow-tower main content.
+- No giant horizontal dead space.
+- Tab content/cards can use the full available main column width.
+- Rail cards remain readable and compact.
+- Hero, KPI row and tab navigation remain identical in composition to approved V2.4.
+- Light/Dark remain in the Team Dashboard color system.
+
+QUOTATIONS DARK MODE ACCEPTANCE
+- The quotation empty-state/card must NOT be white or light gray in Dark Mode.
+- It must use the same deep navy layered surface family as the rest of V2.4 Dark Mode.
+- Text and borders must remain readable.
+
+DO NOT CLAIM PASS IF
+- main column is still narrower than the legacy rail,
+- Details or Form Data look like a narrow mobile column on desktop,
+- Stages & Notes editor/workflow is compressed,
+- Reminders is compressed,
+- Quotations Dark Mode still contains a white card,
+- Overview changed visually from V2.4,
+- or any business data was modified.
+
+UPLOAD
+Upload all 14 screenshots to the same Google Drive QA location and return new Drive file IDs.
+
+FINAL REPORT FORMAT
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V2_4_BASE_PRESERVED=YES/NO
+LEAD_PROFILE_PREMIUM_V2_5=YES/NO
+REMAINING_TABS_LAYOUT_UNIFICATION=YES/NO
+OVERVIEW_V2_4_UNTOUCHED=YES/NO
+NON_OVERVIEW_MAIN_72_RAIL_28=YES/NO
+RTL_PHYSICAL_COLUMN_ORDER_FIXED=YES/NO
+DETAILS_WIDTH_RECOVERED=YES/NO
+FORM_DATA_WIDTH_RECOVERED=YES/NO
+FELFEL_MEETINGS_WIDTH_RECOVERED=YES/NO
+STAGES_NOTES_WIDTH_RECOVERED=YES/NO
+REMINDERS_WIDTH_RECOVERED=YES/NO
+QUOTATIONS_WIDTH_RECOVERED=YES/NO
+QUOTATIONS_DARK_SURFACE_FIX=YES/NO
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<status>
+VISUAL_QA=DONE/FAILED
+CAPTURE_MODE=TOP_VIEWPORT_1920x1080
+SCREENSHOT_COUNT=14
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO/YES
+FILES_CHANGED=<comma-separated files>
+
+OVERVIEW_LIGHT_FILENAME=<name>
+OVERVIEW_LIGHT_DRIVE_FILE_ID=<id>
+OVERVIEW_DARK_FILENAME=<name>
+OVERVIEW_DARK_DRIVE_FILE_ID=<id>
+
+DETAILS_LIGHT_FILENAME=<name>
+DETAILS_LIGHT_DRIVE_FILE_ID=<id>
+DETAILS_DARK_FILENAME=<name>
+DETAILS_DARK_DRIVE_FILE_ID=<id>
+FORM_DATA_LIGHT_FILENAME=<name>
+FORM_DATA_LIGHT_DRIVE_FILE_ID=<id>
+FORM_DATA_DARK_FILENAME=<name>
+FORM_DATA_DARK_DRIVE_FILE_ID=<id>
+FELFEL_MEETINGS_LIGHT_FILENAME=<name>
+FELFEL_MEETINGS_LIGHT_DRIVE_FILE_ID=<id>
+FELFEL_MEETINGS_DARK_FILENAME=<name>
+FELFEL_MEETINGS_DARK_DRIVE_FILE_ID=<id>
+STAGES_NOTES_LIGHT_FILENAME=<name>
+STAGES_NOTES_LIGHT_DRIVE_FILE_ID=<id>
+STAGES_NOTES_DARK_FILENAME=<name>
+STAGES_NOTES_DARK_DRIVE_FILE_ID=<id>
+REMINDERS_LIGHT_FILENAME=<name>
+REMINDERS_LIGHT_DRIVE_FILE_ID=<id>
+REMINDERS_DARK_FILENAME=<name>
+REMINDERS_DARK_DRIVE_FILE_ID=<id>
+QUOTATIONS_LIGHT_FILENAME=<name>
+QUOTATIONS_LIGHT_DRIVE_FILE_ID=<id>
+QUOTATIONS_DARK_FILENAME=<name>
+QUOTATIONS_DARK_DRIVE_FILE_ID=<id>
+
+ERROR=NONE/<exact error>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
