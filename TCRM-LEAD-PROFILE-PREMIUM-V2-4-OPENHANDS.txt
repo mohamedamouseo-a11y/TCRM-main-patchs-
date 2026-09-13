@@ -1,0 +1,363 @@
+TCRM — LEAD PROFILE PREMIUM V2.4
+REFERENCE FIDELITY PASS
+
+YOU ARE ALREADY INSIDE THE CURRENT LIVE TCRM PROJECT DIRECTORY.
+
+CURRENT BASE:
+Lead Profile Premium V2.3 is already applied locally and is NOT pushed yet.
+This is expected.
+Do NOT reject LeadProfile.tsx merely because it is dirty relative to git if it contains:
+TCRM_LEAD_PROFILE_PREMIUM_V2_3_REGRESSION_RECOVERY
+
+GOAL:
+Apply V2.4 Reference Fidelity Pass to the CURRENT V2.3 runtime.
+The approved Lead Profile concept is the STRUCTURAL / COMPOSITION reference.
+The Team Dashboard remains the PRIMARY COLOR-SYSTEM reference.
+
+TARGET ROUTE:
+/leads/:id
+
+VISUAL QA LEAD:
+/leads/2175
+
+PATCH:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-4-REFERENCE-FIDELITY-PASS.py
+
+PATCH REPO:
+https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+
+==================================================
+REFERENCE FIDELITY — NON-NEGOTIABLE VISUAL TARGET
+==================================================
+
+This is NOT a generic polish pass.
+The target is the approved Lead Profile reference composition.
+
+1) HERO — THREE INTENTIONAL CLUSTERS
+
+LEFT / IDENTITY CLUSTER:
+- strong avatar / identity anchor
+- lead name visually dominant
+- existing classification / status badges
+- existing real contact / metadata only
+- do NOT invent a portrait or new customer facts
+
+CENTER / CONTEXT CLUSTER:
+- quote/context treatment like the approved reference
+- MUST use existing loaded lead data only
+- preferred data order is existing interest / introduced service / notes / business profile / campaign
+- if no context data exists, a neutral empty-state sentence is acceptable
+- do NOT fabricate interest, intent, company, title, email or quote text
+
+RIGHT / ACTION CLUSTER:
+- existing Call / InnoCall / edit / won / lost / existing actions remain functional
+- compact intentional grouping
+- no giant dead middle area
+
+The Hero must feel information-rich and balanced across the width.
+Do NOT collapse or hide it.
+
+2) KPI STRIP
+
+Keep exactly the current data-backed five-signal concept:
+- Lead Score
+- SLA Status
+- Last Contact
+- Next Action / Current Stage
+- Lead Source
+
+Visual requirements:
+- stronger icon presence
+- labels readable
+- primary value/state visually dominant
+- secondary text readable
+- five cards should read as a deliberate command strip, not miniature tiles
+
+3) NAVIGATION
+
+Keep all existing tabs and functionality.
+Increase legibility and hierarchy only.
+Do NOT remove functional tabs.
+
+4) MAIN OVERVIEW COMMAND CENTER
+
+At 1920px desktop, target roughly:
+- LEFT = ~30%
+- CENTER = ~40%
+- RIGHT = ~30%
+
+LEFT:
+- Contact & Business Information
+- Additional Information
+- readable label/value rows
+- compact but not tiny
+
+CENTER:
+- Activity Timeline is the visual center of gravity
+- Notes below it
+- timeline must be full-width within center column
+- event icon / line / text / timestamps should be clearly readable
+- height should follow actual content; do NOT add artificial empty height
+
+RIGHT:
+- Deal / Opportunity
+- Ownership & Assignment
+- Upcoming Tasks & Follow-ups
+- compact stacked executive cards
+- no narrow tower cards
+- no giant unused horizontal spaces
+
+5) COLOR SYSTEM
+
+DO NOT invent a new palette.
+Preserve Team Dashboard premium family.
+
+LIGHT:
+- pearl / icy-blue / soft-lilac surfaces
+- restrained indigo / blue / violet accents
+- visible surface depth and borders
+- not flat washed-out white
+
+DARK:
+- deep layered navy surfaces
+- restrained luminous blue / indigo / violet edges
+- not flat black
+- no excessive neon
+
+==================================================
+CRITICAL WORKFLOW RULES
+==================================================
+
+The CURRENT directory is the live TCRM application.
+
+DO NOT clone the TCRM application repo.
+DO NOT git pull the application repo.
+DO NOT git fetch the application repo.
+DO NOT checkout/reset/rebase/merge/switch the application repo.
+DO NOT commit the application repo.
+DO NOT push the application repo.
+
+The user performs the application Push manually after ChatGPT visual approval.
+
+UNRELATED dirty working-tree files are ALLOWED.
+Do NOT stop because unrelated files are dirty.
+Do NOT clean, stash, reset or alter unrelated files.
+
+The LeadProfile.tsx file is EXPECTED to be locally modified by V1/V2/V2.1/V2.2/V2.3.
+Do not reject it if V2.3 marker is present.
+
+==================================================
+PROTECTED FILES
+==================================================
+
+Before patching, record sha256 for these files if present:
+
+client/src/pages/AgentDashboard.tsx
+client/src/pages/TeamDashboard.tsx
+client/src/pages/LeadsList.tsx
+client/src/components/InnoCallWebCallWidget.tsx
+server/security/permissionEngine.ts
+server/security/corePermissionPolicy.ts
+
+After patch/build/restart, verify their hashes are identical.
+Do NOT modify any of them.
+
+==================================================
+APPLY PATCH
+==================================================
+
+PROJECT_ROOT="$(pwd)"
+
+rm -rf /tmp/tcrm-lead-profile-v24-patches
+
+git clone --depth 1 \
+  https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git \
+  /tmp/tcrm-lead-profile-v24-patches
+
+cd "$PROJECT_ROOT"
+
+python3 /tmp/tcrm-lead-profile-v24-patches/TCRM-LEAD-PROFILE-PREMIUM-V2-4-REFERENCE-FIDELITY-PASS.py
+
+Verify markers in client/src/pages/LeadProfile.tsx:
+
+TCRM_LEAD_PROFILE_PREMIUM_V2_3_REGRESSION_RECOVERY
+TCRM_LEAD_PROFILE_PREMIUM_V2_4_REFERENCE_FIDELITY_PASS
+
+Verify V2.4 file exists:
+
+client/src/lead-profile-premium-v2-4.css
+
+Expected files changed by THIS patch:
+
+client/src/pages/LeadProfile.tsx
+client/src/lead-profile-premium-v2-4.css
+
+Do NOT alter backend/business logic.
+Do NOT remove V2.1/V2.2/V2.3 CSS imports.
+
+==================================================
+BUILD + SERVICE
+==================================================
+
+Run:
+
+npm run build
+
+If build fails:
+STOP.
+Do NOT push.
+Return the real build error.
+
+Restart ONLY the existing TCRM PM2 service.
+Prefer the currently running TCRM process name; if it is still `tamiyouz-crm`, restart that exact process.
+Do not create a duplicate PM2 service.
+
+Verify:
+
+curl -I http://127.0.0.1:3001
+
+Expected HTTP status:
+200
+
+==================================================
+VISUAL QA — READ ONLY
+==================================================
+
+Use the existing authenticated browser session.
+
+Open:
+https://sales.tamiyouzplatform.com/leads/2175
+
+DO NOT edit the lead.
+DO NOT change stage.
+DO NOT add activity.
+DO NOT create deal.
+DO NOT assign owner.
+DO NOT save anything.
+DO NOT modify any business data.
+
+Viewport:
+1920x1080
+
+IMPORTANT:
+Before EACH screenshot run:
+window.scrollTo(0, 0)
+
+Verify:
+window.scrollY === 0
+
+Wait for layout/fonts to settle before capture.
+
+CAPTURE ONLY TWO SCREENSHOTS:
+
+1) LIGHT MODE
+Filename:
+TCRM__LEAD-PROFILE__V2-4__REFERENCE-FIDELITY__LIGHT__1920x1080.png
+
+2) DARK MODE
+Filename:
+TCRM__LEAD-PROFILE__V2-4__REFERENCE-FIDELITY__DARK__1920x1080.png
+
+Same lead.
+Same Overview tab.
+Same page state.
+No dialogs/dropdowns.
+
+==================================================
+MANDATORY PIXEL CHECK BEFORE ACCEPTING SCREENSHOT
+==================================================
+
+The TOP viewport must visibly contain:
+
+- full Hero card
+- visible identity cluster
+- visible center Lead Context cluster
+- visible action cluster
+- all five KPI cards
+- horizontal navigation strip
+- top of the 3-zone command center
+
+Reject and troubleshoot the runtime if any of the following are true:
+
+- Hero is missing
+- KPI strip is missing
+- Hero has a giant empty middle
+- center context cluster collapses to near-zero width
+- Timeline becomes a narrow tower
+- right rail becomes a narrow tower
+- giant horizontal dead space reappears
+- Overview is not visibly 3-zone on desktop
+- text is microscopic / materially less readable than V2.3
+
+==================================================
+GOOGLE DRIVE
+==================================================
+
+Upload both screenshots using the existing working uploader:
+
+node /home/openhands/.openhands/qa-tools/67-gdrive-root-upload.mjs
+
+Destination:
+MY_DRIVE_ROOT
+
+Return NEW Google Drive file IDs.
+Do not upload screenshots to GitHub.
+
+==================================================
+FINAL VERIFICATION
+==================================================
+
+Verify protected-file hashes match pre-patch values.
+Verify no business data changed.
+Verify source application repo was NOT pushed.
+
+RETURN ONLY:
+
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V2_3_BASE_PRESERVED=YES/NO
+LEAD_PROFILE_PREMIUM_V2_4=YES/NO
+REFERENCE_FIDELITY_PASS=YES/NO
+HERO_THREE_CLUSTER_COMPOSITION=YES/NO
+HERO_IDENTITY_CLUSTER_VISIBLE=YES/NO
+HERO_CONTEXT_CLUSTER_VISIBLE=YES/NO
+HERO_ACTION_CLUSTER_VISIBLE=YES/NO
+HERO_CONTEXT_USES_EXISTING_DATA_ONLY=YES/NO
+NO_HERO_GIANT_DEAD_SPACE=YES/NO
+KPI_REFERENCE_SCALE=YES/NO
+FIVE_KPI_CARDS_VISIBLE=YES/NO
+OVERVIEW_30_40_30=YES/NO
+TIMELINE_VISUAL_DENSITY_UPGRADED=YES/NO
+TIMELINE_FULL_CENTER_WIDTH=YES/NO
+INFORMATION_DENSITY_UPGRADED=YES/NO
+LIGHT_PEARL_DEPTH_PRESERVED=YES/NO
+DARK_NAVY_LAYERING_PRESERVED=YES/NO
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES/NO
+LEGACY_RAIL_PRESERVED_OTHER_TABS=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<STATUS>
+VISUAL_QA=DONE/FAILED
+CAPTURE_MODE=TRUE_TOP_VIEWPORT_1920x1080
+SCREENSHOT_COUNT=2/0
+SCROLL_Y_LIGHT=0/<VALUE>
+LIGHT_SCREENSHOT_FILENAME=
+LIGHT_IMAGE_WIDTH=
+LIGHT_IMAGE_HEIGHT=
+LIGHT_DRIVE_FILE_ID=
+SCROLL_Y_DARK=0/<VALUE>
+DARK_SCREENSHOT_FILENAME=
+DARK_IMAGE_WIDTH=
+DARK_IMAGE_HEIGHT=
+DARK_DRIVE_FILE_ID=
+SAME_LEAD_BOTH_THEMES=YES/NO
+SAME_PAGE_STATE_BOTH_THEMES=YES/NO
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
