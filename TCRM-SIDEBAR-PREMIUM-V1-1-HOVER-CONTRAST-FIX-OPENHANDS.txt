@@ -1,0 +1,184 @@
+TCRM SIDEBAR PREMIUM V1.1 — HOVER CONTRAST FIX
+
+TARGET PROJECT: the connected live/source TCRM project (NOT the patch repository).
+PATCH URL:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SIDEBAR-PREMIUM-V1-1-HOVER-CONTRAST-FIX.py
+
+GOAL
+Fix the real runtime sidebar hover regression shown by the user: in LIGHT MODE, when the mouse hovers a non-active sidebar item such as Chat, the hover surface can become white while the label/icon also become white, making the item unreadable.
+
+THIS IS A VISUAL INTERACTION MICRO-PATCH ONLY.
+Do not redesign routes, navigation structure, permissions, data, backend, business logic, Sales children, or the V1 premium sidebar composition.
+
+MANDATORY SAFETY
+- DO NOT push the source project.
+- DO NOT change backend files.
+- DO NOT change permissions or route visibility.
+- DO NOT change any sidebar href.
+- DO NOT change labels/data.
+- DO NOT change business logic.
+- DO NOT invent additional UI.
+- Preserve the current CRM Sidebar Premium V1 that is already pushed.
+- Apply only the V1.1 patch above.
+
+WORKFLOW
+1. Confirm the current source contains marker:
+   TCRM_CRM_SIDEBAR_PREMIUM_V1_REFERENCE_MATCH
+2. Record git status and current hashes for protected/backend files before applying the patch.
+3. Download the patch from the exact URL above.
+4. Inspect it before execution.
+5. Run it from the TCRM project root.
+6. Confirm marker exists after patch:
+   TCRM_CRM_SIDEBAR_PREMIUM_V1_1_HOVER_CONTRAST_FIX
+7. Confirm new file exists:
+   client/src/crm-sidebar-premium-v1-1-hover-contrast.css
+8. Confirm CRMLayout imports both:
+   ../crm-sidebar-premium-v1.css
+   ../crm-sidebar-premium-v1-1-hover-contrast.css
+9. Build the frontend/project using the project's existing production build process.
+10. Restart only the existing TCRM service using its current process manager/service method.
+11. Verify HTTP 3001 = 200.
+
+VISUAL QA — IMPORTANT
+Use a real browser at 1920x1080. The test must use actual mouse hover state via browser automation (move the pointer over the row and keep it there while capturing). A normal screenshot without hover is NOT sufficient.
+
+Set language to ENGLISH for the main QA so the sidebar is on the LEFT and labels are easy to compare.
+
+A) LIGHT MODE — CHAT HOVER (critical regression test)
+- Open /dashboard.
+- Ensure Dashboard remains the active route.
+- Move the mouse over the Chat sidebar row without clicking it.
+- Keep hover active.
+- Capture screenshot:
+  TCRM__SIDEBAR-V1-1__DASHBOARD__LIGHT__CHAT-HOVER__1920x1080.png
+- Read computed style from the hovered Chat row and its label/icon.
+- The hovered surface MUST NOT be pure white (#fff / rgb(255,255,255)).
+- The Chat label and icon MUST NOT be white in Light Mode.
+- Expected direction: pale blue/lilac tinted background + dark blue/indigo text/icon.
+
+B) LIGHT MODE — SETTINGS ACTIVE + CHAT HOVER
+- Open /settings?tab=developerHub.
+- Settings must stay active with the violet-blue active capsule.
+- Hover Chat without clicking.
+- Capture:
+  TCRM__SIDEBAR-V1-1__SETTINGS__LIGHT__CHAT-HOVER__1920x1080.png
+- This screenshot must prove the active Settings capsule remains unchanged while a separate non-active row gets a readable light hover.
+
+C) LIGHT MODE — SALES GROUP HOVER
+- Keep Light Mode.
+- Make Sales visible/expanded if permissions allow.
+- Hover the Sales group header.
+- Capture:
+  TCRM__SIDEBAR-V1-1__LIGHT__SALES-GROUP-HOVER__1920x1080.png
+- Sales header label/icon must remain readable and use a tinted hover, never white-on-white.
+
+D) LIGHT MODE — SALES CHILD HOVER
+- With Sales expanded, hover a NON-ACTIVE Sales child such as Sales Funnel or Calendar.
+- Capture:
+  TCRM__SIDEBAR-V1-1__LIGHT__SALES-CHILD-HOVER__1920x1080.png
+- Child label/icon must remain readable.
+
+E) DARK MODE — CHAT HOVER REGRESSION GUARD
+- Open /dashboard in Dark Mode.
+- Hover Chat without clicking.
+- Capture:
+  TCRM__SIDEBAR-V1-1__DASHBOARD__DARK__CHAT-HOVER__1920x1080.png
+- Expect deep blue/violet hover surface + bright readable text/icon.
+
+F) COLLAPSED LIGHT MODE HOVER
+- Return to Light Mode.
+- Collapse the desktop sidebar.
+- Hover a non-active sidebar icon.
+- Capture:
+  TCRM__SIDEBAR-V1-1__LIGHT__COLLAPSED-ICON-HOVER__1920x1080.png
+- Icon must remain visible with a tinted hover target.
+
+G) RTL LIGHT MODE HOVER
+- Expand sidebar.
+- Switch language to Arabic / RTL.
+- Hover Chat or the equivalent visible chat row without clicking.
+- Capture:
+  TCRM__SIDEBAR-V1-1__RTL__LIGHT__CHAT-HOVER__1920x1080.png
+- Confirm RTL geometry remains intact and hover remains readable.
+
+H) LIGHT MODE BASELINE (no hover)
+- Return to English, Light Mode, expanded sidebar.
+- Open /settings?tab=developerHub.
+- Move pointer into the main content so no sidebar item is hovered.
+- Capture:
+  TCRM__SIDEBAR-V1-1__SETTINGS__LIGHT__BASELINE__1920x1080.png
+- This is the regression guard proving V1 appearance was preserved outside hover.
+
+EXPECTED SCREENSHOT COUNT = 8
+Upload all 8 screenshots to Google Drive and return Drive file IDs.
+
+COMPUTED STYLE CHECKS
+For the Chat row in LIGHT MODE while hovered, return exact browser-computed values:
+LIGHT_CHAT_HOVER_BACKGROUND_COLOR=
+LIGHT_CHAT_HOVER_COLOR=
+LIGHT_CHAT_HOVER_LABEL_COLOR=
+LIGHT_CHAT_HOVER_ICON_COLOR=
+
+Also report:
+LIGHT_CHAT_HOVER_BACKGROUND_IS_PURE_WHITE=NO
+LIGHT_CHAT_HOVER_TEXT_IS_WHITE=NO
+LIGHT_CHAT_HOVER_READABLE=YES
+DARK_CHAT_HOVER_READABLE=YES
+ACTIVE_SETTINGS_CAPSULE_PRESERVED=YES
+SALES_TREE_PRESERVED=YES
+COLLAPSED_STATE_PRESERVED=YES
+RTL_PRESERVED=YES
+
+PROTECTED / REGRESSION CHECKS
+- Compare protected/backend hashes with the pre-patch values.
+- Confirm no backend change.
+- Confirm no route/permission/business logic change.
+- Confirm no data change.
+- Confirm source project was NOT pushed.
+
+FINAL RESPONSE — RETURN ONLY THIS REPORT FORMAT
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V1_BASE_PRESERVED=YES/NO
+CRM_SIDEBAR_PREMIUM_V1_1=YES/NO
+HOVER_CONTRAST_FIX=YES/NO
+LIGHT_WHITE_ON_WHITE_HOVER_FIXED=YES/NO
+LIGHT_CHAT_HOVER_BACKGROUND_COLOR=
+LIGHT_CHAT_HOVER_COLOR=
+LIGHT_CHAT_HOVER_LABEL_COLOR=
+LIGHT_CHAT_HOVER_ICON_COLOR=
+LIGHT_CHAT_HOVER_BACKGROUND_IS_PURE_WHITE=YES/NO
+LIGHT_CHAT_HOVER_TEXT_IS_WHITE=YES/NO
+LIGHT_CHAT_HOVER_READABLE=YES/NO
+DARK_CHAT_HOVER_READABLE=YES/NO
+ACTIVE_SETTINGS_CAPSULE_PRESERVED=YES/NO
+SALES_TREE_PRESERVED=YES/NO
+COLLAPSED_STATE_PRESERVED=YES/NO
+RTL_PRESERVED=YES/NO
+ROUTES_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/NOT_RUNNING
+HTTP_3001=200/<OTHER>
+VISUAL_QA=DONE/NOT_DONE
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=8
+ACTUAL_SCREENSHOT_COUNT=
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO/YES
+FILES_CHANGED=
+DASHBOARD_LIGHT_CHAT_HOVER_DRIVE_FILE_ID=
+SETTINGS_LIGHT_CHAT_HOVER_DRIVE_FILE_ID=
+LIGHT_SALES_GROUP_HOVER_DRIVE_FILE_ID=
+LIGHT_SALES_CHILD_HOVER_DRIVE_FILE_ID=
+DASHBOARD_DARK_CHAT_HOVER_DRIVE_FILE_ID=
+LIGHT_COLLAPSED_ICON_HOVER_DRIVE_FILE_ID=
+RTL_LIGHT_CHAT_HOVER_DRIVE_FILE_ID=
+SETTINGS_LIGHT_BASELINE_DRIVE_FILE_ID=
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
+
+DO NOT PUSH.
