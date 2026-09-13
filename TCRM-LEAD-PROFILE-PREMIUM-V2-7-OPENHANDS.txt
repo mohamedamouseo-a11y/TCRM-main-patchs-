@@ -1,0 +1,192 @@
+TCRM — LEAD PROFILE V2.7 REFERENCE FIDELITY POLISH
+
+TARGET
+- Project: live TCRM source project
+- Runtime lead: /leads/2184
+- Base: PUSHED V2.6
+- Goal: polish reference fidelity only. Do NOT redesign business behavior.
+
+PATCH
+Fetch and apply exactly this patch from the live TCRM project root:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-7-REFERENCE-FIDELITY-POLISH.py
+
+Run:
+python3 TCRM-LEAD-PROFILE-PREMIUM-V2-7-REFERENCE-FIDELITY-POLISH.py
+
+STRICT SAFETY RULES
+1. DO NOT push source project.
+2. DO NOT change backend, database, TRPC queries/mutations, permissions, routes or business logic.
+3. DO NOT invent lead data, labels, questions, answers, activities, deals or source metadata.
+4. DO NOT modify Overview information architecture, V2.5 72/28 main/rail contract, Felfel, Stages & Notes, Reminders or Quotations.
+5. V2.7 is a visual fidelity CSS layer only. If the patch attempts anything outside LeadProfile.tsx import/marker + the new V2.7 CSS file, STOP and report.
+6. Preserve RTL and LTR.
+7. Preserve Team Dashboard color system.
+8. Preserve all existing lead actions and edit behavior.
+
+REFERENCE FIDELITY TARGET
+The approved reference is an executive lead command center with:
+- compact high-information Hero, not a tall banner with dead space;
+- identity / lead context / actions distributed as three balanced clusters;
+- KPI row directly below Hero;
+- useful tab content visible sooner in the 1920x1080 viewport;
+- calm section headers, not large saturated blue-purple bars;
+- dense readable structured details rather than many floating card tiles;
+- compact Form Data Q/A rows that preserve the real captured questions and answers;
+- Light pearl/blue depth and Dark navy layering consistent with Team Dashboard;
+- no giant empty surfaces and no white cards in Dark Mode.
+
+EXPECTED VISUAL CHANGES
+A) COMMON HERO
+- reduce vertical whitespace by roughly 15–20% relative to V2.6 where possible;
+- preserve avatar/name/meta, Lead Context, Call/History/Won/Lost/Edit actions and current badges/actions;
+- maintain a three-cluster desktop composition;
+- do not remove functionality;
+- do not make text cramped or clipped.
+
+B) DETAILS
+- preserve all real fields and current values;
+- keep 2-column desktop information organization;
+- field presentation should read as dense structured rows with subtle separators, NOT a wall of individual raised tiles;
+- Sales Information remains visually distinct but compact;
+- edit mode stays 2-column on desktop and fully functional;
+- no field may disappear.
+
+C) FORM DATA
+- preserve every real customFieldsData entry and sourceMetadata entry;
+- preserve numbering and Q/A clarity;
+- reduce vertical padding and card heaviness;
+- preserve long Arabic/English question wrapping;
+- preserve Source Information and Campaign Touchpoints when present;
+- no fake answers.
+
+PRE-PATCH VALIDATION
+Before applying:
+- confirm client/src/pages/LeadProfile.tsx contains:
+  TCRM_LEAD_PROFILE_PREMIUM_V2_6_DETAILS_FORMDATA_REDESIGN
+  import "../lead-profile-premium-v2-6-details-formdata.css";
+- record git status.
+- record hashes of protected files that must not change:
+  server/**
+  drizzle/**
+  client/src/components/QuotationsTab.tsx
+  client/src/components/FelfelMeetingsHub.tsx
+  client/src/components/LeadReminders.tsx
+  client/src/components/RichTextEditor.tsx
+- do not modify deployment configuration.
+
+POST-PATCH TECHNICAL QA
+- verify patch output contains PATCH=YES and LEAD_PROFILE_PREMIUM_V2_7=YES.
+- verify only these source files changed:
+  client/src/pages/LeadProfile.tsx
+  client/src/lead-profile-premium-v2-7-reference-fidelity.css
+- verify protected hashes are unchanged.
+- run the normal frontend/project build used by this repo.
+- ensure service remains running using the existing project service workflow.
+- verify HTTP 3001 = 200.
+
+VISUAL QA
+Use the real runtime at /leads/2184.
+Viewport must be exactly 1920x1080 for TOP captures.
+For every TOP capture run window.scrollTo(0,0) and confirm scrollY=0.
+Use the SAME lead and SAME page state for Light and Dark.
+Do not edit/save any data during screenshot QA except temporarily entering edit mode without saving.
+
+Capture EXACTLY 12 screenshots:
+
+1. OVERVIEW — LIGHT — TOP 1920x1080
+2. OVERVIEW — DARK — TOP 1920x1080
+
+3. DETAILS — LIGHT — TOP 1920x1080
+4. DETAILS — LIGHT — TRUE FULL PAGE
+5. DETAILS — DARK — TOP 1920x1080
+6. DETAILS — DARK — TRUE FULL PAGE
+
+7. FORM DATA — LIGHT — TOP 1920x1080
+8. FORM DATA — LIGHT — TRUE FULL PAGE
+9. FORM DATA — DARK — TOP 1920x1080
+10. FORM DATA — DARK — TRUE FULL PAGE
+
+11. DETAILS EDIT MODE — LIGHT — TOP 1920x1080
+12. DETAILS EDIT MODE — DARK — TOP 1920x1080
+
+IMPORTANT FULL-PAGE RULE
+- TRUE FULL PAGE means browser fullPage capture, not another 1920x1080 viewport screenshot.
+- Report the actual pixel height.
+- If document height is <=1080, report FULL_PAGE_HEIGHT=1080 and state PAGE_NOT_TALLER_THAN_VIEWPORT=YES.
+- Do not label a normal viewport screenshot FULL-PAGE when the page is taller than the viewport.
+
+SCREENSHOT ACCEPTANCE CHECKS
+OVERVIEW
+- intended Hero compaction is visible;
+- Hero/KPI/Tabs remain aligned and readable;
+- no regression in the 30/40/30 Overview composition;
+- in 1920x1080, more useful content should be visible vertically than the V2.6 baseline, without clipping.
+
+DETAILS
+- main content remains approximately 72%, rail approximately 28%;
+- Details rows are compact and calm, not raised tile-heavy;
+- text is readable and fields do not collide;
+- Sales Information does not become a giant empty panel;
+- Edit mode fields are 2-column on desktop, with no overlap, clipped dropdown or hidden field.
+
+FORM DATA
+- Q/A list is visibly denser than V2.6;
+- numbered items remain readable;
+- long labels wrap cleanly;
+- Source Information remains readable;
+- no question/answer is fabricated, removed or reordered by CSS.
+
+DARK MODE
+- no white surface regression;
+- header and row layers use navy depth consistent with Team Dashboard;
+- contrast remains accessible/readable.
+
+DO NOT PUSH.
+STOP after Visual QA and upload screenshots to Google Drive.
+
+FINAL REPORT FORMAT
+Return exactly these status fields first:
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V2_6_BASE_PRESERVED=YES/NO
+LEAD_PROFILE_PREMIUM_V2_7=YES/NO
+REFERENCE_FIDELITY_POLISH=YES/NO
+HERO_VERTICAL_DENSITY_POLISHED=YES/NO
+HERO_THREE_CLUSTER_COMPOSITION_PRESERVED=YES/NO
+HERO_DEAD_SPACE_REDUCED=YES/NO
+DETAILS_DENSE_STRUCTURED_ROWS=YES/NO
+DETAILS_TILE_WALL_REDUCED=YES/NO
+DETAILS_EDIT_MODE_VALIDATED=YES/NO
+FORMDATA_DENSITY_POLISHED=YES/NO
+SECTION_HEADERS_REFERENCE_TONED=YES/NO
+V2_5_MAIN_72_RAIL_28_PRESERVED=YES/NO
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES/NO
+NO_INVENTED_LEAD_DATA=YES/NO
+OVERVIEW_STRUCTURE_UNCHANGED=YES/NO
+FELFEL_UNCHANGED=YES/NO
+STAGES_NOTES_UNCHANGED=YES/NO
+REMINDERS_UNCHANGED=YES/NO
+QUOTATIONS_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/NOT_RUNNING
+HTTP_3001=200/<actual>
+VISUAL_QA=DONE/NOT_DONE
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=12
+ACTUAL_SCREENSHOT_COUNT=<number>
+SAME_LEAD_ALL_CAPTURES=YES/NO
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO/YES
+FILES_CHANGED=<comma-separated>
+
+Then report all 12 screenshot filenames, actual width/height, scrollY for TOP captures, and Google Drive file IDs.
+
+End with:
+ERROR=NONE
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES
+
+If anything fails, do not fake PASS. Report the exact error and stop without pushing.
