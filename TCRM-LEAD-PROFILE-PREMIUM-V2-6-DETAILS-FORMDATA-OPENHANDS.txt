@@ -1,0 +1,171 @@
+You are working on the live TCRM project.
+
+GOAL
+Apply the approved V2.6 Details + Form Data redesign patch, then perform visual QA only.
+The redesign is based on the REAL V2.5 runtime screenshots from /leads/2184. Do not invent any lead data, fake fields, fake answers, new backend data, or placeholder business content.
+
+PATCH URL
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-6-DETAILS-FORMDATA-REDESIGN.py
+
+STRICT RULES
+- DO NOT push to the source project.
+- DO NOT change backend code.
+- DO NOT change APIs, queries, mutations, permissions, routes, database, or business logic.
+- DO NOT alter Overview, Felfel Meetings, Stages & Notes, Reminders, or Quotations visual structure.
+- DO NOT replace real lead values with demo/fake values.
+- DO NOT fabricate email/company/job-title/form answers that are not present in runtime data.
+- Preserve V2.5 72% main / 28% rail layout.
+- Preserve Team Dashboard color system.
+- If patch preconditions fail, STOP and report the exact missing anchor. Do not improvise.
+
+TARGET
+https://sales.tamiyouzplatform.com/leads/2184
+
+PHASE 1 — SAFETY / BASELINE
+1. Go to the live TCRM project root.
+2. Confirm these exist before applying:
+   - client/src/pages/LeadProfile.tsx
+   - client/src/lead-profile-premium-v2-5.css
+3. Confirm LeadProfile.tsx contains:
+   - TCRM_LEAD_PROFILE_PREMIUM_V2_5_REMAINING_TABS_LAYOUT_UNIFICATION
+   - import "../lead-profile-premium-v2-5.css";
+4. Record SHA256 hashes of these protected files before patch:
+   - client/src/components/LeadReminders.tsx
+   - client/src/components/QuotationsTab.tsx
+   - client/src/components/FelfelMeetingsHub.tsx
+   - client/src/components/RichTextEditor.tsx
+   - client/src/components/TAMWorkflowCard.tsx
+   - client/src/components/SalesContractHandoverPanel.tsx
+
+PHASE 2 — APPLY V2.6
+5. Download the patch from the PATCH URL.
+6. Run it from the live TCRM project root with Python 3.
+7. Confirm output includes:
+   PATCH=YES
+   V2_5_BASE_PRESERVED=YES
+   LEAD_PROFILE_PREMIUM_V2_6=YES
+   DETAILS_FORMDATA_REDESIGN=YES
+   REAL_RUNTIME_SCREENSHOTS_USED_AS_VISUAL_BASIS=YES
+   DETAILS_FIELD_GRID_REDESIGNED=YES
+   DETAILS_SALES_SECTION_REDESIGNED=YES
+   DETAILS_EDIT_MODE_GRID_POLISHED=YES
+   FORMDATA_QUESTION_ANSWER_LAYOUT_REDESIGNED=YES
+   FORMDATA_SOURCE_CARD_REDESIGNED=YES
+   NO_INVENTED_LEAD_DATA=YES
+   OVERVIEW_UNCHANGED=YES
+   V2_5_MAIN_72_RAIL_28_PRESERVED=YES
+   BACKEND_UNCHANGED=YES
+   BUSINESS_LOGIC_UNCHANGED=YES
+8. Confirm only these source files changed:
+   - client/src/pages/LeadProfile.tsx
+   - client/src/lead-profile-premium-v2-6-details-formdata.css
+
+PHASE 3 — BUILD / RUNTIME
+9. Run the normal frontend build used by this project.
+10. Restart/reload only the required frontend service using the project's existing deployment process.
+11. Confirm service is running.
+12. Confirm the local/runtime frontend health endpoint or port 3001 returns HTTP 200.
+13. Recalculate the six protected-file hashes and confirm they exactly match the pre-patch hashes.
+
+PHASE 4 — VISUAL QA
+Use the deployed runtime page /leads/2184.
+Use the SAME lead for every capture.
+Browser viewport must be exactly 1920x1080.
+Before every TOP screenshot execute window.scrollTo(0,0) and verify window.scrollY === 0.
+Do not modify data while capturing screenshots.
+Do not click Save, Assign, Create Deal, Upload, Handover, Delete, Mark Won/Lost, or any destructive/business action.
+
+The key design acceptance criteria are:
+- Hero, KPI row, tabs and right rail still look like approved V2.5.
+- Details main content is no longer a sparse single vertical list.
+- Details uses a clean two-column information-card grid on desktop.
+- Existing real values only; missing values remain missing/—.
+- Sales Info is visually separated but still inside the existing Details workflow.
+- Form Data shows each existing question/answer as a structured numbered row/card.
+- Long Arabic questions remain readable and are not squeezed.
+- Source Info remains visible below the form fields when runtime data provides it.
+- Light mode keeps pearl/indigo depth.
+- Dark mode keeps deep navy Team Dashboard layering.
+- V2.5 physical split remains ~72% main / ~28% rail.
+- No new giant dead space.
+- No overflow, clipping, or horizontal scroll.
+
+CAPTURES — 10 SCREENSHOTS
+A) OVERVIEW REGRESSION GUARD
+1. Overview Light TOP 1920x1080
+   TCRM__LEAD-PROFILE__V2-6__OVERVIEW-GUARD__LIGHT__TOP__1920x1080.png
+2. Overview Dark TOP 1920x1080
+   TCRM__LEAD-PROFILE__V2-6__OVERVIEW-GUARD__DARK__TOP__1920x1080.png
+
+B) DETAILS
+3. Details Light TOP 1920x1080
+   TCRM__LEAD-PROFILE__V2-6__DETAILS__LIGHT__TOP__1920x1080.png
+4. Details Light FULL PAGE
+   TCRM__LEAD-PROFILE__V2-6__DETAILS__LIGHT__FULL-PAGE.png
+5. Details Dark TOP 1920x1080
+   TCRM__LEAD-PROFILE__V2-6__DETAILS__DARK__TOP__1920x1080.png
+6. Details Dark FULL PAGE
+   TCRM__LEAD-PROFILE__V2-6__DETAILS__DARK__FULL-PAGE.png
+
+C) FORM DATA
+7. Form Data Light TOP 1920x1080
+   TCRM__LEAD-PROFILE__V2-6__FORM-DATA__LIGHT__TOP__1920x1080.png
+8. Form Data Light FULL PAGE
+   TCRM__LEAD-PROFILE__V2-6__FORM-DATA__LIGHT__FULL-PAGE.png
+9. Form Data Dark TOP 1920x1080
+   TCRM__LEAD-PROFILE__V2-6__FORM-DATA__DARK__TOP__1920x1080.png
+10. Form Data Dark FULL PAGE
+    TCRM__LEAD-PROFILE__V2-6__FORM-DATA__DARK__FULL-PAGE.png
+
+Upload all 10 screenshots to Google Drive and return every file ID.
+
+FINAL REPORT — EXACT KEYS
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V2_5_BASE_PRESERVED=YES/NO
+LEAD_PROFILE_PREMIUM_V2_6=YES/NO
+DETAILS_FORMDATA_REDESIGN=YES/NO
+REAL_RUNTIME_SCREENSHOTS_USED_AS_VISUAL_BASIS=YES/NO
+DETAILS_FIELD_GRID_REDESIGNED=YES/NO
+DETAILS_SALES_SECTION_REDESIGNED=YES/NO
+DETAILS_EDIT_MODE_GRID_POLISHED=YES/NO
+FORMDATA_QUESTION_ANSWER_LAYOUT_REDESIGNED=YES/NO
+FORMDATA_SOURCE_CARD_REDESIGNED=YES/NO
+NO_INVENTED_LEAD_DATA=YES/NO
+OVERVIEW_UNCHANGED=YES/NO
+FELFEL_UNCHANGED=YES/NO
+STAGES_NOTES_UNCHANGED=YES/NO
+REMINDERS_UNCHANGED=YES/NO
+QUOTATIONS_UNCHANGED=YES/NO
+V2_5_MAIN_72_RAIL_28_PRESERVED=YES/NO
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<actual>
+VISUAL_QA=DONE/FAILED
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=10
+ACTUAL_SCREENSHOT_COUNT=<number>
+SAME_LEAD_ALL_CAPTURES=YES/NO
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO/YES
+FILES_CHANGED=<comma separated>
+OVERVIEW_LIGHT_TOP_DRIVE_FILE_ID=<id>
+OVERVIEW_DARK_TOP_DRIVE_FILE_ID=<id>
+DETAILS_LIGHT_TOP_DRIVE_FILE_ID=<id>
+DETAILS_LIGHT_FULL_DRIVE_FILE_ID=<id>
+DETAILS_DARK_TOP_DRIVE_FILE_ID=<id>
+DETAILS_DARK_FULL_DRIVE_FILE_ID=<id>
+FORM_DATA_LIGHT_TOP_DRIVE_FILE_ID=<id>
+FORM_DATA_LIGHT_FULL_DRIVE_FILE_ID=<id>
+FORM_DATA_DARK_TOP_DRIVE_FILE_ID=<id>
+FORM_DATA_DARK_FULL_DRIVE_FILE_ID=<id>
+ERROR=NONE/<exact error>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
+
+IMPORTANT
+Do NOT push the source project. The user will decide after ChatGPT visually reviews the screenshots.
