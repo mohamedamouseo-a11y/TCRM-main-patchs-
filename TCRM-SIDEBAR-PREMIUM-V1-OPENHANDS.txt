@@ -1,0 +1,178 @@
+TCRM — CRM Sidebar Premium V1 Reference Match
+
+GOAL
+Apply the sidebar-only premium visual patch and visually verify it against the approved reference direction supplied in ChatGPT.
+
+IMPORTANT
+- Work on the LIVE TCRM source project, NOT the patch repository.
+- DO NOT push/commit the live/source repository.
+- DO NOT change routes, permissions, labels, navigation destinations, API calls, backend code, business logic, auth, or page content.
+- This task is UX/UI only for the global CRM sidebar.
+- Keep the current application data unchanged.
+- The reference direction is a premium LIGHT sidebar: cool pearl/lilac surface, compact rows, violet/indigo active capsule, expanded Sales tree with a slim connector line, polished brand header, compact bottom Admin card, and restrained shadows.
+- Dark mode must remain a coherent Team Dashboard deep-navy counterpart.
+
+TARGET PAGE FOR PRIMARY QA
+https://sales.tamiyouzplatform.com/settings?tab=developerHub
+
+PATCH
+Download and execute exactly:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SIDEBAR-PREMIUM-V1-REFERENCE-MATCH.py
+
+EXPECTED PATCH MARKER
+TCRM_CRM_SIDEBAR_PREMIUM_V1_REFERENCE_MATCH
+
+EXPECTED SOURCE FILES CHANGED
+- client/src/components/CRMLayout.tsx
+- client/src/crm-sidebar-premium-v1.css
+
+PRE-PATCH SAFETY
+1. Confirm current live project and branch.
+2. Record current git status.
+3. Record hashes of protected backend/security files you normally use for TCRM visual-only QA.
+4. Confirm client/src/components/CRMLayout.tsx exists.
+5. DO NOT clean unrelated user changes.
+6. The patch creates its own timestamped CRMLayout backup.
+
+APPLY
+1. Download the patch script.
+2. Run it from the live TCRM project root.
+3. Confirm these patch outputs:
+   PATCH=YES (or ALREADY_APPLIED)
+   CRM_SIDEBAR_PREMIUM_V1=YES
+   REFERENCE_MATCH_SCOPE=SIDEBAR_ONLY
+   ROUTES_UNCHANGED=YES
+   PERMISSIONS_UNCHANGED=YES
+   BACKEND_UNCHANGED=YES
+   BUSINESS_LOGIC_UNCHANGED=YES
+4. Confirm marker and CSS import are present.
+
+BUILD / DEPLOY
+Use the project's existing safe build and restart procedure.
+Required:
+- BUILD=PASS
+- service/process running
+- HTTP 3001 = 200 (or the project's established local runtime health check)
+
+VISUAL REFERENCE CRITERIA — DESKTOP 1920x1080
+The result should visibly match these characteristics:
+- Sidebar width stays around the existing 240px expanded width.
+- Light sidebar is pearl / very-light lavender, NOT a dark blue sidebar.
+- Logo header is compact, clean and slightly separated from navigation.
+- Collapse button sits visually inside the brand/header area, not awkwardly outside the panel.
+- Top-level rows are compact (~36px), with restrained icons and balanced left/right padding.
+- Current page row (Settings on the primary target) is a premium indigo/violet capsule with white text/icon.
+- Expanded Sales group is a soft highlighted capsule even while Settings is the current page.
+- Sales children are visually nested using a slim vertical connector/tree line and compact child rows.
+- SLA badge remains visible and readable; no data/count changes.
+- Navigation remains scrollable and no labels are clipped at 1920x1080.
+- Bottom Admin/user block is a compact rounded card with avatar/name/role and a full-width subtle red Sign out button.
+- No giant gaps, no oversized rows, no excessive neon/glow.
+- Existing menu order, translations, permissions and destinations remain unchanged.
+- Dark mode uses deep navy layered surfaces while retaining the same hierarchy and active indigo/violet treatment.
+
+INTERACTION QA
+On Settings page:
+- Manually EXPAND the Sales group for the reference screenshots if it is closed.
+- Do not navigate away while opening Sales; Settings must remain the active page in the primary reference screenshot.
+- Toggle sidebar collapse and expand once to verify the collapsed state is usable.
+- Re-expand it before subsequent captures.
+- Verify Sales expansion/collapse still works.
+- Verify another collapsible group (Marketing or Account Mgmt, whichever is visible) still opens/closes.
+- Do not perform any destructive action and do not click Sign out.
+
+REGRESSION QA
+- Navigate to /leads and confirm Sales becomes the active group and the Leads child item is visually active/readable.
+- Navigate back to /settings?tab=developerHub and confirm Settings becomes active again.
+- Header/topbar and page content must not be redesigned by this patch.
+- Check LTR/RTL physical alignment by switching language only if that is safe and reversible; restore original language after QA.
+
+SCREENSHOTS — EXACTLY 8
+Viewport: 1920x1080.
+Upload every screenshot to Google Drive and return Drive file IDs.
+
+1. TCRM__SIDEBAR-PREMIUM-V1__SETTINGS__LIGHT__SALES-EXPANDED__1920x1080.png
+   - /settings?tab=developerHub
+   - Light mode
+   - Expanded sidebar
+   - Sales manually expanded
+   - Settings active
+
+2. TCRM__SIDEBAR-PREMIUM-V1__SETTINGS__DARK__SALES-EXPANDED__1920x1080.png
+   - same state in Dark mode
+
+3. TCRM__SIDEBAR-PREMIUM-V1__SETTINGS__LIGHT__COLLAPSED__1920x1080.png
+   - Light mode
+   - Sidebar collapsed
+   - Settings page remains loaded
+
+4. TCRM__SIDEBAR-PREMIUM-V1__SETTINGS__DARK__COLLAPSED__1920x1080.png
+   - Dark mode
+   - Sidebar collapsed
+
+5. TCRM__SIDEBAR-PREMIUM-V1__LEADS__LIGHT__SALES-ACTIVE__1920x1080.png
+   - /leads
+   - Light mode
+   - Expanded sidebar
+   - Sales expanded
+   - Leads child visibly active
+
+6. TCRM__SIDEBAR-PREMIUM-V1__LEADS__DARK__SALES-ACTIVE__1920x1080.png
+   - same in Dark mode
+
+7. TCRM__SIDEBAR-PREMIUM-V1__SETTINGS__LIGHT__RTL__1920x1080.png
+   - /settings?tab=developerHub
+   - Light mode
+   - Arabic/RTL
+   - Expanded sidebar
+   - Sales expanded
+   - restore prior language afterward if needed
+
+8. TCRM__SIDEBAR-PREMIUM-V1__SETTINGS__DARK__RTL__1920x1080.png
+   - same in Dark mode
+
+POST-QA SAFETY
+- Re-check protected backend/security hashes.
+- Confirm no data changed.
+- Confirm live/source repo was NOT pushed.
+- Do not commit or push source changes.
+
+RETURN ONLY A COMPACT MACHINE-READABLE REPORT
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+CRM_SIDEBAR_PREMIUM_V1=YES/NO
+REFERENCE_MATCH_SCOPE=SIDEBAR_ONLY/NO
+LIGHT_REFERENCE_DIRECTION=PASS/FAIL
+DARK_COUNTERPART=PASS/FAIL
+SETTINGS_ACTIVE_CAPSULE=PASS/FAIL
+SALES_EXPANDED_TREE=PASS/FAIL
+SALES_BADGE_PRESERVED=PASS/FAIL
+USER_CARD=PASS/FAIL
+COLLAPSE_EXPAND=PASS/FAIL
+LEADS_ACTIVE_STATE=PASS/FAIL
+RTL=PASS/FAIL
+ROUTES_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAIL
+HTTP_3001=200/<value>
+VISUAL_QA=DONE/FAIL
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=8
+ACTUAL_SCREENSHOT_COUNT=<n>
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO/YES
+FILES_CHANGED=<comma-separated files>
+SETTINGS_LIGHT_SALES_EXPANDED_DRIVE_FILE_ID=
+SETTINGS_DARK_SALES_EXPANDED_DRIVE_FILE_ID=
+SETTINGS_LIGHT_COLLAPSED_DRIVE_FILE_ID=
+SETTINGS_DARK_COLLAPSED_DRIVE_FILE_ID=
+LEADS_LIGHT_SALES_ACTIVE_DRIVE_FILE_ID=
+LEADS_DARK_SALES_ACTIVE_DRIVE_FILE_ID=
+SETTINGS_LIGHT_RTL_DRIVE_FILE_ID=
+SETTINGS_DARK_RTL_DRIVE_FILE_ID=
+ERROR=NONE/<error>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
