@@ -1,0 +1,172 @@
+TASK: Apply TCRM Sales Funnel Premium V1 — Light/Dark Reference Match
+
+IMPORTANT
+- You are working on the already-connected TCRM source server/project.
+- DO NOT push to the source GitHub repository.
+- Apply the patch, build, run, and perform visual QA only.
+- The currently approved CRM Sidebar Premium V1.1 must remain unchanged.
+
+PATCH URL
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SALES-FUNNEL-PREMIUM-V1-LIGHT-DARK-REFERENCE-MATCH.py
+
+TARGET PAGE
+/sales-funnel
+
+REFERENCE INTENT
+The approved ChatGPT reference is a dual-mode premium executive analytics dashboard:
+- LIGHT: pearl/cool-white canvas, luminous lavender/periwinkle hero, crisp elevated white cards, thin cool borders, restrained shadows, strong information hierarchy.
+- DARK: deep near-black/navy canvas, indigo/navy hero, dark analytics cards, subtle blue-violet edge glow, excellent contrast without neon overload.
+- Compact executive density: no huge dead gaps.
+- 5 KPI cards directly below the hero.
+- Main analytics panels must read as a coherent premium system: Sales Funnel, Lead Trend, Won Deals by Month, Campaign Performance, Deal Summary, Campaign Performance Details, Stage Conversion Rates.
+- Preserve all REAL TCRM labels/data/charts. Do not invent new metrics, buttons, copy, data, or business features.
+- Any Eiffel Tower / France / handwritten decorative content visible in the concept image is a concept-generation artifact. DO NOT add France/Eiffel artwork, fake slogans, flags, invented text, or unrelated branding to production.
+
+EXECUTION
+1. Confirm current working tree status and note any pre-existing changes. Do not overwrite unrelated work.
+2. Download the patch from the PATCH URL.
+3. Inspect the patch before running it.
+4. Run the patch from the TCRM project root.
+5. Confirm marker exists in:
+   client/src/pages/SalesFunnelDashboard.tsx
+   Marker: TCRM_SALES_FUNNEL_PREMIUM_V1_LIGHT_DARK_REFERENCE_MATCH
+6. Confirm CSS file exists:
+   client/src/sales-funnel-premium-v1-reference.css
+7. Confirm SalesFunnelDashboard.tsx imports the CSS.
+8. Build the app.
+9. Restart only the required frontend/app service using the project's existing safe procedure.
+10. Confirm HTTP 200 on port 3001 and load /sales-funnel using the existing authenticated session.
+
+STRICT SCOPE
+Allowed files:
+- client/src/pages/SalesFunnelDashboard.tsx
+- client/src/sales-funnel-premium-v1-reference.css
+
+DO NOT MODIFY:
+- client/src/components/CRMLayout.tsx
+- client/src/crm-sidebar-premium-v1.css
+- client/src/crm-sidebar-premium-v1-1-hover-contrast.css
+- backend/server/database files
+- permissions/auth logic
+- routes
+- TRPC procedures
+- dashboard calculations
+- DateRangePicker logic
+- chart datasets or metric formulas
+
+VISUAL ACCEPTANCE — LIGHT
+At 1920x1080:
+- Page background is refined pearl/cool white, not flat gray and not empty pure white.
+- Hero is compact, premium lavender/periwinkle and visually close to the approved reference.
+- Date filter remains fully visible and usable.
+- KPI row is five aligned premium cards, equal visual weight, with subtle top accents and no clipping.
+- Sales Funnel + Lead Trend cards are aligned with matching surface/radius/depth.
+- Won Deals by Month remains readable and has an intentional premium empty state when no data exists.
+- Campaign Performance and Deal Summary align cleanly without awkward imbalance.
+- Campaign Performance Details table has refined header/row hierarchy and readable values.
+- Stage Conversion Rates cards are compact, aligned, and readable.
+- No huge dead vertical space introduced.
+- Existing floating widgets may remain; they must not overlap critical content.
+
+VISUAL ACCEPTANCE — DARK
+At 1920x1080:
+- Background is deep navy/near-black, not washed gray.
+- Hero becomes navy/indigo with restrained violet depth.
+- KPI cards and analytics panels are dark layered surfaces with visible borders and subtle glow.
+- Text, axes, labels, badges, and table values remain readable.
+- No white/light card regression inside the dark page.
+- No neon overload.
+
+FUNCTIONAL REGRESSION CHECKS
+- Date range picker opens normally; DO NOT change the selected date.
+- Sales funnel chart values remain identical before/after.
+- Lead Trend data remains identical.
+- Won Deals by Month data remains identical.
+- Campaign Performance data remains identical.
+- Deal Summary values remain identical.
+- Table values remain identical.
+- Stage Conversion values remain identical.
+- Sidebar Sales tree and V1.1 hover behavior remain unchanged.
+- RTL must not break the page. No layout overlap.
+
+SCREENSHOTS — REQUIRED
+Use viewport 1920x1080. Same account and same date range for all captures.
+Upload all screenshots to Google Drive and return file IDs.
+
+1. SALES_FUNNEL_PREMIUM_V1__LIGHT__TOP__1920x1080.png
+   Hero + KPI row + Sales Funnel + Lead Trend visible.
+
+2. SALES_FUNNEL_PREMIUM_V1__LIGHT__MID__1920x1080.png
+   Won Deals by Month + Campaign Performance + Deal Summary.
+
+3. SALES_FUNNEL_PREMIUM_V1__LIGHT__LOWER__1920x1080.png
+   Campaign Performance Details + Stage Conversion Rates.
+
+4. SALES_FUNNEL_PREMIUM_V1__LIGHT__FULL-PAGE.png
+   TRUE full-page capture. If document scrollHeight > 1080, image height MUST be >1080.
+
+5. SALES_FUNNEL_PREMIUM_V1__DARK__TOP__1920x1080.png
+
+6. SALES_FUNNEL_PREMIUM_V1__DARK__MID__1920x1080.png
+
+7. SALES_FUNNEL_PREMIUM_V1__DARK__LOWER__1920x1080.png
+
+8. SALES_FUNNEL_PREMIUM_V1__DARK__FULL-PAGE.png
+   TRUE full-page capture. If document scrollHeight > 1080, image height MUST be >1080.
+
+9. SALES_FUNNEL_PREMIUM_V1__RTL-LIGHT__TOP__1920x1080.png
+   Regression guard only. Do not alter data.
+
+Do not claim visual PASS just because CSS is present. Inspect actual rendered screenshots.
+
+REPORT EXACTLY
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+SALES_FUNNEL_PREMIUM_V1=YES/NO
+LIGHT_DARK_REFERENCE_MATCH=YES/NO
+LIGHT_HERO_REFERENCE_DIRECTION=PASS/FAIL
+LIGHT_KPI_REFERENCE_DIRECTION=PASS/FAIL
+LIGHT_ANALYTICS_PANELS=PASS/FAIL
+LIGHT_TABLE=PASS/FAIL
+LIGHT_STAGE_CARDS=PASS/FAIL
+DARK_HERO_REFERENCE_DIRECTION=PASS/FAIL
+DARK_KPI_REFERENCE_DIRECTION=PASS/FAIL
+DARK_ANALYTICS_PANELS=PASS/FAIL
+DARK_TABLE=PASS/FAIL
+DARK_STAGE_CARDS=PASS/FAIL
+NO_FRANCE_OR_EIFFEL_ARTIFACTS_ADDED=YES/NO
+SIDEBAR_V1_1_PRESERVED=YES/NO
+RTL=PASS/FAIL
+DATA_UNCHANGED=YES/NO
+CHART_LOGIC_UNCHANGED=YES/NO
+DATE_FILTER_LOGIC_UNCHANGED=YES/NO
+ROUTES_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<other>
+VISUAL_QA=DONE/NOT_DONE
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=9
+ACTUAL_SCREENSHOT_COUNT=<n>
+TRUE_FULL_PAGE_LIGHT=YES/NO
+TRUE_FULL_PAGE_DARK=YES/NO
+FILES_CHANGED=<comma-separated>
+SOURCE_PROJECT_PUSHED=NO
+LIGHT_TOP_DRIVE_FILE_ID=<id>
+LIGHT_MID_DRIVE_FILE_ID=<id>
+LIGHT_LOWER_DRIVE_FILE_ID=<id>
+LIGHT_FULL_PAGE_DRIVE_FILE_ID=<id>
+DARK_TOP_DRIVE_FILE_ID=<id>
+DARK_MID_DRIVE_FILE_ID=<id>
+DARK_LOWER_DRIVE_FILE_ID=<id>
+DARK_FULL_PAGE_DRIVE_FILE_ID=<id>
+RTL_LIGHT_TOP_DRIVE_FILE_ID=<id>
+ERROR=NONE/<details>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
+
+FINAL RULE
+DO NOT PUSH. Wait for ChatGPT visual review and explicit approval.
