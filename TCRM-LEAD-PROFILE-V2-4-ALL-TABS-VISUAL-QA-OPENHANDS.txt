@@ -1,0 +1,147 @@
+TCRM Lead Profile V2.4 — Remaining Tabs Visual QA ONLY
+
+TARGET:
+https://sales.tamiyouzplatform.com/leads/2184
+
+PURPOSE:
+Capture visual QA screenshots for ALL remaining Lead Profile tabs after the approved V2.4 push.
+This task is READ-ONLY. Do NOT modify source code or business data.
+
+ABSOLUTELY FORBIDDEN:
+- Do NOT edit any source file.
+- Do NOT run/apply any patch.
+- Do NOT save/update/delete/create any lead data.
+- Do NOT change stage, owner, assignment, deal, notes, reminders, quotations, form data, attachments, meetings, or any record.
+- Do NOT click destructive or mutating actions.
+- Do NOT push anything to GitHub.
+- Do NOT submit forms.
+- Do NOT change dropdown/select values.
+
+PRECONDITIONS:
+1. Open /leads/2184.
+2. Verify Lead Profile loads successfully.
+3. Use the SAME lead for every screenshot.
+4. Before each tab capture run window.scrollTo(0, 0) and verify window.scrollY === 0.
+5. Wait until the selected tab content is fully rendered before screenshot.
+6. Use viewport width 1920px. Height may be 1080 for viewport setup, but capture TRUE FULL PAGE for each tab.
+
+TABS TO CAPTURE — DO NOT CAPTURE OVERVIEW:
+1. Details
+2. Form Data
+3. Felfel Meetings
+4. Stages & Notes
+5. Reminders
+6. Quotations
+
+LIGHT MODE:
+For each tab above:
+- Click ONLY the tab itself.
+- Do not interact with any field/control inside the tab.
+- Scroll to top.
+- Capture TRUE FULL-PAGE screenshot.
+
+Required filenames:
+TCRM__LEAD-PROFILE__V2-4__DETAILS__LIGHT__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__FORM-DATA__LIGHT__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__FELFEL-MEETINGS__LIGHT__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__STAGES-NOTES__LIGHT__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__REMINDERS__LIGHT__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__QUOTATIONS__LIGHT__FULL-PAGE.png
+
+DARK MODE:
+Switch to Dark Mode without changing anything else.
+For each same tab:
+- Click ONLY the tab itself.
+- Do not interact with any field/control inside the tab.
+- Scroll to top.
+- Capture TRUE FULL-PAGE screenshot.
+
+Required filenames:
+TCRM__LEAD-PROFILE__V2-4__DETAILS__DARK__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__FORM-DATA__DARK__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__FELFEL-MEETINGS__DARK__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__STAGES-NOTES__DARK__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__REMINDERS__DARK__FULL-PAGE.png
+TCRM__LEAD-PROFILE__V2-4__QUOTATIONS__DARK__FULL-PAGE.png
+
+UPLOAD:
+Upload all 12 screenshots to the same Google Drive destination used for previous TCRM visual QA captures.
+
+VISUAL QA RULES:
+- Same lead in all 12 captures.
+- Same data/state between Light and Dark.
+- Full page, not cropped viewport screenshots.
+- No modal/dialog/dropdown should be open unless it is part of the tab default state.
+- If a tab cannot load or is permission-blocked, do not try to bypass it; report the exact issue.
+- If any runtime error occurs, report it and stop before changing anything.
+
+RETURN EXACTLY THIS REPORT FORMAT:
+SOURCE_CHANGED=NO
+TARGET=/leads/2184
+VERSION=V2.4
+TASK=REMAINING_TABS_VISUAL_QA
+CAPTURE_MODE=TRUE_FULL_PAGE
+TAB_COUNT=6
+EXPECTED_SCREENSHOT_COUNT=12
+ACTUAL_SCREENSHOT_COUNT=<number>
+SAME_LEAD_ALL_TABS=YES/NO
+SAME_PAGE_STATE_BOTH_THEMES=YES/NO
+DATA_CHANGED=NO
+SOURCE_PROJECT_PUSHED=NO
+
+DETAILS_LIGHT_FILENAME=<filename>
+DETAILS_LIGHT_WIDTH=<width>
+DETAILS_LIGHT_HEIGHT=<height>
+DETAILS_LIGHT_DRIVE_FILE_ID=<id>
+DETAILS_DARK_FILENAME=<filename>
+DETAILS_DARK_WIDTH=<width>
+DETAILS_DARK_HEIGHT=<height>
+DETAILS_DARK_DRIVE_FILE_ID=<id>
+
+FORM_DATA_LIGHT_FILENAME=<filename>
+FORM_DATA_LIGHT_WIDTH=<width>
+FORM_DATA_LIGHT_HEIGHT=<height>
+FORM_DATA_LIGHT_DRIVE_FILE_ID=<id>
+FORM_DATA_DARK_FILENAME=<filename>
+FORM_DATA_DARK_WIDTH=<width>
+FORM_DATA_DARK_HEIGHT=<height>
+FORM_DATA_DARK_DRIVE_FILE_ID=<id>
+
+FELFEL_MEETINGS_LIGHT_FILENAME=<filename>
+FELFEL_MEETINGS_LIGHT_WIDTH=<width>
+FELFEL_MEETINGS_LIGHT_HEIGHT=<height>
+FELFEL_MEETINGS_LIGHT_DRIVE_FILE_ID=<id>
+FELFEL_MEETINGS_DARK_FILENAME=<filename>
+FELFEL_MEETINGS_DARK_WIDTH=<width>
+FELFEL_MEETINGS_DARK_HEIGHT=<height>
+FELFEL_MEETINGS_DARK_DRIVE_FILE_ID=<id>
+
+STAGES_NOTES_LIGHT_FILENAME=<filename>
+STAGES_NOTES_LIGHT_WIDTH=<width>
+STAGES_NOTES_LIGHT_HEIGHT=<height>
+STAGES_NOTES_LIGHT_DRIVE_FILE_ID=<id>
+STAGES_NOTES_DARK_FILENAME=<filename>
+STAGES_NOTES_DARK_WIDTH=<width>
+STAGES_NOTES_DARK_HEIGHT=<height>
+STAGES_NOTES_DARK_DRIVE_FILE_ID=<id>
+
+REMINDERS_LIGHT_FILENAME=<filename>
+REMINDERS_LIGHT_WIDTH=<width>
+REMINDERS_LIGHT_HEIGHT=<height>
+REMINDERS_LIGHT_DRIVE_FILE_ID=<id>
+REMINDERS_DARK_FILENAME=<filename>
+REMINDERS_DARK_WIDTH=<width>
+REMINDERS_DARK_HEIGHT=<height>
+REMINDERS_DARK_DRIVE_FILE_ID=<id>
+
+QUOTATIONS_LIGHT_FILENAME=<filename>
+QUOTATIONS_LIGHT_WIDTH=<width>
+QUOTATIONS_LIGHT_HEIGHT=<height>
+QUOTATIONS_LIGHT_DRIVE_FILE_ID=<id>
+QUOTATIONS_DARK_FILENAME=<filename>
+QUOTATIONS_DARK_WIDTH=<width>
+QUOTATIONS_DARK_HEIGHT=<height>
+QUOTATIONS_DARK_DRIVE_FILE_ID=<id>
+
+ERROR=<NONE or exact error>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
