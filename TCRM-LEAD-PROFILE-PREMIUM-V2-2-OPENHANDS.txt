@@ -1,0 +1,278 @@
+TCRM — LEAD PROFILE PREMIUM V2.2
+VISUAL FIDELITY POLISH
+
+YOU ARE ALREADY INSIDE THE CURRENT LIVE TCRM PROJECT DIRECTORY.
+
+CURRENT BASE:
+Lead Profile Premium V2.1 is already applied locally and is NOT pushed yet.
+This is expected.
+Do NOT reject LeadProfile.tsx merely because it is dirty relative to git if it contains:
+TCRM_LEAD_PROFILE_PREMIUM_V2_1_STRUCTURAL_CORRECTION
+
+GOAL:
+Apply V2.2 VISUAL FIDELITY POLISH on top of the current V2.1 runtime.
+V2.2 MUST preserve the V2.1 structure and the Team Dashboard premium color system.
+This is a VISUAL-ONLY pass.
+
+TARGET ROUTE:
+/leads/:id
+
+VISUAL QA LEAD:
+/leads/2175
+
+PATCH:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-2-VISUAL-FIDELITY-POLISH.py
+
+PATCH REPO:
+https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git
+
+==================================================
+NON-NEGOTIABLE VISUAL DIRECTION
+==================================================
+
+STRUCTURE BASE:
+V2.1 is APPROVED as the structural base.
+Do NOT rebuild or rearrange the three-zone command center beyond what the patch does.
+
+COLOR SYSTEM:
+Team Dashboard remains the PRIMARY color-system reference.
+Do NOT invent a new palette.
+
+PRESERVE:
+- pearl / soft-lilac Light surfaces
+- indigo / blue / violet accents
+- deep navy Dark surfaces
+- electric blue / indigo / violet luminous edges
+- current V2.1 Overview three-zone order
+- current Overview/Details behavior
+- legacy rail on non-Overview tabs
+
+V2.2 FOCUS:
+- hero uses width intentionally; remove dead visual middle space
+- stronger identity anchor, without inventing a customer portrait
+- larger, clearer typography
+- KPI row readability and proportions
+- stronger horizontal navigation strip
+- Activity Timeline height must follow its actual content
+- Notes height must follow its actual content
+- compact empty states
+- stronger Light-mode pearl depth
+- clearer Dark-mode layer separation
+- no excessive neon
+- no giant empty cards
+
+==================================================
+CRITICAL WORKFLOW RULES
+==================================================
+
+The CURRENT directory is the live TCRM application.
+
+DO NOT clone the TCRM application repo.
+DO NOT git pull the application repo.
+DO NOT git fetch the application repo.
+DO NOT checkout/reset/rebase/merge/switch the application repo.
+DO NOT commit the application repo.
+DO NOT push the application repo.
+
+The user performs the application Push manually after ChatGPT visual approval.
+
+UNRELATED dirty working-tree files are ALLOWED.
+Do NOT clean, stash, reset or alter unrelated files.
+
+The current LeadProfile.tsx is EXPECTED to be locally modified by V1 + V2 + V2.1.
+It is safe to continue ONLY if it contains all required markers:
+
+TCRM_LEAD_PROFILE_PREMIUM_V1_TEAM_DASHBOARD_COMMAND_CENTER
+TCRM_LEAD_PROFILE_PREMIUM_V2_STRUCTURAL_FIDELITY_TEAM_DASHBOARD
+TCRM_LEAD_PROFILE_PREMIUM_V2_1_STRUCTURAL_CORRECTION
+
+If any required marker is missing, STOP with:
+ERROR=EXPECTED_V2_1_BASE_MISSING
+
+==================================================
+PROTECTED FILES
+==================================================
+
+Before patching, record sha256 for these files if present:
+
+client/src/pages/AgentDashboard.tsx
+client/src/pages/TeamDashboard.tsx
+client/src/pages/LeadsList.tsx
+client/src/components/InnoCallWebCallWidget.tsx
+server/security/permissionEngine.ts
+server/security/corePermissionPolicy.ts
+
+After patch/build/restart, verify their hashes are identical.
+Do NOT modify any of them.
+
+==================================================
+APPLY PATCH
+==================================================
+
+PROJECT_ROOT="$(pwd)"
+
+rm -rf /tmp/tcrm-lead-profile-v2-2-patches
+
+git clone --depth 1 \
+  https://github.com/mohamedamouseo-a11y/TCRM-main-patchs-.git \
+  /tmp/tcrm-lead-profile-v2-2-patches
+
+cd "$PROJECT_ROOT"
+
+python3 /tmp/tcrm-lead-profile-v2-2-patches/TCRM-LEAD-PROFILE-PREMIUM-V2-2-VISUAL-FIDELITY-POLISH.py
+
+Verify marker:
+
+TCRM_LEAD_PROFILE_PREMIUM_V2_2_VISUAL_FIDELITY_POLISH
+
+Verify files changed by THIS patch:
+
+client/src/pages/LeadProfile.tsx
+client/src/lead-profile-premium-v2-2.css
+
+Do NOT edit V1, V2 or V2.1 CSS files during this pass.
+Do NOT alter backend/business logic.
+
+==================================================
+BUILD + SERVICE
+==================================================
+
+Run the project's normal production build:
+
+npm run build
+
+If build fails:
+STOP.
+Do NOT push.
+Return the real build error.
+
+Restart ONLY the existing TCRM PM2 service.
+Prefer the currently running TCRM process name; if it is still `tamiyouz-crm`, restart that exact process.
+Do not create a duplicate PM2 service.
+
+Verify:
+
+curl -I http://127.0.0.1:3001
+
+Expected HTTP status:
+200
+
+==================================================
+VISUAL QA — READ ONLY
+==================================================
+
+Use the existing authenticated browser session.
+
+Open:
+https://sales.tamiyouzplatform.com/leads/2175
+
+Use the DEFAULT Overview tab.
+Scroll to the TOP before each capture.
+
+Do NOT edit the lead.
+Do NOT change stage.
+Do NOT add activity.
+Do NOT create a deal.
+Do NOT assign owner.
+Do NOT add notes.
+Do NOT upload files.
+Do NOT save anything.
+Do NOT modify any business data.
+
+Viewport:
+1920x1080
+
+CAPTURE ONLY TWO SCREENSHOTS.
+
+1) LIGHT MODE — top viewport
+Filename:
+TCRM__LEAD-PROFILE__V2-2__VISUAL-FIDELITY__LIGHT__1920x1080.png
+
+2) DARK MODE — same lead, same Overview tab, same top position
+Filename:
+TCRM__LEAD-PROFILE__V2-2__VISUAL-FIDELITY__DARK__1920x1080.png
+
+Before accepting each screenshot, verify pixels visibly contain:
+- Hero / identity zone
+- hero actions
+- KPI signal strip
+- Overview navigation strip
+- Contact & Business Information
+- Activity Timeline
+- Deal / Opportunity
+- Ownership / Assignment
+- Notes or Upcoming Tasks where viewport permits
+
+Reject and recapture if:
+- page is horizontally broken
+- columns overlap
+- Overview shows duplicate legacy right rail
+- huge blank forced-height Timeline appears with little content
+- Light or Dark theme did not actually switch
+
+==================================================
+GOOGLE DRIVE
+==================================================
+
+Upload both screenshots using the existing working uploader:
+
+node /home/openhands/.openhands/qa-tools/67-gdrive-root-upload.mjs
+
+Destination:
+MY_DRIVE_ROOT
+
+Return NEW Google Drive file IDs.
+Do not upload screenshots to GitHub.
+
+==================================================
+FINAL VERIFICATION
+==================================================
+
+Verify protected-file hashes match pre-patch values.
+
+Do NOT push the application repo.
+
+RETURN ONLY:
+
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+V2_1_BASE_PRESERVED=YES/NO
+LEAD_PROFILE_PREMIUM_V2_2=YES/NO
+VISUAL_FIDELITY_POLISH=YES/NO
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES/NO
+HERO_DISTRIBUTION_POLISHED=YES/NO
+HERO_IDENTITY_ANCHOR_ENLARGED=YES/NO
+KPI_READABILITY_POLISHED=YES/NO
+NAVIGATION_POLISHED=YES/NO
+TIMELINE_CONTENT_DRIVEN_HEIGHT=YES/NO
+NOTES_CONTENT_DRIVEN_HEIGHT=YES/NO
+EMPTY_STATES_COMPACTED=YES/NO
+LIGHT_DEPTH_POLISHED=YES/NO
+DARK_LAYERING_POLISHED=YES/NO
+OVERVIEW_THREE_ZONE_PRESERVED=YES/NO
+LEGACY_RAIL_PRESERVED_OTHER_TABS=YES/NO
+BACKEND_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+PROTECTED_FILES=PASS/FAIL
+BUILD=PASS/FAIL
+SERVICE=RUNNING/FAILED
+HTTP_3001=200/<STATUS>
+VISUAL_QA=DONE/FAILED
+CAPTURE_MODE=TOP_VIEWPORT_1920x1080
+SCREENSHOT_COUNT=2/0
+LIGHT_SCREENSHOT_FILENAME=
+LIGHT_IMAGE_WIDTH=
+LIGHT_IMAGE_HEIGHT=
+LIGHT_DRIVE_FILE_ID=
+DARK_SCREENSHOT_FILENAME=
+DARK_IMAGE_WIDTH=
+DARK_IMAGE_HEIGHT=
+DARK_DRIVE_FILE_ID=
+SAME_LEAD_BOTH_THEMES=YES/NO
+SAME_PAGE_STATE_BOTH_THEMES=YES/NO
+DATA_CHANGED=NO/YES
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=
+ERROR=NONE/<ERROR>
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES/NO
