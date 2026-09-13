@@ -1,0 +1,96 @@
+TCRM Lead Profile V2.5 — Details + Form Data Screenshot Capture ONLY
+
+TARGET
+- URL: https://sales.tamiyouzplatform.com/leads/2184
+- Current pushed Lead Profile version: V2.5
+- Purpose: capture the REAL current runtime of Details and Form Data so ChatGPT can redesign those tabs from actual screenshots only.
+
+STRICTLY FORBIDDEN
+- Do NOT edit source code.
+- Do NOT change any data.
+- Do NOT Save / Update / Assign / Delete / Upload / Create Deal / Create Note / Start Handover / Add Reminder / Create Quotation.
+- Do NOT push anything.
+- Do NOT change backend, permissions, routes, business logic, or CSS.
+- Visual QA + screenshots only.
+
+BROWSER / VIEWPORT
+- Use browser viewport exactly 1920x1080.
+- Ensure browser zoom = 100%.
+- Before every capture run window.scrollTo(0,0) and verify window.scrollY === 0.
+- Use the SAME lead /leads/2184 for every capture.
+- Keep the SAME page state between Light and Dark except theme.
+
+CAPTURES REQUIRED
+
+DETAILS TAB
+1. Open Details tab.
+2. LIGHT MODE — capture top viewport 1920x1080 at scrollY=0.
+   Filename: TCRM__LEAD-PROFILE__V2-5__DETAILS__LIGHT__TOP__1920x1080.png
+3. LIGHT MODE — capture TRUE FULL PAGE from top to bottom.
+   Filename: TCRM__LEAD-PROFILE__V2-5__DETAILS__LIGHT__FULL-PAGE.png
+4. Switch to DARK MODE without changing any other page state.
+5. DARK MODE — capture top viewport 1920x1080 at scrollY=0.
+   Filename: TCRM__LEAD-PROFILE__V2-5__DETAILS__DARK__TOP__1920x1080.png
+6. DARK MODE — capture TRUE FULL PAGE from top to bottom.
+   Filename: TCRM__LEAD-PROFILE__V2-5__DETAILS__DARK__FULL-PAGE.png
+
+FORM DATA TAB
+7. Open Form Data tab.
+8. LIGHT MODE — capture top viewport 1920x1080 at scrollY=0.
+   Filename: TCRM__LEAD-PROFILE__V2-5__FORM-DATA__LIGHT__TOP__1920x1080.png
+9. LIGHT MODE — capture TRUE FULL PAGE from top to bottom.
+   Filename: TCRM__LEAD-PROFILE__V2-5__FORM-DATA__LIGHT__FULL-PAGE.png
+10. Switch to DARK MODE without changing any other page state.
+11. DARK MODE — capture top viewport 1920x1080 at scrollY=0.
+   Filename: TCRM__LEAD-PROFILE__V2-5__FORM-DATA__DARK__TOP__1920x1080.png
+12. DARK MODE — capture TRUE FULL PAGE from top to bottom.
+   Filename: TCRM__LEAD-PROFILE__V2-5__FORM-DATA__DARK__FULL-PAGE.png
+
+TOTAL EXPECTED SCREENSHOTS = 8
+
+UPLOAD
+- Upload all 8 PNG files to Google Drive.
+- Verify each uploaded file opens successfully.
+- Return the Drive file ID for every screenshot.
+
+FINAL REPORT — RETURN EXACTLY THESE FIELDS
+SOURCE_CHANGED=NO
+TARGET=/leads/2184
+VERSION=V2.5
+TASK=DETAILS_FORM_DATA_SCREENSHOT_CAPTURE
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=8
+ACTUAL_SCREENSHOT_COUNT=<number>
+SAME_LEAD_ALL_CAPTURES=YES
+DATA_CHANGED=NO
+SOURCE_PROJECT_PUSHED=NO
+
+DETAILS_LIGHT_TOP_FILENAME=<filename>
+DETAILS_LIGHT_TOP_SCROLL_Y=0
+DETAILS_LIGHT_TOP_DRIVE_FILE_ID=<id>
+DETAILS_LIGHT_FULL_FILENAME=<filename>
+DETAILS_LIGHT_FULL_DRIVE_FILE_ID=<id>
+DETAILS_DARK_TOP_FILENAME=<filename>
+DETAILS_DARK_TOP_SCROLL_Y=0
+DETAILS_DARK_TOP_DRIVE_FILE_ID=<id>
+DETAILS_DARK_FULL_FILENAME=<filename>
+DETAILS_DARK_FULL_DRIVE_FILE_ID=<id>
+
+FORM_DATA_LIGHT_TOP_FILENAME=<filename>
+FORM_DATA_LIGHT_TOP_SCROLL_Y=0
+FORM_DATA_LIGHT_TOP_DRIVE_FILE_ID=<id>
+FORM_DATA_LIGHT_FULL_FILENAME=<filename>
+FORM_DATA_LIGHT_FULL_DRIVE_FILE_ID=<id>
+FORM_DATA_DARK_TOP_FILENAME=<filename>
+FORM_DATA_DARK_TOP_SCROLL_Y=0
+FORM_DATA_DARK_TOP_DRIVE_FILE_ID=<id>
+FORM_DATA_DARK_FULL_FILENAME=<filename>
+FORM_DATA_DARK_FULL_DRIVE_FILE_ID=<id>
+
+ERROR=NONE
+READY_FOR_CHATGPT_DESIGN_REVIEW=YES
+
+IMPORTANT
+- Do not summarize or redesign anything yourself.
+- The screenshots must show the actual current V2.5 runtime exactly as it exists now.
+- If TRUE FULL PAGE capture fails, report ERROR with the exact reason instead of substituting another 1920x1080 viewport image.
