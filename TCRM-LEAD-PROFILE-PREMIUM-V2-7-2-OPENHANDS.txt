@@ -1,0 +1,195 @@
+TCRM LEAD PROFILE — V2.7.2 HERO REFERENCE HEIGHT FINAL FIX
+
+TARGET PROJECT: live TCRM project
+TARGET PAGE: /leads/2184
+BASELINE: V2.7.1 Final Density Correction must already be active
+PATCH URL:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-PREMIUM-V2-7-2-HERO-REFERENCE-HEIGHT-FINAL-FIX.py
+
+IMPORTANT
+This is a HERO-ONLY final micro-fix based on the actual V2.7.1 screenshots.
+Do NOT redesign Details, Form Data, KPI cards, tabs, rail, or any business workflow.
+The specific remaining problem is that the collapse control still participates in normal flow and leaves roughly one extra visual row below the real Hero content.
+
+STRICTLY FORBIDDEN
+- No backend changes
+- No API/query/mutation changes
+- No route changes
+- No permission changes
+- No database/data changes
+- No fake/demo lead data
+- No Save / Update / Assign / Delete / Handover / Mark Won / Mark Lost / Create Deal actions
+- No edits to existing V2.1–V2.7.1 CSS files
+- No structural JSX redesign
+- No source-project push
+- Do not touch Felfel, Stages & Notes, Reminders, Quotations logic or components
+
+ALLOWED FILE CHANGES ONLY
+1) client/src/pages/LeadProfile.tsx
+   - V2.7.2 marker + CSS import only
+2) client/src/lead-profile-premium-v2-7-2-hero-reference-height.css
+   - new HERO-only CSS layer
+
+GOAL
+1. Reduce the 1920px desktop Hero from the current V2.7.1 measured ~246px to approximately 195–210px.
+2. Achieve this primarily by removing the collapse button from desktop document flow, NOT by making typography unreadably small.
+3. Keep the collapse control fully visible and clickable.
+4. Preserve Avatar / Name / Lead status / phone/meta / Lead Context / Call / Call history / Mark Won / Mark Lost / Edit / status badges / Handover / Assign / Delete.
+5. Preserve Identity / Lead Context / Actions as three intentional Hero clusters.
+6. Preserve V2.7 Details and Form Data exactly in concept and density.
+7. Preserve V2.5 72/28 main/rail split and RTL physical order.
+8. Preserve Team Dashboard Light/Dark visual system.
+9. No overlap between Hero and KPI row.
+
+WORKFLOW
+
+A) PRE-FLIGHT
+1. Confirm /leads/2184 loads successfully.
+2. Confirm LeadProfile.tsx contains:
+   TCRM_LEAD_PROFILE_PREMIUM_V2_7_1_FINAL_DENSITY_CORRECTION
+3. Confirm import exists:
+   ../lead-profile-premium-v2-7-1-final-density.css
+4. Confirm client/src/lead-profile-premium-v2-7-1-final-density.css exists.
+5. Record SHA256 hashes for protected backend/components used in the previous V2.7.1 QA.
+6. Set browser viewport exactly 1920x1080.
+7. Open /leads/2184, LIGHT MODE, scrollY=0.
+8. Measure the current Hero with getBoundingClientRect():
+   HERO_V271_TOP_PX=
+   HERO_V271_BOTTOM_PX=
+   HERO_V271_HEIGHT_PX=
+9. Confirm the baseline is approximately 246px. If substantially different, report it but continue only if V2.7.1 is clearly active.
+
+B) APPLY PATCH
+1. Download the exact patch URL above.
+2. Inspect the patch before running it.
+3. Run it from the live TCRM project root.
+4. Confirm output includes:
+   PATCH=YES (or PATCH=ALREADY_APPLIED)
+   LEAD_PROFILE_PREMIUM_V2_7_2=YES
+   HERO_REFERENCE_HEIGHT_FINAL_FIX=YES
+5. Verify only the two allowed files changed.
+6. Build project.
+7. Restart/reload using the existing TCRM deployment method.
+8. Confirm service is online and HTTP 3001 = 200.
+
+C) POST-PATCH HERO MEASUREMENT
+At 1920x1080, LIGHT MODE, /leads/2184, scrollY=0:
+1. Measure Hero again:
+   HERO_V272_TOP_PX=
+   HERO_V272_BOTTOM_PX=
+   HERO_V272_HEIGHT_PX=
+2. Calculate:
+   HERO_V272_REDUCTION_FROM_V271_PERCENT=
+3. Acceptance target:
+   HERO_V272_HEIGHT_TARGET_MIN_PX=195
+   HERO_V272_HEIGHT_TARGET_MAX_PX=210
+4. Do NOT automatically edit older CSS or JSX if the result is outside 195–210px.
+5. If outside target, report the real number and let ChatGPT decide the next step.
+
+D) VISUAL SAFETY
+Verify in BOTH Light and Dark:
+- all Hero controls are visible
+- no text clipping
+- no button overlap
+- collapse button is visible and does not create a new row
+- collapse button does not cover Handover / Assign / Delete / status badges
+- Hero remains visually balanced
+- KPI row has a clean gap and no overlap
+- no new horizontal overflow
+- no white surface regression in Dark Mode
+
+E) NON-SCOPE REGRESSION GUARD
+1. Open Details and verify V2.7 dense row design is unchanged.
+2. Open Form Data and verify V2.7 Q/A design is unchanged.
+3. Confirm 72/28 physical main/rail layout is unchanged.
+4. Confirm right rail remains compact as in V2.7.1.
+5. Do not enter Edit Mode and do not save anything.
+
+F) SCREENSHOTS
+Use the SAME lead /leads/2184 and viewport 1920x1080.
+Capture exactly 10 screenshots so comparison stays identical to V2.7.1:
+
+1. Overview — Light — TOP 1920x1080
+2. Overview — Dark — TOP 1920x1080
+3. Details — Light — TOP 1920x1080
+4. Details — Light — TRUE FULL PAGE
+5. Details — Dark — TOP 1920x1080
+6. Details — Dark — TRUE FULL PAGE
+7. Form Data — Light — TOP 1920x1080
+8. Form Data — Light — TRUE FULL PAGE
+9. Form Data — Dark — TOP 1920x1080
+10. Form Data — Dark — TRUE FULL PAGE
+
+TRUE FULL PAGE RULE:
+- must be an actual fullPage capture
+- report PAGE_SCROLL_HEIGHT_PX
+- if scrollHeight > 1080, image height must also be >1080
+
+Filename prefix:
+TCRM__LEAD-PROFILE__V2-7-2__...
+
+Upload all 10 screenshots to Google Drive and return Drive file IDs.
+
+G) SAFETY / REGRESSION
+1. Recalculate protected-file hashes and confirm match.
+2. Confirm no data changed.
+3. Confirm no source-project push occurred.
+4. Confirm BUILD=PASS, SERVICE=RUNNING, HTTP_3001=200.
+
+FINAL REPORT — KEY=VALUE ONLY
+
+PATCH_FETCHED=YES
+PATCH=YES
+V2_7_1_BASE_PRESERVED=YES
+LEAD_PROFILE_PREMIUM_V2_7_2=YES
+HERO_REFERENCE_HEIGHT_FINAL_FIX=YES
+HERO_ONLY_SCOPE=YES
+COLLAPSE_CONTROL_REMOVED_FROM_DESKTOP_FLOW=YES
+HERO_V271_HEIGHT_PX=
+HERO_V272_HEIGHT_PX=
+HERO_V272_REDUCTION_FROM_V271_PERCENT=
+HERO_V272_HEIGHT_TARGET_MIN_PX=195
+HERO_V272_HEIGHT_TARGET_MAX_PX=210
+HERO_TARGET_RANGE_MET=YES/NO
+HERO_ALL_CONTROLS_VISIBLE=YES
+HERO_NO_OVERLAP=YES
+HERO_COLLAPSE_CONTROL_VISIBLE=YES
+HERO_COLLAPSE_CONTROL_NOT_OVERLAPPING=YES
+HERO_THREE_CLUSTER_COMPOSITION_PRESERVED=YES
+KPI_NO_OVERLAP=YES
+DETAILS_V2_7_DESIGN_PRESERVED=YES
+FORMDATA_V2_7_DESIGN_PRESERVED=YES
+V2_5_MAIN_72_RAIL_28_PRESERVED=YES
+RTL_PHYSICAL_ORDER_PRESERVED=YES
+TEAM_DASHBOARD_COLOR_SYSTEM_PRESERVED=YES
+BACKEND_UNCHANGED=YES
+PERMISSIONS_UNCHANGED=YES
+BUSINESS_LOGIC_UNCHANGED=YES
+PROTECTED_FILES=PASS
+BUILD=PASS
+SERVICE=RUNNING
+HTTP_3001=200
+VISUAL_QA=DONE
+VIEWPORT=1920x1080
+EXPECTED_SCREENSHOT_COUNT=10
+ACTUAL_SCREENSHOT_COUNT=10
+SAME_LEAD_ALL_CAPTURES=YES
+DATA_CHANGED=NO
+SOURCE_PROJECT_PUSHED=NO
+FILES_CHANGED=client/src/pages/LeadProfile.tsx,client/src/lead-profile-premium-v2-7-2-hero-reference-height.css
+
+OVERVIEW_LIGHT_TOP_DRIVE_FILE_ID=
+OVERVIEW_DARK_TOP_DRIVE_FILE_ID=
+DETAILS_LIGHT_TOP_DRIVE_FILE_ID=
+DETAILS_LIGHT_FULL_DRIVE_FILE_ID=
+DETAILS_DARK_TOP_DRIVE_FILE_ID=
+DETAILS_DARK_FULL_DRIVE_FILE_ID=
+FORM_DATA_LIGHT_TOP_DRIVE_FILE_ID=
+FORM_DATA_LIGHT_FULL_DRIVE_FILE_ID=
+FORM_DATA_DARK_TOP_DRIVE_FILE_ID=
+FORM_DATA_DARK_FULL_DRIVE_FILE_ID=
+
+ERROR=NONE
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES
+
+STOP after the report. DO NOT PUSH.
