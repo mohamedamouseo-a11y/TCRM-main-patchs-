@@ -24,7 +24,7 @@ version_anchor = 'const VERIFIED_PROJECT_SYNC_VERSION = "TCRM_TOS_LEAD_NAME_VERI
 version_replacement = version_anchor + '''const CRM_HANDOVER_BRIEF_SYNC_VERSION = "TCRM_CLIENT_HANDOVER_BRIEF_V1";\nconst CRM_HANDOVER_BRIEF_MAX_JSON_CHARS = 45000;\nconst CRM_HANDOVER_BRIEF_MAX_FIELD_CHARS = 6000;\n'''
 
 normalize_status_anchor = '\nfunction normalizeTosProjectStatus(client: any) {'
-helper_block = r'''
+helper_block = '''
 function buildStructuredHandoverBrief(brief: any) {
   if (!brief || typeof brief !== "object" || Array.isArray(brief)) return null;
 
