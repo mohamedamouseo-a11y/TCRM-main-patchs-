@@ -1,0 +1,347 @@
+MODE=PATCH_APPLY_BUILD_VISUAL_QA_ONLY
+PROJECT=TCRM
+PATCH_NAME=TCRM-SALES-MODULE-PREMIUM-V2-3-SCREENS-REFERENCE-MATCH
+
+SERVER_PROJECT_ROOT=/var/www/TCRM-MAIN
+LIVE_SITE=https://sales.tamiyouzplatform.com
+
+PATCH_URL=https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SALES-MODULE-PREMIUM-V2-3-SCREENS-REFERENCE-MATCH.py
+
+==================================================
+GOAL
+==================================================
+Apply the approved premium UX/UI redesign to ONLY these three real TCRM Sales screens:
+
+1. Sales Funnel
+2. Tasks & SLA
+3. Calendar
+
+The patch was designed from the real runtime screenshots already collected for those screens.
+
+DO NOT touch/rework:
+- Team Dashboard
+- Leads
+
+The visual direction is a single premium design system:
+- Light: pearl / cool-white layered surfaces, lilac-periwinkle accents, refined cards, subtle depth
+- Dark: deep navy layered surfaces, controlled indigo/blue accents, strong readability
+- Keep the real current page information architecture and data widgets
+- Preserve RTL
+
+==================================================
+CRITICAL SAFETY RULES
+==================================================
+DO NOT:
+- git reset --hard
+- git checkout -- existing files
+- discard current server changes
+- pull/merge/rebase over the working tree
+- push
+- commit
+- change database data
+- change backend logic
+- change routes
+- change permissions
+- change business logic
+- alter Team Dashboard
+- alter Leads
+- invent mock data
+- generate fake screenshots
+
+IMPORTANT:
+The server may already contain previous approved/unpushed visual changes.
+Apply this patch ON TOP OF THE CURRENT WORKING TREE.
+Do not restore files from GitHub main before applying it.
+
+==================================================
+STEP 1 — PRECHECK
+==================================================
+cd /var/www/TCRM-MAIN
+
+Capture and report:
+- pwd
+- git branch --show-current
+- git status --short
+
+Verify these files exist:
+- client/src/pages/SalesFunnelDashboard.tsx
+- client/src/pages/TaskSlaDashboard.tsx
+- client/src/pages/CalendarPage.tsx
+
+Do not modify anything yet if any required file is missing.
+
+==================================================
+STEP 2 — FETCH PATCH
+==================================================
+Download the patch script to a TEMPORARY location outside the repo, for example:
+
+/tmp/TCRM-SALES-MODULE-PREMIUM-V2-3-SCREENS-REFERENCE-MATCH.py
+
+Fetch from exactly:
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SALES-MODULE-PREMIUM-V2-3-SCREENS-REFERENCE-MATCH.py
+
+Verify the downloaded file contains this marker:
+TCRM_SALES_MODULE_PREMIUM_V2_3_SCREENS_REFERENCE_MATCH
+
+==================================================
+STEP 3 — APPLY PATCH
+==================================================
+From:
+/var/www/TCRM-MAIN
+
+Run the patch with python3.
+
+Expected patch scope:
+- client/src/pages/SalesFunnelDashboard.tsx
+- client/src/pages/TaskSlaDashboard.tsx
+- client/src/pages/CalendarPage.tsx
+- client/src/sales-module-premium-v2-three-screen.css
+
+The patch should create a timestamped backup under:
+.patch-backups/
+
+Expected patch flags include:
+PATCH=YES
+TCRM_SALES_MODULE_PREMIUM_V2=YES
+REFERENCE_SCREEN_INSPIRED=YES
+SALES_FUNNEL_PATCHED=YES
+SLA_PATCHED=YES
+CALENDAR_PATCHED=YES
+TEAM_DASHBOARD_CHANGED=NO
+LEADS_CHANGED=NO
+ROUTES_UNCHANGED=YES
+PERMISSIONS_UNCHANGED=YES
+BACKEND_UNCHANGED=YES
+BUSINESS_LOGIC_UNCHANGED=YES
+
+If the patch returns an error:
+STOP.
+Do not hand-edit around the patch failure.
+Return the exact error.
+
+==================================================
+STEP 4 — SOURCE VALIDATION
+==================================================
+Verify:
+
+A) All three page files contain:
+TCRM_SALES_MODULE_PREMIUM_V2_3_SCREENS_REFERENCE_MATCH
+
+B) All three import:
+../sales-module-premium-v2-three-screen.css
+
+C) Main page wrappers contain:
+Sales Funnel:
+- tcrm-sales-premium-v2
+- tcrm-sales-funnel-premium-v2
+
+Tasks & SLA:
+- tcrm-sales-premium-v2
+- tcrm-sla-premium-v2
+
+Calendar:
+- tcrm-sales-premium-v2
+- tcrm-calendar-premium-v2
+
+D) Confirm these files were NOT changed by this task:
+- client/src/pages/TeamDashboard.tsx
+- client/src/pages/LeadsList.tsx
+
+Do not use broad formatting tools on unrelated files.
+
+==================================================
+STEP 5 — BUILD / RESTART
+==================================================
+Use the EXISTING project build and service workflow already configured on this server.
+
+Do not invent a new service.
+Do not change nginx/systemd/PM2 configuration.
+
+1. Run the normal production build.
+2. Restart only the existing TCRM application service/process if a restart is required by the established deployment workflow.
+3. Verify the app/service is running.
+4. Verify the local application HTTP endpoint used by this deployment returns 200.
+5. Verify the live site is reachable:
+   https://sales.tamiyouzplatform.com
+
+Report the actual build command and actual service/process name used.
+
+==================================================
+STEP 6 — LIVE VISUAL QA
+==================================================
+Use the actual live UI:
+https://sales.tamiyouzplatform.com
+
+Use an existing authenticated interactive browser session.
+Do not inject cookies or use programmatic authentication.
+
+Viewport:
+1920x1080
+
+Use the actual Sales sidebar routes. Confirm actual route before capture.
+
+For EACH of the three screens capture:
+
+LIGHT MODE
+1. TOP
+2. MID (if the page scrolls beyond one viewport)
+3. LOWER (if the page scrolls enough to show distinct lower content)
+4. TRUE FULL PAGE / full internal scroll content
+
+DARK MODE
+5. TOP
+6. MID (if applicable)
+7. LOWER (if applicable)
+8. TRUE FULL PAGE / full internal scroll content
+
+RTL
+9. ARABIC / RTL LIGHT TOP
+
+Screens:
+- Sales Funnel
+- Tasks & SLA
+- Calendar
+
+Do not modify records.
+Do not save forms.
+Do not create meetings/tasks/leads.
+Do not click destructive actions.
+Theme/language switching and scrolling are allowed.
+
+==================================================
+VISUAL ACCEPTANCE CHECKS
+==================================================
+SALES FUNNEL:
+- premium lavender/indigo hero remains aligned with real page structure
+- 5 KPI cards are coherent, equal-height and readable
+- Sales Funnel + Lead Trend cards look premium, not flat
+- Won Deals panel has proper premium surface even when empty
+- Campaign Performance and Deal Summary remain aligned
+- Campaign Performance Details table is readable and polished
+- Stage Conversion cards remain intact
+- no data/chart regression
+
+TASKS & SLA:
+- premium hero treatment is consistent with Sales Funnel
+- 4 KPI cards are aligned/readable
+- chart cards have clean premium surfaces
+- task/activity tables remain readable
+- status colors remain semantically understandable
+- filters/agent selector remain functional and readable
+- no interaction/business logic regression
+
+CALENDAR:
+- header/hero is premium but keeps current Calendar IA
+- actual month calendar structure is preserved
+- month navigation is visible
+- date cells remain readable
+- event chips remain distinguishable
+- Upcoming panel remains clearly separated from calendar
+- New Meeting action remains visible when permitted
+- no create/edit/delete action should be executed during QA
+
+DARK MODE:
+- deep navy layered surfaces
+- no black-on-black text
+- no white-on-white controls
+- charts, tables, event chips and labels readable
+
+RTL:
+- direction correct
+- header/action alignment correct
+- tables/calendar not visually broken
+- sidebar unchanged
+
+==================================================
+STEP 7 — SCREENSHOT OUTPUT
+==================================================
+Create directory:
+/var/www/TCRM-MAIN/sales-premium-v2-qa/
+
+Use filenames:
+
+TCRM__PREMIUM-V2__SALES-FUNNEL__LIGHT__TOP__1920x1080.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__LIGHT__MID__1920x1080.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__LIGHT__LOWER__1920x1080.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__LIGHT__FULL-PAGE.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__DARK__TOP__1920x1080.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__DARK__MID__1920x1080.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__DARK__LOWER__1920x1080.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__DARK__FULL-PAGE.png
+TCRM__PREMIUM-V2__SALES-FUNNEL__RTL-LIGHT__TOP__1920x1080.png
+
+Repeat the same naming scheme with:
+SLA-TASKS
+CALENDAR
+
+If MID/LOWER are genuinely not applicable because a page has no additional scroll region, do not fabricate duplicate screenshots. Report them as NOT_APPLICABLE.
+
+Create ZIP:
+/var/www/TCRM-MAIN/TCRM__SALES-PREMIUM-V2__VISUAL-QA.zip
+
+ZIP must contain every captured image.
+
+==================================================
+STEP 8 — FINAL GIT SAFETY CHECK
+==================================================
+Run:
+git status --short
+
+git diff -- client/src/pages/SalesFunnelDashboard.tsx client/src/pages/TaskSlaDashboard.tsx client/src/pages/CalendarPage.tsx client/src/sales-module-premium-v2-three-screen.css
+
+Confirm TeamDashboard.tsx and LeadsList.tsx were not changed by this task.
+
+DO NOT PUSH.
+DO NOT COMMIT.
+
+==================================================
+FINAL RETURN FORMAT
+==================================================
+PATCH_FETCHED=YES/NO
+PATCH=YES/NO
+TCRM_SALES_MODULE_PREMIUM_V2=YES/NO
+REFERENCE_SCREEN_INSPIRED=YES/NO
+
+SALES_FUNNEL_PATCHED=YES/NO
+SLA_PATCHED=YES/NO
+CALENDAR_PATCHED=YES/NO
+TEAM_DASHBOARD_CHANGED=NO/YES
+LEADS_CHANGED=NO/YES
+
+LIGHT_MODE_PREMIUM=YES/NO
+DARK_MODE_PREMIUM=YES/NO
+RTL_PRESERVED=YES/NO
+SIDEBAR_PRESERVED=YES/NO
+
+ROUTES_UNCHANGED=YES/NO
+PERMISSIONS_UNCHANGED=YES/NO
+BACKEND_UNCHANGED=YES/NO
+BUSINESS_LOGIC_UNCHANGED=YES/NO
+DATA_CHANGED=NO
+
+BUILD_COMMAND=
+BUILD=PASS/FAIL
+SERVICE_PROCESS=
+SERVICE=RUNNING/FAILED
+LOCAL_HTTP_STATUS=
+LIVE_HTTP_STATUS=
+
+SALES_FUNNEL_VISUAL_QA=PASS/FAIL
+SLA_VISUAL_QA=PASS/FAIL
+CALENDAR_VISUAL_QA=PASS/FAIL
+
+SCREENSHOT_COUNT=
+SCREENSHOT_DIR=/var/www/TCRM-MAIN/sales-premium-v2-qa/
+ZIP_PATH=/var/www/TCRM-MAIN/TCRM__SALES-PREMIUM-V2__VISUAL-QA.zip
+
+FILES_CHANGED=
+BACKUP_DIR=
+SOURCE_PROJECT_PUSHED=NO
+SOURCE_PROJECT_COMMITTED=NO
+
+ERROR=NONE
+READY_FOR_CHATGPT_VISUAL_REVIEW=YES
+
+IMPORTANT:
+Do NOT say READY_FOR_PUSH.
+ChatGPT must inspect the actual screenshot pixels before push approval.
