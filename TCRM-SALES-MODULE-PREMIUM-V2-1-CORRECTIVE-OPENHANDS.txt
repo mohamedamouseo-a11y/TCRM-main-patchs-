@@ -1,0 +1,308 @@
+MODE=PATCH_APPLY_AND_VERIFY
+
+PROJECT=TCRM
+SERVER_REPO=/var/www/TCRM-MAIN
+LIVE_SITE=https://sales.tamiyouzplatform.com
+
+PATCH_VERSION=TCRM_SALES_MODULE_PREMIUM_V2_1_CORRECTIVE_REFERENCE_MATCH
+BASE_REQUIRED=TCRM_SALES_MODULE_PREMIUM_V2_3_SCREENS_REFERENCE_MATCH
+
+PATCH_URL=https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SALES-MODULE-PREMIUM-V2-1-CORRECTIVE-3-SCREENS-REFERENCE-MATCH.py
+
+TARGET_SCREENS_ONLY:
+1. Sales Funnel
+2. Tasks & SLA
+3. Calendar
+
+PROTECTED_SCREENS:
+- Team Dashboard
+- Leads
+
+==================================================
+CRITICAL CONTEXT
+==================================================
+
+Premium V2 is ALREADY APPLIED in the current server working tree.
+It has NOT necessarily been pushed to GitHub main.
+
+Therefore:
+
+DO NOT git reset.
+DO NOT git checkout files.
+DO NOT git restore.
+DO NOT pull in a way that overwrites local working-tree changes.
+DO NOT reapply V2.
+DO NOT reconstruct the patch manually.
+
+V2.1 MUST be applied ON TOP OF the current local V2 working tree.
+
+This is a corrective patch because V2 visually behaved mostly like CSS skinning.
+V2.1 contains REAL TSX structural changes plus a corrective CSS layer.
+
+It intentionally keeps all backend/data/routes/permissions/business logic unchanged.
+
+==================================================
+STEP 1 — ENTER EXISTING SERVER REPO
+==================================================
+
+cd /var/www/TCRM-MAIN
+
+Print:
+
+pwd
+git status --short
+
+DO NOT clean the working tree.
+
+==================================================
+STEP 2 — VERIFY PREMIUM V2 EXISTS
+==================================================
+
+Run read-only checks:
+
+grep -n "TCRM_SALES_MODULE_PREMIUM_V2_3_SCREENS_REFERENCE_MATCH" client/src/pages/SalesFunnelDashboard.tsx
+grep -n "TCRM_SALES_MODULE_PREMIUM_V2_3_SCREENS_REFERENCE_MATCH" client/src/pages/TaskSlaDashboard.tsx
+grep -n "TCRM_SALES_MODULE_PREMIUM_V2_3_SCREENS_REFERENCE_MATCH" client/src/pages/CalendarPage.tsx
+
+test -f client/src/sales-module-premium-v2-three-screen.css
+
+If ANY V2 marker/file is missing:
+STOP.
+
+Return:
+PATCH_APPLIED=NO
+BLOCKER=PREMIUM_V2_BASE_NOT_PRESENT_ON_SERVER
+
+Do not attempt to repair/recreate V2.
+
+==================================================
+STEP 3 — DOWNLOAD THE EXACT V2.1 PATCH
+==================================================
+
+Download exactly:
+
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SALES-MODULE-PREMIUM-V2-1-CORRECTIVE-3-SCREENS-REFERENCE-MATCH.py
+
+Save temporarily as:
+
+/tmp/TCRM-SALES-MODULE-PREMIUM-V2-1-CORRECTIVE.py
+
+Verify the downloaded file contains:
+
+TCRM_SALES_MODULE_PREMIUM_V2_1_CORRECTIVE_REFERENCE_MATCH
+
+Do NOT edit the downloaded patch.
+
+==================================================
+STEP 4 — APPLY PATCH
+==================================================
+
+From:
+
+/var/www/TCRM-MAIN
+
+run:
+
+python3 /tmp/TCRM-SALES-MODULE-PREMIUM-V2-1-CORRECTIVE.py
+
+Required successful output includes:
+
+PATCH=YES
+TCRM_SALES_MODULE_PREMIUM_V2_1=YES
+STRUCTURAL_TSX_CHANGES=YES
+CALENDAR_REAL_DATA_KPIS=YES
+SLA_OPERATIONAL_HEALTH_STRIP=YES
+TEAM_DASHBOARD_CHANGED=NO
+LEADS_CHANGED=NO
+ERROR=NONE
+
+If patch exits non-zero:
+STOP.
+Return the exact error.
+Do not manually patch around it.
+
+==================================================
+STEP 5 — VERIFY EXACT FILE SCOPE
+==================================================
+
+The V2.1 patch is allowed to change ONLY:
+
+client/src/pages/SalesFunnelDashboard.tsx
+client/src/pages/TaskSlaDashboard.tsx
+client/src/pages/CalendarPage.tsx
+client/src/sales-module-premium-v2-1-corrective.css
+
+Existing V2 file remains present:
+
+client/src/sales-module-premium-v2-three-screen.css
+
+Confirm new marker/imports:
+
+grep -n "TCRM_SALES_MODULE_PREMIUM_V2_1_CORRECTIVE_REFERENCE_MATCH" client/src/pages/SalesFunnelDashboard.tsx
+grep -n "TCRM_SALES_MODULE_PREMIUM_V2_1_CORRECTIVE_REFERENCE_MATCH" client/src/pages/TaskSlaDashboard.tsx
+grep -n "TCRM_SALES_MODULE_PREMIUM_V2_1_CORRECTIVE_REFERENCE_MATCH" client/src/pages/CalendarPage.tsx
+
+grep -n "sales-module-premium-v2-1-corrective.css" client/src/pages/SalesFunnelDashboard.tsx client/src/pages/TaskSlaDashboard.tsx client/src/pages/CalendarPage.tsx
+
+Verify structural additions:
+
+grep -n "tcrm-v21-stage-conversion" client/src/pages/SalesFunnelDashboard.tsx
+grep -n "tcrm-v21-sla-health" client/src/pages/TaskSlaDashboard.tsx
+grep -n "tcrm-v21-calendar-kpis" client/src/pages/CalendarPage.tsx
+grep -n "monthEventCount" client/src/pages/CalendarPage.tsx
+
+DO NOT modify Team Dashboard or Leads.
+
+==================================================
+STEP 6 — BUILD
+==================================================
+
+Use the SAME package manager already used by this repository.
+
+If pnpm-lock.yaml exists:
+  pnpm run build
+Else if package-lock.json exists:
+  npm run build
+Else:
+  use the repository's existing documented build command only.
+
+Do not change dependencies.
+Do not run package upgrades.
+
+BUILD must succeed before restarting the app.
+
+==================================================
+STEP 7 — RESTART EXISTING APP ONLY
+==================================================
+
+Restart only the existing PM2 process:
+
+pm2 restart tamiyouz-crm
+
+Then verify:
+
+pm2 status
+
+Do NOT restart unrelated processes.
+
+==================================================
+STEP 8 — HTTP VERIFICATION
+==================================================
+
+Verify local nginx/application response is 200.
+Verify live site is 200:
+
+https://sales.tamiyouzplatform.com
+
+Do not log in programmatically.
+Do not inject cookies.
+
+==================================================
+STEP 9 — OPTIONAL LIVE VISUAL QA
+==================================================
+
+ONLY if an existing authenticated interactive browser session is available.
+
+Do not block patch success if browser authentication is unavailable.
+
+Open LIVE SITE ONLY:
+
+https://sales.tamiyouzplatform.com
+
+Capture these pages:
+
+A) Sales Funnel
+- LIGHT TOP
+- LIGHT FULL PAGE
+- DARK TOP
+- DARK FULL PAGE
+- RTL LIGHT TOP
+
+B) Tasks & SLA
+- LIGHT TOP
+- LIGHT FULL PAGE
+- DARK TOP
+- DARK FULL PAGE
+- RTL LIGHT TOP
+
+C) Calendar
+- LIGHT TOP
+- LIGHT FULL PAGE
+- DARK TOP
+- DARK FULL PAGE
+- RTL LIGHT TOP
+
+Expected if browser available: 15 screenshots.
+
+STRICT:
+- real live screenshots only
+- no fake screenshots
+- no mockups
+- no data editing
+- no save/create/delete actions
+- theme/language switching and scrolling only
+
+Save to:
+
+/var/www/TCRM-MAIN/sales-module-premium-v2-1-qa/
+
+Create:
+
+/var/www/TCRM-MAIN/TCRM__SALES-MODULE-PREMIUM-V2-1__VISUAL-QA.zip
+
+If authenticated browser session is NOT available, return:
+VISUAL_QA=BLOCKED
+VISUAL_QA_BLOCKER=AUTHENTICATED_BROWSER_SESSION_UNAVAILABLE
+
+This does NOT make patch/build verification fail.
+
+==================================================
+DO NOT PUSH
+==================================================
+
+DO NOT git add.
+DO NOT git commit.
+DO NOT git push.
+
+We will visually review before push.
+
+==================================================
+FINAL RETURN FORMAT
+==================================================
+
+PATCH_VERSION=TCRM_SALES_MODULE_PREMIUM_V2_1_CORRECTIVE_REFERENCE_MATCH
+PATCH_APPLIED=YES/NO
+
+BASE_V2_VERIFIED=YES/NO
+STRUCTURAL_TSX_CHANGES=YES/NO
+CALENDAR_REAL_DATA_KPIS=YES/NO
+SLA_OPERATIONAL_HEALTH_STRIP=YES/NO
+
+SALES_FUNNEL_CHANGED=YES/NO
+TASKS_SLA_CHANGED=YES/NO
+CALENDAR_CHANGED=YES/NO
+TEAM_DASHBOARD_CHANGED=NO
+LEADS_CHANGED=NO
+BACKEND_CHANGED=NO
+ROUTES_CHANGED=NO
+PERMISSIONS_CHANGED=NO
+BUSINESS_LOGIC_CHANGED=NO
+
+BACKUP_PATH=
+FILES_CHANGED=
+
+BUILD=PASS/FAIL
+PM2_TAMIYOUZ_CRM=ONLINE/OFFLINE
+LOCAL_HTTP=200/OTHER
+LIVE_HTTP=200/OTHER
+
+VISUAL_QA=COMPLETE/BLOCKED/NOT_RUN
+SCREENSHOT_COUNT=
+QA_DIRECTORY=
+QA_ZIP_PATH=
+
+GIT_ADD_RUN=NO
+GIT_COMMIT_RUN=NO
+GIT_PUSH_RUN=NO
+
+ERROR=NONE
