@@ -73,6 +73,11 @@ diff --git a/client/src/components/tara/TaraProviderSettingsPanel.tsx b/client/s
 -        onSuccess: async (data: any) => { toast.success(taraText(`اتصال ${labels[data.provider] || data.provider} ناجح`)); await utils.tara.getProviderConfiguration.invalidate(); },
 +        onSuccess: async (data: any) => { toast.success(taraText(`اتصال ${labels[data.provider] || data.provider} ناجح`)); await utils.tara.getProviderConfiguration.invalidate(providerScope); },
          onError: (error) => toast.error(error.message),
+@@ -80,3 +82,3 @@
+     <Card>
+-      <CardHeader><CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5"/>{taraText("\u0645\u0632\u0648\u062F\u0627\u062A \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u062E\u0627\u0635\u0629 \u0628\u062A\u0627\u0631\u0627")}</CardTitle></CardHeader>
++      <CardHeader><CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5"/>{taraText(agentLabel === "Felfel" ? "مزودات الذكاء الخاصة بفلفل" : "\u0645\u0632\u0648\u062F\u0627\u062A \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u062E\u0627\u0635\u0629 \u0628\u062A\u0627\u0631\u0627")}</CardTitle></CardHeader>
+       <CardContent className="space-y-5">
 @@ -124,4 +126,4 @@
            <div className="flex flex-wrap gap-2">
 -            <Button variant="outline" disabled={saveM.isPending || testM.isPending} onClick={() => saveThen(() => testM.mutateAsync({ provider: item.provider }))}><TestTube2 className="ms-2 h-4 w-4"/>{taraText("\u0627\u062E\u062A\u0628\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644")}</Button>
