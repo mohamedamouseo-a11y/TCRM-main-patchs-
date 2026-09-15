@@ -1,0 +1,188 @@
+diff --git a/client/src/components/tara/TaraProviderSettingsPanel.tsx b/client/src/components/tara/TaraProviderSettingsPanel.tsx
+index edbdeaa..f50ceb2 100644
+--- a/client/src/components/tara/TaraProviderSettingsPanel.tsx
++++ b/client/src/components/tara/TaraProviderSettingsPanel.tsx
+@@ -10,3 +10,3 @@ import { Switch } from "@/components/ui/switch";
+ import { trpc } from "@/lib/trpc";
+-import { Bot, KeyRound, Loader2, RefreshCw, Save, ShieldCheck, TestTube2, Trash2 } from "lucide-react";
++import { Bot, KeyRound, Loader2, Plus, RefreshCw, Save, ShieldCheck, TestTube2, Trash2 } from "lucide-react";
+ import { taraDirection, taraText, taraToast as toast, useTaraI18n } from "@/components/tara/taraI18n";
+@@ -14,2 +14,3 @@ const providers = ["openai", "gemini", "claude", "agnes", "custom"] as const;
+ const labels: Record<string, string> = { openai: "OpenAI", gemini: "Google Gemini", claude: "Anthropic Claude", agnes: "Agnes AI", custom: "Custom OpenAI-compatible" };
++const providerLabel = (item: any) => item?.label || labels[item?.provider] || item?.provider || "";
+ function statusBadge(status: string) {
+@@ -28,2 +29,3 @@ export default function TaraProviderSettingsPanel({ tenantKey, agentLabel = "Tar
+     const [models, setModels] = useState<Record<string, string[]>>({});
++    const [newProvider, setNewProvider] = useState({ provider: "", baseUrl: "", model: "" });
+     useEffect(() => {
+@@ -70,2 +72,15 @@ export default function TaraProviderSettingsPanel({ tenantKey, agentLabel = "Tar
+     }));
++    const addProvider = () => {
++        const provider = newProvider.provider.trim().toLowerCase();
++        const baseUrl = newProvider.baseUrl.trim().replace(/\/+$/, "");
++        const model = newProvider.model.trim();
++        if (!/^[a-z0-9][a-z0-9._:-]{0,39}$/.test(provider)) return toast.error("Provider name must be a simple key such as openrouter or deepseek");
++        if (form.providers.some((item: any) => item.provider === provider)) return toast.error("Provider already exists");
++        if (!baseUrl.startsWith("https://") || !model) return toast.error("HTTPS Base URL and Model are required");
++        setForm((current: any) => ({
++            ...current,
++            providers: [...current.providers, { provider, label: provider, enabled: false, isPrimary: false, fallbackPriority: 100 + current.providers.length, baseUrl, model, apiKey: "", clearApiKey: false, hasApiKey: false, apiKeyMasked: null, apiKeyFromEnvironment: false, lastTestStatus: "never", lastTestMessage: null }],
++        }));
++        setNewProvider({ provider: "", baseUrl: "", model: "" });
++    };
+     const saveThen = async (action: () => Promise<any>) => {
+@@ -84,5 +99,14 @@ export default function TaraProviderSettingsPanel({ tenantKey, agentLabel = "Tar
+         <div className="rounded-2xl border bg-muted/30 p-4 text-sm">{taraText("\n          \u0646\u0641\u0633 \u0641\u0643\u0631\u0629 \u0645\u0641\u0627\u062A\u064A\u062D \u0631\u0627\u0643\u0627\u0646: \u0645\u0641\u062A\u0627\u062D \u0645\u0633\u062A\u0642\u0644 \u0644\u0643\u0644 \u0645\u0632\u0648\u062F\u060C \u0645\u0632\u0648\u062F \u0623\u0633\u0627\u0633\u064A\u060C \u0648\u062A\u0631\u062A\u064A\u0628 \u0627\u062D\u062A\u064A\u0627\u0637\u064A \u062A\u0644\u0642\u0627\u0626\u064A. \u0627\u0644\u0645\u0641\u0627\u062A\u064A\u062D \u062A\u064F\u062D\u0641\u0638 \u0645\u0634\u0641\u0631\u0629 \u0648\u0644\u0627 \u062A\u0639\u0648\u062F \u0644\u0644\u0645\u062A\u0635\u0641\u062D \u0628\u0639\u062F \u0627\u0644\u062D\u0641\u0638.\n        ")}</div>
++        {tenantKey === "felfel" && <div className="rounded-2xl border border-dashed p-4 space-y-3">
++          <div><p className="font-bold">Add any OpenAI-compatible provider</p><p className="text-xs text-muted-foreground">Examples: OpenRouter, DeepSeek, Groq, xAI. Use the provider API Base URL and model you have access to.</p></div>
++          <div className="grid gap-3 lg:grid-cols-[160px_minmax(0,1fr)_220px_auto]">
++            <Input dir="ltr" placeholder="openrouter" value={newProvider.provider} onChange={(event) => setNewProvider({ ...newProvider, provider: event.target.value })}/>
++            <Input dir="ltr" placeholder="https://openrouter.ai/api/v1" value={newProvider.baseUrl} onChange={(event) => setNewProvider({ ...newProvider, baseUrl: event.target.value })}/>
++            <Input dir="ltr" placeholder="model/id" value={newProvider.model} onChange={(event) => setNewProvider({ ...newProvider, model: event.target.value })}/>
++            <Button type="button" variant="outline" onClick={addProvider}><Plus className="me-2 h-4 w-4"/>Add Provider</Button>
++          </div>
++        </div>}
+         <div className="grid gap-4 md:grid-cols-2">
+-          <div className="space-y-2"><Label>{taraText("\u0627\u0644\u0645\u0632\u0648\u062F \u0627\u0644\u0623\u0633\u0627\u0633\u064A")}</Label><Select value={form.primaryProvider} onValueChange={(primaryProvider) => setForm({ ...form, primaryProvider })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{enabledProviders.map((item: any) => <SelectItem key={item.provider} value={item.provider}>{labels[item.provider]}</SelectItem>)}</SelectContent></Select></div>
+-          <div className="space-y-2"><Label>{taraText("\u0627\u0644\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A")}</Label><div className="flex min-h-10 flex-wrap items-center gap-2 rounded-md border px-3 py-2">{form.providers.filter((item: any) => item.enabled && item.provider !== form.primaryProvider).sort((a: any, b: any) => a.fallbackPriority - b.fallbackPriority).map((item: any, index: number) => <Badge key={item.provider} variant="secondary">{index + 1}. {labels[item.provider]}</Badge>)}{form.providers.filter((item: any) => item.enabled && item.provider !== form.primaryProvider).length === 0 && <span className="text-xs text-muted-foreground">{taraText("\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0632\u0648\u062F \u0627\u062D\u062A\u064A\u0627\u0637\u064A")}</span>}</div></div>
++          <div className="space-y-2"><Label>{taraText("\u0627\u0644\u0645\u0632\u0648\u062F \u0627\u0644\u0623\u0633\u0627\u0633\u064A")}</Label><Select value={form.primaryProvider} onValueChange={(primaryProvider) => setForm({ ...form, primaryProvider })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{enabledProviders.map((item: any) => <SelectItem key={item.provider} value={item.provider}>{providerLabel(item)}</SelectItem>)}</SelectContent></Select></div>
++          <div className="space-y-2"><Label>{taraText("\u0627\u0644\u062A\u0631\u062A\u064A\u0628 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A")}</Label><div className="flex min-h-10 flex-wrap items-center gap-2 rounded-md border px-3 py-2">{form.providers.filter((item: any) => item.enabled && item.provider !== form.primaryProvider).sort((a: any, b: any) => a.fallbackPriority - b.fallbackPriority).map((item: any, index: number) => <Badge key={item.provider} variant="secondary">{index + 1}. {providerLabel(item)}</Badge>)}{form.providers.filter((item: any) => item.enabled && item.provider !== form.primaryProvider).length === 0 && <span className="text-xs text-muted-foreground">{taraText("\u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0632\u0648\u062F \u0627\u062D\u062A\u064A\u0627\u0637\u064A")}</span>}</div></div>
+         </div>
+@@ -93,3 +117,3 @@ export default function TaraProviderSettingsPanel({ tenantKey, agentLabel = "Tar
+       {form.providers.map((item: any) => <Card key={item.provider} className={item.provider === form.primaryProvider ? "border-primary" : ""}>
+-        <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{labels[item.provider]}</CardTitle><div className="flex items-center gap-2">{item.provider === form.primaryProvider && <Badge variant="secondary">{taraText("\u0627\u0644\u0623\u0633\u0627\u0633\u064A")}</Badge>}{statusBadge(item.lastTestStatus)}</div></div></CardHeader>
++        <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>{providerLabel(item)}</CardTitle><div className="flex items-center gap-2">{item.provider === form.primaryProvider && <Badge variant="secondary">{taraText("\u0627\u0644\u0623\u0633\u0627\u0633\u064A")}</Badge>}{statusBadge(item.lastTestStatus)}</div></div></CardHeader>
+         <CardContent className="space-y-4">
+diff --git a/server/routers.ts b/server/routers.ts
+index 292a02d..6bfeea8 100644
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -2229,6 +2229,6 @@
+         tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional(),
+-        primaryProvider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
+-        fallbackOrder: z.array(z.enum(["openai", "gemini", "claude", "agnes", "custom"])).max(4),
++        primaryProvider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$/),
++        fallbackOrder: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$/)).max(24),
+         providers: z.array(z.object({
+-          provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
++          provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$/),
+           enabled: z.boolean(),
+@@ -2239,3 +2239,3 @@
+           clearApiKey: z.boolean().optional(),
+-        })).length(5),
++        })).min(5).max(25),
+       }))
+@@ -2244,3 +2244,3 @@
+       .input(z.object({
+-        provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
++        provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$/),
+         tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional(),
+@@ -2250,3 +2250,3 @@
+       .input(z.object({
+-        provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
++        provider: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,39}$/),
+         tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional(),
+diff --git a/server/services/tara/taraMultiProviderService.ts b/server/services/tara/taraMultiProviderService.ts
+index d607e40..817cf57 100644
+--- a/server/services/tara/taraMultiProviderService.ts
++++ b/server/services/tara/taraMultiProviderService.ts
+@@ -10,3 +10,4 @@ import { resolveTaraTenantKey } from "./taraTenant";
+ export const TARA_LLM_PROVIDERS = ["openai", "gemini", "claude", "agnes", "custom"] as const;
+-export type TaraLlmProvider = (typeof TARA_LLM_PROVIDERS)[number];
++type BuiltInTaraLlmProvider = (typeof TARA_LLM_PROVIDERS)[number];
++export type TaraLlmProvider = string;
+ 
+@@ -14,3 +15,3 @@ type ProviderRow = typeof taraAiProviders.$inferSelect;
+ 
+-const PROVIDER_DEFAULTS: Record<TaraLlmProvider, { label: string; baseUrl: string; model: string }> = {
++const PROVIDER_DEFAULTS_BASE: Record<BuiltInTaraLlmProvider, { label: string; baseUrl: string; model: string }> = {
+   openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4.1-mini" },
+@@ -21,4 +22,9 @@ const PROVIDER_DEFAULTS: Record<TaraLlmProvider, { label: string; baseUrl: strin
+ };
++const PROVIDER_DEFAULTS = new Proxy(PROVIDER_DEFAULTS_BASE as Record<string, { label: string; baseUrl: string; model: string }>, {
++  get(target, property: string) {
++    return target[property] || { label: property, baseUrl: PROVIDER_DEFAULTS_BASE.custom.baseUrl, model: PROVIDER_DEFAULTS_BASE.custom.model };
++  },
++});
+ 
+-const PROVIDER_ENV_KEYS: Record<TaraLlmProvider, string[]> = {
++const PROVIDER_ENV_KEYS: Record<string, string[]> = {
+   openai: ["TARA_OPENAI_API_KEY", "OPENAI_API_KEY"],
+@@ -51,3 +57,3 @@ function providerFromLegacy(provider: unknown, baseUrl: unknown): TaraLlmProvide
+ function envApiKey(provider: TaraLlmProvider) {
+-  for (const key of PROVIDER_ENV_KEYS[provider]) {
++  for (const key of PROVIDER_ENV_KEYS[provider] || []) {
+     const value = String(process.env[key] || "").trim();
+@@ -63,4 +69,4 @@ function runtimeApiKey(row: ProviderRow) {
+ function assertProvider(value: unknown): TaraLlmProvider {
+-  const provider = String(value || "") as TaraLlmProvider;
+-  if (!TARA_LLM_PROVIDERS.includes(provider)) throw new Error("Unsupported Tara provider");
++  const provider = String(value || "").trim().toLowerCase();
++  if (!/^[a-z0-9][a-z0-9._:-]{0,39}$/.test(provider)) throw new Error("Invalid Tara provider key");
+   return provider;
+@@ -80,4 +86,5 @@ export function normalizeTaraProviderOrder(primary: TaraLlmProvider, fallbackOrd
+   const result: TaraLlmProvider[] = [];
+-  for (const provider of [primary, ...fallbackOrder]) {
+-    if (TARA_LLM_PROVIDERS.includes(provider) && !result.includes(provider)) result.push(provider);
++  for (const rawProvider of [primary, ...fallbackOrder]) {
++    const provider = assertProvider(rawProvider);
++    if (!result.includes(provider)) result.push(provider);
+   }
+@@ -155,3 +162,9 @@ export async function saveTaraProviderConfiguration(input: any, actorUserId: num
+   const incoming = new Map<TaraLlmProvider, any>(incomingEntries);
+-  if (incoming.size !== TARA_LLM_PROVIDERS.length) throw new Error("All Tara providers must be included");
++  if (incoming.size !== incomingEntries.length) throw new Error("Duplicate Tara provider");
++  for (const provider of TARA_LLM_PROVIDERS) {
++    if (!incoming.has(provider)) throw new Error("All built-in Tara providers must be included");
++  }
++  if (tenantKey !== "felfel" && incoming.size !== TARA_LLM_PROVIDERS.length) {
++    throw new Error("Dynamic AI providers are enabled for Felfel only");
++  }
+   const primaryInput = incoming.get(primaryProvider);
+@@ -159,7 +172,6 @@ export async function saveTaraProviderConfiguration(input: any, actorUserId: num
+ 
+-  const existing = new Map<TaraLlmProvider, ProviderRow>(rows.map((row) => [row.provider as TaraLlmProvider, row] as [TaraLlmProvider, ProviderRow]));
+-  const prepared = [] as Array<{ provider: TaraLlmProvider; values: any }>;
+-  for (let index = 0; index < TARA_LLM_PROVIDERS.length; index += 1) {
+-    const provider = TARA_LLM_PROVIDERS[index];
+-    const item = incoming.get(provider) || {};
++  const existing = new Map<TaraLlmProvider, ProviderRow>(rows.map((row) => [assertProvider(row.provider), row] as [TaraLlmProvider, ProviderRow]));
++  const prepared = [] as Array<{ provider: TaraLlmProvider; values: any; exists: boolean }>;
++  for (let index = 0; index < incomingEntries.length; index += 1) {
++    const [provider, item] = incomingEntries[index];
+     const current = existing.get(provider);
+@@ -184,3 +196,3 @@ export async function saveTaraProviderConfiguration(input: any, actorUserId: num
+     }
+-    prepared.push({ provider, values });
++    prepared.push({ provider, values, exists: Boolean(current) });
+   }
+@@ -189,6 +201,10 @@ export async function saveTaraProviderConfiguration(input: any, actorUserId: num
+     for (const item of prepared) {
+-      await tx.update(taraAiProviders).set(item.values).where(and(
+-        eq(taraAiProviders.tenantKey, tenantKey),
+-        eq(taraAiProviders.provider, item.provider),
+-      ));
++      if (item.exists) {
++        await tx.update(taraAiProviders).set(item.values).where(and(
++          eq(taraAiProviders.tenantKey, tenantKey),
++          eq(taraAiProviders.provider, item.provider),
++        ));
++      } else {
++        await tx.insert(taraAiProviders).values({ tenantKey, provider: item.provider, ...item.values });
++      }
+     }
+diff --git a/server/services/tara/taraProviderSecurity.ts b/server/services/tara/taraProviderSecurity.ts
+index 4e2bfdb..f204201 100644
+--- a/server/services/tara/taraProviderSecurity.ts
++++ b/server/services/tara/taraProviderSecurity.ts
+@@ -82,3 +82,3 @@ export async function resolveSafeTaraProviderTarget(input: {
+   const allowed = configuredAllowedHosts();
+-  if (provider === "custom") {
++  if (provider === "custom" || !expectedHost) {
+     if (allowed.size > 0 && !allowed.has(hostname)) {
+@@ -86,3 +86,3 @@ export async function resolveSafeTaraProviderTarget(input: {
+     }
+-  } else if (!expectedHost || hostname !== expectedHost) {
++  } else if (hostname !== expectedHost) {
+     throw Object.assign(new Error("Tara provider host does not match the selected provider"), { code: "TARA_PROVIDER_HOST_MISMATCH" });
+   }
