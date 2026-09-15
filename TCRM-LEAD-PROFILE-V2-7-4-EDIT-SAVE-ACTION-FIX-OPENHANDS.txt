@@ -1,0 +1,28 @@
+Go to /var/www/TCRM-MAIN and apply this patch exactly:
+
+https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-LEAD-PROFILE-V2-7-4-EDIT-SAVE-ACTION-FIX.py
+
+Steps only:
+1. cd /var/www/TCRM-MAIN
+2. Download patch to /tmp/tcrm-lead-v274.py
+3. Run: python3 /tmp/tcrm-lead-v274.py
+4. Run the normal existing frontend build command.
+5. Restart the existing tamiyouz-crm PM2 process.
+6. Verify https://sales.tamiyouzplatform.com returns HTTP 200.
+
+DO NOT inspect unrelated code.
+DO NOT reset/checkout git.
+DO NOT modify backend.
+DO NOT commit.
+DO NOT push.
+DO NOT run visual QA.
+DO NOT change any data.
+
+Return only:
+PATCH=PASS/FAIL
+BUILD=PASS/FAIL
+PM2=ONLINE/OFFLINE
+HTTP=200/OTHER
+FILES_CHANGED=
+EDIT_SAVE_BAR=YES/NO
+ERROR=NONE/<error>
