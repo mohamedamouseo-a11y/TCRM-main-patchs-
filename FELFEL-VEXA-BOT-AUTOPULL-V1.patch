@@ -1,0 +1,9 @@
+diff --git a/core/runtime/src/runtime_kernel/docker_backend.py b/core/runtime/src/runtime_kernel/docker_backend.py
+--- a/core/runtime/src/runtime_kernel/docker_backend.py
++++ b/core/runtime/src/runtime_kernel/docker_backend.py
+@@ -200,2 +200,5 @@
+             raise ValueError("docker backend requires an image")
++        # Docker create never pulls missing images. Reuse the existing pull helper for meeting bots.
++        if workload_id.startswith("mtg-"):
++            self.ensure_worker_image(runnable.image)
+         name = self._cname(workload_id)
