@@ -1,0 +1,17 @@
+diff --git a/server/services/tara/taraMultiProviderService.ts b/server/services/tara/taraMultiProviderService.ts
+--- a/server/services/tara/taraMultiProviderService.ts
++++ b/server/services/tara/taraMultiProviderService.ts
+@@ -178,7 +178,12 @@ export async function saveTaraProviderConfiguration(input: any, actorUserId: num
+     const current = existing.get(provider);
+     const baseUrl = normalizeBaseUrl(item.baseUrl, provider);
+     const model = normalizeModel(item.model, provider);
+-    await resolveSafeTaraProviderTarget({ baseUrl, provider });
++    const dormantCustomPlaceholder = provider === "custom"
++      && !item.enabled
++      && baseUrl === PROVIDER_DEFAULTS_BASE.custom.baseUrl;
++    if (!dormantCustomPlaceholder) {
++      await resolveSafeTaraProviderTarget({ baseUrl, provider });
++    }
+     const newKey = String(item.apiKey || "").trim();
+     const values: any = {
+       enabled: item.enabled ? 1 : 0,
