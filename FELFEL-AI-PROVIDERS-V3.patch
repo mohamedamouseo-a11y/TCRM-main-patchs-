@@ -1,0 +1,123 @@
+diff --git a/client/src/components/tara/TaraProviderSettingsPanel.tsx b/client/src/components/tara/TaraProviderSettingsPanel.tsx
+--- a/client/src/components/tara/TaraProviderSettingsPanel.tsx
++++ b/client/src/components/tara/TaraProviderSettingsPanel.tsx
+@@ -21,6 +21,7 @@ function statusBadge(status: string) {
+ }
+-export default function TaraProviderSettingsPanel() {
++export default function TaraProviderSettingsPanel({ tenantKey, agentLabel = "Tara" }: { tenantKey?: string; agentLabel?: string } = {}) {
+     useTaraI18n();
+     const utils = trpc.useUtils();
+-    const configurationQ = trpc.tara.getProviderConfiguration.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
++    const providerScope = tenantKey ? { tenantKey } : undefined;
++    const configurationQ = trpc.tara.getProviderConfiguration.useQuery(providerScope, { retry: false, refetchOnWindowFocus: false });
+     const [form, setForm] = useState<any>(null);
+@@ -36,2 +37,3 @@ export default function TaraProviderSettingsPanel() {
+     const payload = () => ({
++        tenantKey,
+         primaryProvider: form.primaryProvider,
+@@ -52,3 +54,3 @@ export default function TaraProviderSettingsPanel() {
+     const saveM = trpc.tara.saveProviderConfiguration.useMutation({
+-        onSuccess: async () => { toast.success(taraText("\u062A\u0645 \u062D\u0641\u0638 \u0645\u0632\u0648\u062F\u0627\u062A \u062A\u0627\u0631\u0627")); await utils.tara.getProviderConfiguration.invalidate(); },
++        onSuccess: async () => { toast.success(taraText(agentLabel === "Felfel" ? "تم حفظ مزودات فلفل" : "\u062A\u0645 \u062D\u0641\u0638 \u0645\u0632\u0648\u062F\u0627\u062A \u062A\u0627\u0631\u0627")); await utils.tara.getProviderConfiguration.invalidate(providerScope); },
+         onError: (error) => toast.error(error.message),
+@@ -56,3 +58,3 @@ export default function TaraProviderSettingsPanel() {
+     const testM = trpc.tara.testConfiguredProvider.useMutation({
+-        onSuccess: async (data: any) => { toast.success(taraText(`اتصال ${labels[data.provider] || data.provider} ناجح`)); await utils.tara.getProviderConfiguration.invalidate(); },
++        onSuccess: async (data: any) => { toast.success(taraText(`اتصال ${labels[data.provider] || data.provider} ناجح`)); await utils.tara.getProviderConfiguration.invalidate(providerScope); },
+         onError: (error) => toast.error(error.message),
+@@ -78,3 +80,3 @@ export default function TaraProviderSettingsPanel() {
+     <Card>
+-      <CardHeader><CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5"/>{taraText("\u0645\u0632\u0648\u062F\u0627\u062A \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u062E\u0627\u0635\u0629 \u0628\u062A\u0627\u0631\u0627")}</CardTitle></CardHeader>
++      <CardHeader><CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5"/>{taraText(agentLabel === "Felfel" ? "مزودات الذكاء الخاصة بفلفل" : "\u0645\u0632\u0648\u062F\u0627\u062A \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u062E\u0627\u0635\u0629 \u0628\u062A\u0627\u0631\u0627")}</CardTitle></CardHeader>
+       <CardContent className="space-y-5">
+@@ -103,4 +105,4 @@ export default function TaraProviderSettingsPanel() {
+           <div className="flex flex-wrap gap-2">
+-            <Button variant="outline" disabled={saveM.isPending || testM.isPending} onClick={() => saveThen(() => testM.mutateAsync({ provider: item.provider }))}><TestTube2 className="ms-2 h-4 w-4"/>{taraText("\u0627\u062E\u062A\u0628\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644")}</Button>
+-            <Button variant="outline" disabled={saveM.isPending || modelsM.isPending} onClick={() => saveThen(() => modelsM.mutateAsync({ provider: item.provider }))}><RefreshCw className="ms-2 h-4 w-4"/>{taraText("\u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0645\u0648\u062F\u064A\u0644\u0627\u062A")}</Button>
++            <Button variant="outline" disabled={saveM.isPending || testM.isPending} onClick={() => saveThen(() => testM.mutateAsync({ provider: item.provider, tenantKey }))}><TestTube2 className="ms-2 h-4 w-4"/>{taraText("\u0627\u062E\u062A\u0628\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644")}</Button>
++            <Button variant="outline" disabled={saveM.isPending || modelsM.isPending} onClick={() => saveThen(() => modelsM.mutateAsync({ provider: item.provider, tenantKey }))}><RefreshCw className="ms-2 h-4 w-4"/>{taraText("\u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0645\u0648\u062F\u064A\u0644\u0627\u062A")}</Button>
+           </div>
+diff --git a/client/src/pages/FelfelPage.tsx b/client/src/pages/FelfelPage.tsx
+--- a/client/src/pages/FelfelPage.tsx
++++ b/client/src/pages/FelfelPage.tsx
+@@ -2,2 +2,3 @@ import { useMemo, useState } from "react";
+ import CRMLayout from "@/components/CRMLayout";
++import TaraProviderSettingsPanel from "@/components/tara/TaraProviderSettingsPanel";
+ import { Badge } from "@/components/ui/badge";
+@@ -9,5 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ import { useLanguage } from "@/contexts/LanguageContext";
++import { usePermissions } from "@/contexts/PermissionContext";
+ import { trpc } from "@/lib/trpc";
+ import { toast } from "sonner";
+-import { Activity, Bot, CheckCircle2, Clock3, ExternalLink, History, Loader2, LogOut, Mic2, Puzzle, RefreshCw, Video as VideoIcon } from "lucide-react";
++import { Activity, Bot, CheckCircle2, Clock3, ExternalLink, History, Loader2, LogOut, Mic2, Puzzle, RefreshCw, Settings2, Video as VideoIcon } from "lucide-react";
+ 
+@@ -74,3 +76,5 @@ export default function FelfelPage() {
+   const { lang, isRTL } = useLanguage();
++  const { can } = usePermissions();
+   const ar = lang === "ar";
++  const canManageAiProviders = can("tara.manage");
+   const utils = trpc.useUtils();
+@@ -413,4 +417,17 @@ export default function FelfelPage() {
+             <TabsTrigger value="history" className="gap-1.5"><History className="h-3.5 w-3.5" />{ar ? "الاجتماعات الأخيرة" : "Recent meetings"}</TabsTrigger>
++            {canManageAiProviders && <TabsTrigger value="providers" className="gap-1.5"><Settings2 className="h-3.5 w-3.5" />{ar ? "مزودات الذكاء" : "AI Providers"}</TabsTrigger>}
+           </TabsList>
+ 
++          {canManageAiProviders && (
++            <TabsContent value="providers" className="mt-3 space-y-4">
++              <Card className="rounded-2xl border-orange-500/20 bg-orange-500/[0.04]">
++                <CardHeader>
++                  <CardTitle>{ar ? "إعدادات ذكاء فلفل" : "Felfel AI Settings"}</CardTitle>
++                  <CardDescription>{ar ? "إعداد مستقل لفلفل فقط. اختر المزود الأساسي والاحتياطي والموديل والمفتاح؛ Smart Router يستخدمها في تحليل الاجتماعات." : "Felfel-only provider profile. Configure primary/fallback providers, models, and keys used by the meeting Smart Router."}</CardDescription>
++                </CardHeader>
++              </Card>
++              <TaraProviderSettingsPanel tenantKey="felfel" agentLabel="Felfel" />
++            </TabsContent>
++          )}
++
+           <TabsContent value="live" className="mt-3 space-y-4">
+diff --git a/server/routers.ts b/server/routers.ts
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -2223,5 +2223,8 @@
+     testProvider: taraSetupProcedure.mutation(() => testTaraProviderConnection()),
+-    getProviderConfiguration: taraSetupProcedure.query(() => getTaraProviderConfigurationForUi()),
++    getProviderConfiguration: taraSetupProcedure
++      .input(z.object({ tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional() }).optional())
++      .query(({ input }) => getTaraProviderConfigurationForUi(input?.tenantKey)),
+     saveProviderConfiguration: taraSetupProcedure
+       .input(z.object({
++        tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional(),
+         primaryProvider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
+@@ -2238,9 +2241,15 @@
+       }))
+-      .mutation(({ ctx, input }) => saveTaraProviderConfiguration(input, Number(ctx.user.id))),
++      .mutation(({ ctx, input }) => saveTaraProviderConfiguration(input, Number(ctx.user.id), input.tenantKey)),
+     testConfiguredProvider: taraSetupProcedure
+-      .input(z.object({ provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]) }))
+-      .mutation(({ input }) => testTaraConfiguredProvider(input.provider)),
++      .input(z.object({
++        provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
++        tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional(),
++      }))
++      .mutation(({ input }) => testTaraConfiguredProvider(input.provider, input.tenantKey)),
+     listProviderModels: taraSetupProcedure
+-      .input(z.object({ provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]) }))
+-      .mutation(({ input }) => listTaraProviderModels(input.provider)),
++      .input(z.object({
++        provider: z.enum(["openai", "gemini", "claude", "agnes", "custom"]),
++        tenantKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,119}$/).optional(),
++      }))
++      .mutation(({ input }) => listTaraProviderModels(input.provider, input.tenantKey)),
+     listCampaigns: taraSetupProcedure.query(() => listTaraCampaigns()),
+diff --git a/server/services/felfel/felfelIntelligenceService.ts b/server/services/felfel/felfelIntelligenceService.ts
+--- a/server/services/felfel/felfelIntelligenceService.ts
++++ b/server/services/felfel/felfelIntelligenceService.ts
+@@ -269,2 +269,3 @@
+     const response = await callTaraProviderWithFallback({
++      tenantKey: "felfel",
+       prompt: chunkText,
+@@ -287,2 +288,3 @@
+     const response = await callTaraProviderWithFallback({
++      tenantKey: "felfel",
+       prompt: synthesisText,
