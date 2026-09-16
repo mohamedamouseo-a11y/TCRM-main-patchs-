@@ -1,0 +1,473 @@
+diff --git a/server/googleCalendar.ts b/server/googleCalendar.ts
+index 7b61041..0000000 100644
+--- a/server/googleCalendar.ts
++++ b/server/googleCalendar.ts
+@@ -27,12 +27,15 @@ export interface CalendarEvent {
+   attendees?: string[];
+   leadId?: number;
++  clientId?: number;
+   leadName?: string;
+   agentName?: string;
+   ownerUserId?: number;
++  felfelMeetingId?: number;
+ }
+ 
+ export interface CalendarEventResult {
+@@ -47,7 +50,9 @@ export interface CalendarEventResult {
+   status: string;
+   attendees?: { email: string; responseStatus?: string }[];
+   leadId?: number;
++  clientId?: number;
+   ownerUserId?: number;
++  felfelMeetingId?: number;
+ }
+ 
+ function positiveInt(value: unknown): number | undefined {
+@@ -68,6 +73,8 @@ function toResult(data: any): CalendarEventResult {
+     status: data.status || "confirmed",
+     attendees: data.attendees?.map((a: any) => ({ email: a.email!, responseStatus: a.responseStatus || undefined })),
+     leadId: positiveInt(privateProps.tcrmLeadId),
++    clientId: positiveInt(privateProps.tcrmClientId),
+     ownerUserId: positiveInt(privateProps.tcrmOwnerUserId),
++    felfelMeetingId: positiveInt(privateProps.tcrmFelfelMeetingId),
+   };
+ }
+ 
+@@ -75,6 +82,8 @@ function privateMetadata(event: Partial<CalendarEvent>) {
+   const data: Record<string, string> = {};
+   if (positiveInt(event.ownerUserId)) data.tcrmOwnerUserId = String(event.ownerUserId);
+   if (positiveInt(event.leadId)) data.tcrmLeadId = String(event.leadId);
++  if (positiveInt(event.clientId)) data.tcrmClientId = String(event.clientId);
++  if (positiveInt(event.felfelMeetingId)) data.tcrmFelfelMeetingId = String(event.felfelMeetingId);
+   return data;
+ }
+ 
+@@ -89,6 +98,8 @@ export async function createCalendarEvent(event: CalendarEvent): Promise<CalendarEventResult> {
+     "",
+     "─── CRM Details ───",
+     event.leadId ? `Lead ID: ${event.leadId}` : "",
++    event.clientId ? `Client ID: ${event.clientId}` : "",
++    event.felfelMeetingId ? `Felfel Meeting ID: ${event.felfelMeetingId}` : "",
+     event.leadName ? `Lead Name: ${event.leadName}` : "",
+     event.agentName ? `Agent: ${event.agentName}` : "",
+     "Created from Tamiyouz CRM",
+@@ -143,6 +154,18 @@ export async function getCalendarEvent(eventId: string): Promise<CalendarEventResult | null> {
+   }
+ }
+ 
++export async function findCalendarEventByFelfelMeetingId(felfelMeetingId: number): Promise<CalendarEventResult | null> {
++  const meetingId = positiveInt(felfelMeetingId);
++  if (!meetingId) return null;
++  const calendar = await getCalendarClient();
++  const response = await calendar.events.list({
++    calendarId: CALENDAR_ID,
++    singleEvents: true,
++    maxResults: 2,
++    privateExtendedProperty: [`tcrmFelfelMeetingId=${meetingId}`],
++  });
++  const event = response.data.items?.[0];
++  return event ? toResult(event) : null;
++}
++
+ export async function listCalendarEvents(options?: {
+   timeMin?: string;
+   timeMax?: string;
+diff --git a/server/services/felfel/felfelDashboardService.ts b/server/services/felfel/felfelDashboardService.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/server/services/felfel/felfelDashboardService.ts
+@@ -0,0 +1,163 @@
++// FELFEL_PHASE1_OPERATIONAL_DASHBOARD_V1
++// CRM-owned Felfel dashboard. Vexa is runtime only; crm_meetings is the source of truth.
++// @ts-nocheck
++import { and, count, desc, eq, like, or, sql } from "drizzle-orm";
++import { getDb } from "../../db";
++import { clients, crmMeetings, leads, users } from "../../../drizzle/schema";
++import { normalizeUserRole } from "../../roleUtils";
++
++const DASHBOARD_ROLES = new Set([
++  "Admin",
++  "SalesManager",
++  "SalesAgent",
++  "ColdSalesAgent",
++  "AccountManager",
++  "AccountManagerLead",
++]);
++
++function asRows(value: unknown): any[] {
++  return Array.isArray(value) ? value : [];
++}
++
++function recordingMedia(auditData: unknown) {
++  const audit = asRows(auditData);
++  const finalized = [...audit].reverse().find((entry: any) => entry?.event === "recording_finalized");
++  return asRows(finalized?.media).filter((item: any) => item?.protectedUrl || item?.driveUrl);
++}
++
++function positiveInt(value: unknown) {
++  const parsed = Number(value || 0);
++  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
++}
++
++export type FelfelDashboardFilters = {
++  actorUserId: number;
++  actorRole: string;
++  query?: string | null;
++  platform?: string | null;
++  status?: string | null;
++  recordingStatus?: string | null;
++  invokerUserId?: number | null;
++  from?: string | null;
++  to?: string | null;
++  limit?: number;
++  offset?: number;
++};
++
++export async function listFelfelDashboardMeetings(input: FelfelDashboardFilters) {
++  const db = await getDb();
++  if (!db) throw new Error("Database is not available");
++
++  const actorUserId = positiveInt(input.actorUserId);
++  const actorRole = normalizeUserRole(input.actorRole);
++  if (!actorUserId || !DASHBOARD_ROLES.has(actorRole)) {
++    throw new Error("Felfel dashboard access is not enabled for this role");
++  }
++
++  const isAdmin = actorRole === "Admin";
++  const predicates: any[] = [];
++
++  // Sales and Account Management only see meetings they personally invoked.
++  // This is enforced server-side and cannot be widened from query parameters.
++  if (isAdmin) {
++    const invokerUserId = positiveInt(input.invokerUserId);
++    if (invokerUserId) predicates.push(eq(crmMeetings.ownerUserId, invokerUserId));
++  } else {
++    predicates.push(eq(crmMeetings.ownerUserId, actorUserId));
++  }
++
++  if (input.platform) predicates.push(eq(crmMeetings.platform, String(input.platform)));
++  if (input.status) predicates.push(eq(crmMeetings.status, String(input.status)));
++  if (input.recordingStatus) predicates.push(eq(crmMeetings.recordingStatus, String(input.recordingStatus)));
++
++  if (input.from) {
++    const from = new Date(input.from);
++    if (!Number.isNaN(from.getTime())) {
++      predicates.push(sql`COALESCE(${crmMeetings.startedAt}, ${crmMeetings.scheduledAt}, ${crmMeetings.createdAt}) >= ${from}`);
++    }
++  }
++  if (input.to) {
++    const to = new Date(input.to);
++    if (!Number.isNaN(to.getTime())) {
++      predicates.push(sql`COALESCE(${crmMeetings.startedAt}, ${crmMeetings.scheduledAt}, ${crmMeetings.createdAt}) <= ${to}`);
++    }
++  }
++
++  // Smart-search foundation: every token may match meeting title, client/lead,
++  // invoker, platform/native id, or CRM identifiers.
++  const tokens = String(input.query || "").trim().split(/\s+/).filter(Boolean).slice(0, 8);
++  for (const token of tokens) {
++    const pattern = `%${token}%`;
++    predicates.push(or(
++      like(crmMeetings.title, pattern),
++      like(clients.leadName, pattern),
++      like(leads.name, pattern),
++      like(users.name, pattern),
++      like(crmMeetings.platform, pattern),
++      like(crmMeetings.nativeMeetingId, pattern),
++      sql`CAST(${crmMeetings.id} AS CHAR) LIKE ${pattern}`,
++      sql`CAST(${crmMeetings.clientId} AS CHAR) LIKE ${pattern}`,
++      sql`CAST(${crmMeetings.leadId} AS CHAR) LIKE ${pattern}`,
++    ));
++  }
++
++  const where = predicates.length ? and(...predicates) : undefined;
++  const limit = Math.min(Math.max(Number(input.limit || 30), 1), 100);
++  const offset = Math.max(Number(input.offset || 0), 0);
++
++  const selectShape = {
++    id: crmMeetings.id,
++    clientId: crmMeetings.clientId,
++    leadId: crmMeetings.leadId,
++    dealId: crmMeetings.dealId,
++    ownerUserId: crmMeetings.ownerUserId,
++    createdByUserId: crmMeetings.createdByUserId,
++    title: crmMeetings.title,
++    platform: crmMeetings.platform,
++    nativeMeetingId: crmMeetings.nativeMeetingId,
++    meetingUrl: crmMeetings.meetingUrl,
++    status: crmMeetings.status,
++    felfelStatus: crmMeetings.felfelStatus,
++    recordingStatus: crmMeetings.recordingStatus,
++    recordingDriveUrl: crmMeetings.recordingDriveUrl,
++    recordingDurationSec: crmMeetings.recordingDurationSec,
++    recordingSizeBytes: crmMeetings.recordingSizeBytes,
++    transcriptStatus: crmMeetings.transcriptStatus,
++    analysisStatus: crmMeetings.analysisStatus,
++    scheduledAt: crmMeetings.scheduledAt,
++    startedAt: crmMeetings.startedAt,
++    endedAt: crmMeetings.endedAt,
++    completedAt: crmMeetings.completedAt,
++    createdAt: crmMeetings.createdAt,
++    auditData: crmMeetings.auditData,
++    clientName: clients.leadName,
++    leadName: leads.name,
++    invokerName: users.name,
++    invokerRole: users.role,
++  };
++
++  const items = await db.select(selectShape)
++    .from(crmMeetings)
++    .leftJoin(clients, eq(crmMeetings.clientId, clients.id))
++    .leftJoin(leads, eq(crmMeetings.leadId, leads.id))
++    .leftJoin(users, eq(crmMeetings.ownerUserId, users.id))
++    .where(where)
++    .orderBy(desc(crmMeetings.createdAt))
++    .limit(limit)
++    .offset(offset);
++
++  const totalRows = await db.select({ value: count() })
++    .from(crmMeetings)
++    .leftJoin(clients, eq(crmMeetings.clientId, clients.id))
++    .leftJoin(leads, eq(crmMeetings.leadId, leads.id))
++    .leftJoin(users, eq(crmMeetings.ownerUserId, users.id))
++    .where(where);
++
++  return {
++    items: items.map((row: any) => ({
++      ...row,
++      clientName: row.clientName || row.leadName || null,
++      recordingMedia: recordingMedia(row.auditData),
++      auditData: undefined,
++    })),
++    total: Number(totalRows[0]?.value || 0),
++    limit,
++    offset,
++    scope: isAdmin ? "all" : "own",
++  };
++}
+diff --git a/server/services/felfel/felfelCalendarService.ts b/server/services/felfel/felfelCalendarService.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/server/services/felfel/felfelCalendarService.ts
+@@ -0,0 +1,104 @@
++// FELFEL_PHASE1_CALENDAR_SYNC_V1
++// Mirrors the actual attended Felfel interval into the existing scoped TCRM calendar.
++// @ts-nocheck
++import { eq } from "drizzle-orm";
++import { getDb } from "../../db";
++import { clients, leads, users } from "../../../drizzle/schema";
++import {
++  createCalendarEvent,
++  findCalendarEventByFelfelMeetingId,
++  updateCalendarEvent,
++} from "../../googleCalendar";
++
++function asDate(value: unknown) {
++  if (!value) return null;
++  const date = value instanceof Date ? value : new Date(String(value));
++  return Number.isNaN(date.getTime()) ? null : date;
++}
++
++function displayTitle(rawTitle: unknown, clientName: string | null) {
++  const raw = String(rawTitle || "").trim();
++  const generic = !raw || ["felfel", "felfel meeting", "meeting"].includes(raw.toLowerCase());
++  const meetingTitle = generic ? (clientName ? `Meeting with ${clientName}` : "Meeting") : raw;
++  return `Felfel • ${meetingTitle}`;
++}
++
++export async function syncFelfelMeetingCalendar(meeting: any) {
++  const meetingId = Number(meeting?.id || 0);
++  if (!Number.isInteger(meetingId) || meetingId <= 0) return null;
++
++  const endedAt = asDate(meeting?.endedAt);
++  let startedAt = asDate(meeting?.startedAt);
++  if (!startedAt && endedAt && Number(meeting?.recordingDurationSec || 0) > 0) {
++    startedAt = new Date(endedAt.getTime() - Number(meeting.recordingDurationSec) * 1000);
++  }
++  if (!startedAt || !endedAt || startedAt.getTime() >= endedAt.getTime()) return null;
++
++  const db = await getDb();
++  if (!db) throw new Error("Database is not available");
++
++  const client = meeting.clientId
++    ? (await db.select({ leadName: clients.leadName }).from(clients).where(eq(clients.id, Number(meeting.clientId))).limit(1))[0]
++    : null;
++  const lead = meeting.leadId
++    ? (await db.select({ name: leads.name }).from(leads).where(eq(leads.id, Number(meeting.leadId))).limit(1))[0]
++    : null;
++  const invoker = meeting.ownerUserId
++    ? (await db.select({ name: users.name, email: users.email, role: users.role }).from(users).where(eq(users.id, Number(meeting.ownerUserId))).limit(1))[0]
++    : null;
++
++  const clientName = String(client?.leadName || lead?.name || "").trim() || null;
++  const invokerName = String(invoker?.name || "").trim() || `User #${meeting.ownerUserId || meeting.createdByUserId || "—"}`;
++  const invokerRole = String(invoker?.role || "").trim();
++  const summary = displayTitle(meeting.title, clientName);
++  const description = [
++    "Recorded by Felfel",
++    clientName ? `Client: ${clientName}` : "",
++    `Invoked by: ${invokerName}${invokerRole ? ` (${invokerRole})` : ""}`,
++    `CRM Meeting ID: ${meetingId}`,
++    meeting.platform ? `Platform: ${meeting.platform}` : "",
++  ].filter(Boolean).join("\n");
++
++  const payload = {
++    summary,
++    description,
++    startDateTime: startedAt.toISOString(),
++    endDateTime: endedAt.toISOString(),
++    attendees: invoker?.email ? [String(invoker.email)] : undefined,
++    leadId: Number(meeting.leadId || 0) || undefined,
++    clientId: Number(meeting.clientId || 0) || undefined,
++    leadName: clientName || undefined,
++    agentName: invokerName,
++    ownerUserId: Number(meeting.ownerUserId || meeting.createdByUserId || 0) || undefined,
++    felfelMeetingId: meetingId,
++  };
++
++  const existing = await findCalendarEventByFelfelMeetingId(meetingId);
++  if (existing?.id) return updateCalendarEvent(existing.id, payload);
++  return createCalendarEvent(payload);
++}
+diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services/felfel/felfelCrmMeetingService.ts
+index 754828c..0000000 100644
+--- a/server/services/felfel/felfelCrmMeetingService.ts
++++ b/server/services/felfel/felfelCrmMeetingService.ts
+@@ -18,6 +18,7 @@ import {
+ import { analyzeFelfelMeeting } from "./felfelIntelligenceService";
+ import { archiveFelfelMeeting } from "./felfelMeetingArchiveService";
+ import { listCrmFiles, storeCrmFileDriveOnly } from "../crmFileStorage";
++import { syncFelfelMeetingCalendar } from "./felfelCalendarService";
+ 
+ const LIFECYCLE = ["scheduled", "joining", "waiting", "live", "ended", "processing", "completed", "failed"] as const;
+ const TERMINAL = new Set(["completed", "failed"]);
+@@ -296,9 +297,15 @@ export function scheduleLifecycleMonitor(id: number, delayMs = LIFECYCLE_POLL_MS) {
+         await db.update(crmMeetings).set({
+           status: "ended",
+           felfelStatus: historical?.status || remote.status || "ended",
++          startedAt: meeting.startedAt || (remote.startedAt ? asDate(remote.startedAt) : null),
+           endedAt: meeting.endedAt || new Date(),
+         }).where(eq(crmMeetings.id, id));
+ 
++        const endedMeeting = (await loadMeeting(id)).meeting;
++        void syncFelfelMeetingCalendar(endedMeeting).catch((error) => {
++          console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
++        });
++
+         // Process only after the upstream bot is no longer active, allowing
+         // Vexa to finalize transcript and recording artifacts first.
+         setTimeout(() => {
+@@ -309,6 +316,15 @@ export function scheduleLifecycleMonitor(id: number, delayMs = LIFECYCLE_POLL_MS) {
+         return;
+       }
+ 
++      if (lifecycle !== String(meeting.status || "") || (lifecycle === "live" && !meeting.startedAt)) {
++        const db = (await loadMeeting(id)).db;
++        await db.update(crmMeetings).set({
++          status: lifecycle,
++          felfelStatus: remote.status,
++          startedAt: remote.startedAt ? asDate(remote.startedAt) : lifecycle === "live" ? (meeting.startedAt || new Date()) : meeting.startedAt,
++        }).where(eq(crmMeetings.id, id));
++      }
++
+       lifecycleMonitors.set(id, setTimeout(poll, LIFECYCLE_POLL_MS));
+     } catch {
+       // Keep polling through transient gateway/runtime failures. Do not change
+@@ -351,8 +367,14 @@ export async function syncLinkedFelfelMeeting(id: number) {
+     endedAt: lifecycle === "ended" ? (meeting.endedAt || new Date()) : meeting.endedAt,
+   };
+   await db.update(crmMeetings).set(next).where(eq(crmMeetings.id, id));
+-  const rows = await db.select().from(crmMeetings).where(eq(crmMeetings.id, id)).limit(1);
+-  return rows[0];
++  const updated = (await db.select().from(crmMeetings).where(eq(crmMeetings.id, id)).limit(1))[0];
++  if (lifecycle === "ended") {
++    void syncFelfelMeetingCalendar(updated).catch((error) => {
++      console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
++    });
++  }
++  return updated;
+ }
+ 
+ export async function leaveLinkedFelfelMeeting(id: number) {
+@@ -361,7 +383,11 @@ export async function leaveLinkedFelfelMeeting(id: number) {
+   await leaveFelfelMeeting(meeting.platform, meeting.nativeMeetingId);
+   await db.update(crmMeetings).set({ status: "ended", felfelStatus: "ended", endedAt: new Date() }).where(eq(crmMeetings.id, id));
+   stopLifecycleMonitor(id);
+-  return (await loadMeeting(id)).meeting;
++  const endedMeeting = (await loadMeeting(id)).meeting;
++  void syncFelfelMeetingCalendar(endedMeeting).catch((error) => {
++    console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
++  });
++  return endedMeeting;
+ }
+ 
+ export function buildFelfelRelationshipMemory(previous: any[], current: any) {
+@@ -650,7 +676,12 @@ export async function processLinkedFelfelMeeting(id: number, language: "ar" | "en" = "ar") {
+         lastError: error instanceof Error ? error.message : "Felfel processing failed" }).where(eq(crmMeetings.id, id));
+     throw error;
+   }
+-  return (await loadMeeting(id)).meeting;
++  const completedMeeting = (await loadMeeting(id)).meeting;
++  void syncFelfelMeetingCalendar(completedMeeting).catch((error) => {
++    console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
++  });
++  return completedMeeting;
+ }
+ 
+ export async function listLinkedFelfelMeetings(input: { clientId?: number | null; leadId?: number | null; limit?: number }) {
+diff --git a/server/routers.ts b/server/routers.ts
+index 0000000..0000000 100644
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -260,6 +260,8 @@ import {
+ } from "./services/felfel/felfelCrmMeetingService";
+ import { assertFelfelMeetingAccess, assertFelfelCreateContext } from "./services/felfel/felfelAuthorization";
++import { listFelfelDashboardMeetings } from "./services/felfel/felfelDashboardService";
++import { evaluatePermission } from "./security/permissionEngine";
+ import {
+   createFelfelApprovedTasks,
+   listFelfelCrmClients,
+@@ -780,6 +782,18 @@ const felfelProcedure = protectedProcedure.use(({ ctx, next }) => {
+ });
+ 
+ const felfelLinkedProcedure = protectedProcedure;
++
++const felfelDashboardProcedure = protectedProcedure.use(async ({ ctx, next }) => {
++  const role = normalizeUserRole(ctx.user.role);
++  if (!["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager", "AccountManagerLead"].includes(role)) {
++    throw new TRPCError({ code: "FORBIDDEN", message: "Felfel dashboard access is not enabled for this role" });
++  }
++  const decision = await evaluatePermission(ctx.user as any, "meetings.view", ctx.req);
++  if (!decision.allowed) {
++    throw new TRPCError({ code: "FORBIDDEN", message: "Permission denied: meetings.view" });
++  }
++  return next({ ctx });
++});
+ 
+ export const appRouter = router({
+@@ -980,6 +994,27 @@ export const appRouter = router({
+   tem: temRouter,
+ 
+   felfel: router({
++    dashboardMeetings: felfelDashboardProcedure
++      .input(z.object({
++        query: z.string().trim().max(200).optional(),
++        platform: z.enum(["google_meet", "teams", "zoom", "jitsi"]).optional(),
++        status: z.string().trim().max(40).optional(),
++        recordingStatus: z.string().trim().max(40).optional(),
++        invokerUserId: z.number().int().positive().optional(),
++        from: z.string().datetime({ offset: true }).optional(),
++        to: z.string().datetime({ offset: true }).optional(),
++        limit: z.number().int().min(1).max(100).optional().default(30),
++        offset: z.number().int().min(0).optional().default(0),
++      }).strict())
++      .query(({ input, ctx }) => listFelfelDashboardMeetings({
++        ...input,
++        actorUserId: Number(ctx.user.id),
++        actorRole: String(ctx.user.role || ""),
++      })),
+     health: felfelProcedure.query(() => getFelfelHealth()),
+     capabilities: felfelProcedure.query(() => getFelfelCapabilities()),
+     createMeeting: felfelProcedure
