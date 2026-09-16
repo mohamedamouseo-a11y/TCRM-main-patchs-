@@ -1,0 +1,43 @@
+diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services/felfel/felfelCrmMeetingService.ts
+--- a/server/services/felfel/felfelCrmMeetingService.ts
++++ b/server/services/felfel/felfelCrmMeetingService.ts
+@@ -30,3 +30,12 @@
+ }
+ 
++function isMeetingProcessingComplete(meeting: any) {
++  const segments = Array.isArray(meeting?.transcriptData?.segments) ? meeting.transcriptData.segments : [];
++  return isRecordingComplete(meeting?.recordingStatus)
++    && String(meeting?.transcriptStatus || "").toLowerCase() === "completed"
++    && String(meeting?.analysisStatus || "").toLowerCase() === "completed"
++    && segments.length > 0
++    && Boolean(meeting?.analysisData);
++}
++
+ export function mapLifecycle(status: string, active: boolean, previousStatus?: string | null) {
+@@ -92,4 +101,6 @@
+   const currentStatus = String(meeting.status || "").toLowerCase();
+-  if (currentStatus === "processing" || TERMINAL.has(currentStatus)) {
++  const lockUntil = asDate(meeting.processingLockUntil);
++  const processingLockActive = currentStatus === "processing" && Boolean(lockUntil && lockUntil.getTime() > Date.now());
++  if (processingLockActive || (TERMINAL.has(currentStatus) && isMeetingProcessingComplete(meeting))) {
+     return { found: true, queued: false, meetingId: Number(meeting.id), status: currentStatus };
+   }
+@@ -105,3 +116,4 @@
+     felfelStatus: historical.status || "completed",
+     endedAt: meeting.endedAt || new Date(),
++    processingLockUntil: null,
+   }).where(eq(crmMeetings.id, meeting.id));
+@@ -420,4 +432,4 @@
+-  // A completed meeting is terminal after the real upstream media capability
+-  // has reached Drive. Pending/failed recording states remain recoverable.
+-  if (TERMINAL.has(meeting.status) && isRecordingComplete(meeting.recordingStatus)) return meeting;
++  // A meeting is terminal only after recording, transcript, and analysis are all complete.
++  // A stale "completed" row with missing intelligence remains recoverable.
++  if (TERMINAL.has(meeting.status) && isMeetingProcessingComplete(meeting)) return meeting;
+   if (!meeting.platform || !meeting.nativeMeetingId) throw new Error("Felfel meeting identity is not available");
+diff --git a/client/src/pages/FelfelPage.tsx b/client/src/pages/FelfelPage.tsx
+--- a/client/src/pages/FelfelPage.tsx
++++ b/client/src/pages/FelfelPage.tsx
+@@ -500 +500 @@
+-                {!meeting ? <EmptyState ar={ar} label={ar ? "تفريغ" : "transcript"} /> : transcriptQ.isLoading ? <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" />{ar ? "جار تحميل التفريغ..." : "Loading transcript..."}</div> : transcriptQ.error ? <QueryError ar={ar} message={transcriptQ.error.message} /> : !transcript?.segments?.length ? <EmptyState ar={ar} label={ar ? "مقاطع نصية" : "transcript segments"} /> : (
++                {!meeting ? <EmptyState ar={ar} label={ar ? "تفريغ" : "transcript"} /> : transcriptQ.isLoading ? <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" />{ar ? "جار تحميل التفريغ..." : "Loading transcript..."}</div> : transcriptQ.error ? <QueryError ar={ar} message={transcriptQ.error.message} /> : (transcript as any)?.processingError && !transcript?.segments?.length ? <QueryError ar={ar} message={(transcript as any).processingError} /> : !transcript?.segments?.length ? <EmptyState ar={ar} label={ar ? "مقاطع نصية" : "transcript segments"} /> : (
