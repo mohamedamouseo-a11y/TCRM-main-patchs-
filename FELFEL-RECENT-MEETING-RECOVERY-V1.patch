@@ -1,0 +1,193 @@
+--- a/server/services/felfel/felfelCrmMeetingService.ts
++++ b/server/services/felfel/felfelCrmMeetingService.ts
+@@ -5,6 +5,7 @@
+   getFelfelRecording,
+   getFelfelTranscript,
+   leaveFelfelMeeting,
++  listFelfelMeetings,
+   transcribeFelfelRecording,
+   type FelfelMeeting,
+   type FelfelRecordingArtifact,
+@@ -15,6 +16,7 @@
+ 
+ const LIFECYCLE = ["scheduled", "joining", "waiting", "live", "ended", "processing", "completed", "failed"] as const;
+ const TERMINAL = new Set(["completed", "failed"]);
++const REMOTE_TERMINAL = new Set(["ended", "stopped", "completed", "finished"]);
+ const MAX_PROCESSING_ATTEMPTS = 5;
+ const PROCESSING_LOCK_MS = 15 * 60_000;
+ const LIFECYCLE_POLL_MS = 10_000;
+@@ -33,6 +35,58 @@
+   return { db, meeting: rows[0] };
+ }
+ 
++async function findMeetingByIdentity(platform: string, nativeMeetingId: string) {
++  const db = await getDb();
++  if (!db) throw new Error("Database is not available");
++  const rows = await db.select().from(crmMeetings)
++    .where(and(eq(crmMeetings.platform, platform), eq(crmMeetings.nativeMeetingId, nativeMeetingId)))
++    .orderBy(desc(crmMeetings.id)).limit(1);
++  return { db, meeting: rows[0] || null };
++}
++
++async function findRemoteHistoricalMeeting(platform: string, nativeMeetingId: string) {
++  const meetings = await listFelfelMeetings();
++  return meetings.find((item) => String(item.platform) === String(platform) && String(item.nativeId) === String(nativeMeetingId)) || null;
++}
++
++export async function getFelfelStoredMeetingResult(platform: string, nativeMeetingId: string) {
++  const { meeting } = await findMeetingByIdentity(platform, nativeMeetingId);
++  if (!meeting) return null;
++  return {
++    id: Number(meeting.id),
++    status: String(meeting.status || ""),
++    transcriptStatus: meeting.transcriptStatus || null,
++    analysisStatus: meeting.analysisStatus || null,
++    transcriptData: meeting.transcriptData || null,
++    analysisData: meeting.analysisData || null,
++    lastError: meeting.lastError || null,
++  };
++}
++
++export async function recoverRecentFelfelMeeting(platform: string, nativeMeetingId: string) {
++  const { db, meeting } = await findMeetingByIdentity(platform, nativeMeetingId);
++  if (!meeting) return { found: false, queued: false };
++  const currentStatus = String(meeting.status || "").toLowerCase();
++  if (currentStatus === "processing" || TERMINAL.has(currentStatus)) {
++    return { found: true, queued: false, meetingId: Number(meeting.id), status: currentStatus };
++  }
++  const historical = await findRemoteHistoricalMeeting(platform, nativeMeetingId);
++  const historicalStatus = String(historical?.status || "").toLowerCase();
++  if (!historical || !REMOTE_TERMINAL.has(historicalStatus)) {
++    return { found: true, queued: false, meetingId: Number(meeting.id), status: currentStatus };
++  }
++  await db.update(crmMeetings).set({
++    status: "ended",
++    felfelStatus: historical.status || "completed",
++    endedAt: meeting.endedAt || new Date(),
++  }).where(eq(crmMeetings.id, meeting.id));
++  stopLifecycleMonitor(Number(meeting.id));
++  setTimeout(() => {
++    void processLinkedFelfelMeeting(Number(meeting.id)).catch(() => undefined);
++  }, 250);
++  return { found: true, queued: true, meetingId: Number(meeting.id), status: "ended" };
++}
++
+ export async function createUnlinkedFelfelMeetingRecord(input: {
+ 
+ 
+@@ -44,15 +98,20 @@
+       const lifecycle = mapLifecycle(remote.status, remote.active, meeting.status);
+       const explicitRemoteEnd = ["ended", "stopped", "completed", "finished", "not_running"].includes(remoteStatus);
+       const wasKnownLive = ["live", "processing"].includes(String(meeting.status || "").toLowerCase());
++      const historical = remoteStatus === "not_running" && !wasKnownLive
++        ? await findRemoteHistoricalMeeting(meeting.platform, meeting.nativeMeetingId)
++        : null;
++      const historicalStatus = String(historical?.status || "").toLowerCase();
++      const confirmedByHistory = Boolean(historical && REMOTE_TERMINAL.has(historicalStatus));
+ 
+-      // Never treat an early `not_running` response as a completed meeting:
+-      // Vexa can legitimately remain in requested/joining state while the bot
+-      // is still starting. Only finalize after a known-live meeting stops, or
+-      // when Vexa explicitly reports a terminal state.
+-      if (lifecycle === "ended" && (wasKnownLive || (explicitRemoteEnd && remoteStatus !== "not_running"))) {
++      // Never treat an early `not_running` response as a completed meeting.
++      // If Vexa history already marks this exact meeting terminal, that history
++      // is the completion signal even when the runtime status endpoint has
++      // already collapsed to `not_running`.
++      if ((lifecycle === "ended" || confirmedByHistory) && (wasKnownLive || (explicitRemoteEnd && remoteStatus !== "not_running") || confirmedByHistory)) {
+         const db = (await loadMeeting(id)).db;
+         await db.update(crmMeetings).set({
+           status: "ended",
+-          felfelStatus: remote.status || "ended",
++          felfelStatus: historical?.status || remote.status || "ended",
+           endedAt: meeting.endedAt || new Date(),
+         }).where(eq(crmMeetings.id, id));
+--- a/server/routers.ts
++++ b/server/routers.ts
+@@ -2,6 +2,8 @@
+   listLinkedFelfelMeetings,
+   getLinkedFelfelMeeting,
+   appendFelfelMeetingRelations,
++  getFelfelStoredMeetingResult,
++  recoverRecentFelfelMeeting,
+ } from "./services/felfel/felfelCrmMeetingService";
+ 
+ 
+@@ -13,7 +15,23 @@
+         platform: z.enum(["google_meet", "teams", "zoom", "jitsi"]),
+         nativeId: z.string().trim().min(1).max(255),
+       }))
+-      .query(({ input }) => getFelfelTranscript(input.platform, input.nativeId)),
++      .query(async ({ input }) => {
++        const realtime = await getFelfelTranscript(input.platform, input.nativeId);
++        if (!realtime.segments.length) {
++          await recoverRecentFelfelMeeting(input.platform, input.nativeId).catch(() => undefined);
++        }
++        const stored = await getFelfelStoredMeetingResult(input.platform, input.nativeId);
++        const storedSegments = Array.isArray((stored?.transcriptData as any)?.segments)
++          ? (stored?.transcriptData as any).segments
++          : [];
++        return {
++          ...realtime,
++          segments: realtime.segments.length ? realtime.segments : storedSegments,
++          analysisData: stored?.analysisData || null,
++          processingStatus: stored?.status || null,
++          processingError: stored?.lastError || null,
++        };
++      }),
+     leaveMeeting: felfelProcedure
+ 
+ 
+@@ -27,5 +45,14 @@
+         language: z.enum(["ar", "en"]).default("ar"),
+         force: z.boolean().default(false),
+       }))
+-      .mutation(({ input }) => analyzeFelfelMeeting(input)),
++      .mutation(async ({ input }) => {
++        const stored = await getFelfelStoredMeetingResult(input.platform, input.nativeId);
++        if (!input.force && stored?.analysisData) return stored.analysisData;
++        const storedSegments = Array.isArray((stored?.transcriptData as any)?.segments)
++          ? (stored?.transcriptData as any).segments
++          : [];
++        return analyzeFelfelMeeting(storedSegments.length
++          ? { ...input, preTranscribedSegments: storedSegments }
++          : input);
++      }),
+     crmClients: felfelProcedure
+--- a/client/src/pages/FelfelPage.tsx
++++ b/client/src/pages/FelfelPage.tsx
+@@ -1,4 +1,4 @@
+-import { useMemo, useState } from "react";
++import { useEffect, useMemo, useState } from "react";
+ 
+ 
+ 
+@@ -8,6 +8,12 @@
+     meeting ? { platform: meeting.platform as "google_meet" | "teams" | "zoom" | "jitsi", nativeId: meeting.nativeId } : { platform: "google_meet", nativeId: "disabled" },
+     { enabled: Boolean(meeting), refetchInterval: 5_000, refetchOnWindowFocus: false },
+   );
++  useEffect(() => {
++    const storedAnalysis = (transcriptQ.data as any)?.analysisData;
++    if (storedAnalysis && transcriptQ.data?.nativeId === meeting?.nativeId) {
++      setIntelligence(storedAnalysis);
++    }
++  }, [transcriptQ.data, meeting?.nativeId]);
+ 
+   const crmClientsQ = trpc.felfel.crmClients.useQuery(
+ 
+@@ -15,7 +21,7 @@
+ 
+ 
+ 
+-                {meetingsQ.isLoading ? <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" />{ar ? "جار تحميل الاجتماعات..." : "Loading meetings..."}</div> : meetingsQ.error ? <QueryError ar={ar} message={meetingsQ.error.message} /> : !meetingsQ.data?.length ? <EmptyState ar={ar} label={ar ? "اجتماعات" : "meetings"} /> : <div className="divide-y rounded-lg border">{meetingsQ.data.map((item: any) => <button type="button" key={`${item.platform}-${item.nativeId}-${item.id || "meeting"}`} onClick={() => { setMeeting(item); setIntelligence(null); }} className="flex w-full items-center justify-between gap-4 p-4 text-start transition-colors hover:bg-muted/40"><div className="min-w-0"><p className="font-medium">{platformLabel(item.platform, ar)}</p><p className="truncate font-mono text-xs text-muted-foreground" dir="ltr">{item.nativeId || "—"}</p></div><div className="flex shrink-0 items-center gap-2"><Badge variant="outline">{item.status || "unknown"}</Badge><span className="text-xs text-muted-foreground">{formatTimestamp(item.createdAt, ar)}</span></div></button>)}</div>}
++                {meetingsQ.isLoading ? <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground"><RefreshCw className="h-4 w-4 animate-spin" />{ar ? "جار تحميل الاجتماعات..." : "Loading meetings..."}</div> : meetingsQ.error ? <QueryError ar={ar} message={meetingsQ.error.message} /> : !meetingsQ.data?.length ? <EmptyState ar={ar} label={ar ? "اجتماعات" : "meetings"} /> : <div className="divide-y rounded-lg border">{meetingsQ.data.map((item: any) => <button type="button" key={`${item.platform}-${item.nativeId}-${item.id || "meeting"}`} onClick={() => { setMeeting(item); setIntelligence(null); setFelfelWorkspace("transcript"); }} className="flex w-full items-center justify-between gap-4 p-4 text-start transition-colors hover:bg-muted/40"><div className="min-w-0"><p className="font-medium">{platformLabel(item.platform, ar)}</p><p className="truncate font-mono text-xs text-muted-foreground" dir="ltr">{item.nativeId || "—"}</p></div><div className="flex shrink-0 items-center gap-2"><Badge variant="outline">{item.status || "unknown"}</Badge><span className="text-xs text-muted-foreground">{formatTimestamp(item.createdAt, ar)}</span></div></button>)}</div>}
+ 
+ 
+ 
+@@ -25,5 +31,5 @@
+   const health = healthQ.data;
+   const status = statusQ.data;
+   const transcript = transcriptQ.data;
+-  const currentStatus = status?.status || meeting?.status || "starting";
++  const currentStatus = (transcriptQ.data as any)?.processingStatus || status?.status || meeting?.status || "starting";
+   const currentPlatform = status?.platform || meeting?.platform;
