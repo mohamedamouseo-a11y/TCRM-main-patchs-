@@ -1,0 +1,36 @@
+diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services/felfel/felfelCrmMeetingService.ts
+--- a/server/services/felfel/felfelCrmMeetingService.ts
++++ b/server/services/felfel/felfelCrmMeetingService.ts
+@@ -437,7 +437,29 @@ export async function processLinkedFelfelMeeting(id: number, language: "ar" | "e
+   // A stale "completed" row with missing intelligence remains recoverable.
+   if (TERMINAL.has(meeting.status) && isMeetingProcessingComplete(meeting)) return meeting;
+   if (!meeting.platform || !meeting.nativeMeetingId) throw new Error("Felfel meeting identity is not available");
+-  const attempt = Number(meeting.processingAttempt || 0);
++  let attempt = Number(meeting.processingAttempt || 0);
++  if (attempt >= MAX_PROCESSING_ATTEMPTS) {
++    const auditTrail = Array.isArray(meeting.auditData) ? meeting.auditData : [];
++    const capRecoveryUsed = auditTrail.some((item: any) => item?.event === "retry_cap_recovery_v4");
++    const retryableTranscriptFailure = String(meeting.lastError || "").includes("No transcript segments available");
++    if (retryableTranscriptFailure && !capRecoveryUsed && !isMeetingProcessingComplete(meeting)) {
++      await db.update(crmMeetings).set({
++        status: "ended",
++        processingAttempt: 0,
++        processingLockUntil: null,
++        failedAt: null,
++        lastError: null,
++        auditData: jsonValue([...auditTrail, {
++          event: "retry_cap_recovery_v4",
++          reason: "transcription_service_recovered",
++          at: new Date().toISOString(),
++        }]),
++      }).where(eq(crmMeetings.id, id));
++      attempt = 0;
++      (meeting as any).processingAttempt = 0;
++      (meeting as any).status = "ended";
++      (meeting as any).lastError = null;
++      console.log(`[FelfelDiag] RETRY_CAP_RECOVERED id=${id} at=${new Date().toISOString()}`);
++    }
++  }
+   if (attempt >= MAX_PROCESSING_ATTEMPTS) {
+     await db.update(crmMeetings).set({ status: "failed", failedAt: meeting.failedAt || new Date(), lastError: meeting.lastError || "Felfel processing retry cap reached" }).where(eq(crmMeetings.id, id));
+     return (await loadMeeting(id)).meeting;
