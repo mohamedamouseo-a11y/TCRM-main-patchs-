@@ -1,0 +1,183 @@
+diff --git a/client/src/contexts/PermissionContext.tsx b/client/src/contexts/PermissionContext.tsx
+--- a/client/src/contexts/PermissionContext.tsx
++++ b/client/src/contexts/PermissionContext.tsx
+@@ -149,3 +149,4 @@
+     ["/chat", "messenger.view"],
++    ["/felfel", "meetings.view"],
+     ["/tara", "tara.view"],
+     ["/settings", "settings.view"],
+diff --git a/client/src/components/CRMLayout.tsx b/client/src/components/CRMLayout.tsx
+--- a/client/src/components/CRMLayout.tsx
++++ b/client/src/components/CRMLayout.tsx
+@@ -392,3 +392,5 @@
+           const showWaGateway = hasPermission("whatsapp.view") || hasPermission("whatsapp.manage");
+-          const showAiStaff = ["Admin", "Moderator"].includes(role);
++          const felfelOperationalRoles = ["SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager", "AccountManagerLead"];
++          const showFelfelOperational = felfelOperationalRoles.includes(role) && hasPermission("meetings.view");
++          const showAiStaff = ["Admin", "Moderator"].includes(role) || showFelfelOperational;
+           const showMarketing = hasPermission("campaigns.view");
+@@ -570,3 +572,3 @@
+                         { href: "/zaghloul", label: isRTL ? "زغلول" : "Zaghloul", icon: <Send size={15} />, roles: ["Admin"] },
+-                        { href: "/felfel", label: isRTL ? "فلفل" : "Felfel", icon: <Mic2 size={15} />, roles: ["Admin"] },
++                        { href: "/felfel", label: isRTL ? "فلفل" : "Felfel", icon: <Mic2 size={15} />, roles: ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager", "AccountManagerLead"] },
+                         { href: "/darwish", label: isRTL ? "درويش" : "Darwish", icon: <MessageCircle size={15} />, roles: ["Admin", "Developer"] },
+@@ -604,3 +606,3 @@
+                         { href: "/zaghloul", icon: <Send size={15} />, roles: ["Admin"] },
+-                        { href: "/felfel", icon: <Mic2 size={15} />, roles: ["Admin"] },
++                        { href: "/felfel", icon: <Mic2 size={15} />, roles: ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager", "AccountManagerLead"] },
+                         { href: "/darwish", icon: <MessageCircle size={15} />, roles: ["Admin", "Developer"] },
+diff --git a/client/src/pages/FelfelPage.tsx b/client/src/pages/FelfelPage.tsx
+--- a/client/src/pages/FelfelPage.tsx
++++ b/client/src/pages/FelfelPage.tsx
+@@ -76,6 +76,9 @@
+ export default function FelfelPage() {
+   const { lang, isRTL } = useLanguage();
+-  const { user } = useAuth(); const can = (perm: string) => normalizeUserRole(user?.role || "") === "Admin" || normalizeUserRole(user?.role || "") === "SalesManager" || (perm === "meetings.manage" && (normalizeUserRole(user?.role || "") === "SalesAgent" || normalizeUserRole(user?.role || "") === "ColdSalesAgent" || normalizeUserRole(user?.role || "") === "AccountManager" || normalizeUserRole(user?.role || "") === "AccountManagerLead"));
++  const { user } = useAuth();
++  const role = normalizeUserRole(user?.role || "");
++  const isFelfelAdmin = role === "Admin";
++  const isFelfelOperational = ["Admin", "SalesManager", "SalesAgent", "ColdSalesAgent", "AccountManager", "AccountManagerLead"].includes(role);
+   const ar = lang === "ar";
+-  const canManageAiProviders = can("tara.manage");
++  const canManageAiProviders = false;
+   const utils = trpc.useUtils();
+@@ -103,3 +106,3 @@
+-  const healthQ = trpc.felfel.health.useQuery(undefined, { refetchInterval: 30_000, refetchOnWindowFocus: false });
+-  const capabilitiesQ = trpc.felfel.capabilities.useQuery(undefined, { refetchOnWindowFocus: false });
+-  const meetingsQ = trpc.felfel.listMeetings.useQuery(undefined, { refetchInterval: 30_000, refetchOnWindowFocus: false });
++  const healthQ = trpc.felfel.health.useQuery(undefined, { enabled: isFelfelAdmin, refetchInterval: 30_000, refetchOnWindowFocus: false });
++  const capabilitiesQ = trpc.felfel.capabilities.useQuery(undefined, { enabled: isFelfelAdmin, refetchOnWindowFocus: false });
++  const meetingsQ = trpc.felfel.listMeetings.useQuery(undefined, { enabled: isFelfelAdmin, refetchInterval: 30_000, refetchOnWindowFocus: false });
+@@ -343,4 +346,14 @@
+   };
++
++  if (isFelfelOperational && !isFelfelAdmin) {
++    return (
++      <CRMLayout>
++        <div className="mx-auto max-w-[1660px] p-4 md:p-5 xl:p-6" dir={isRTL ? "rtl" : "ltr"}>
++          <FelfelOperationalDashboard />
++        </div>
++      </CRMLayout>
++    );
++  }
+ 
+   return (
+     <CRMLayout>
+@@ -385,3 +398,5 @@
+         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{felfelMetrics.map(({ label, value, Icon, tone, hint }) => <Card key={label} className="group rounded-2xl border-border/70 bg-card shadow-[0_14px_34px_-28px_rgba(15,23,42,0.72)] transition-all duration-200 hover:-translate-y-0.5 hover:border-orange-500/25 hover:shadow-md"><CardContent className="flex min-h-[124px] items-center gap-3.5 p-4"><div className={"grid h-12 w-12 shrink-0 place-items-center rounded-2xl " + tone}><Icon className="h-5 w-5" /></div><div className="min-w-0"><p className="text-[28px] font-black leading-none tracking-[-0.04em]">{value}</p><p className="mt-2 truncate text-xs font-black">{label}</p><p className="mt-1 truncate text-[10px] font-medium text-muted-foreground">{hint}</p></div></CardContent></Card>)}</section>
+ 
++        <FelfelOperationalDashboard showHero={false} />
++
+         {healthQ.error && <QueryError ar={ar} message={healthQ.error.message} />}
+diff --git a/client/src/pages/AdminSettings.tsx b/client/src/pages/AdminSettings.tsx
+--- a/client/src/pages/AdminSettings.tsx
++++ b/client/src/pages/AdminSettings.tsx
+@@ -38,3 +38,4 @@
+ import RakanSettingsTab from "@/components/RakanSettingsTab";
+ import DarwishAiProvidersSettingsTab from "@/components/DarwishAiProvidersSettingsTabV2";
++import TaraProviderSettingsPanel from "@/components/tara/TaraProviderSettingsPanel";
+ import TamaraSettingsTab from "@/components/TamaraSettingsTab";
+@@ -187,2 +188,2 @@
+-    "rakan", "darwishAiProviders", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
++    "rakan", "darwishAiProviders", "felfelAiProviders", "tamara", "paymob", "innocall", "currency", "demoSync", "developerHub", "dashboardAudit",
+     "dynamicServices", "packages",
+@@ -407,2 +408,3 @@
+   const canAccessDashboardAudit = DASHBOARD_AUDIT_EMAILS.includes((user?.email ?? "").toLowerCase());
+   const canAccessMeta = isAdmin || isMediaBuyer;
++  const canManageFelfelProviders = normalizeUserRole(user?.role ?? "") === "Admin";
+@@ -494,3 +496,4 @@
+         { value: "rakan", label: isRTL ? "راكان AI" : "Rakan AI", description: isRTL ? "مساعد النظام الذكي" : "AI assistant settings", icon: <Sparkles size={14} />, visible: true, badge: "AI" },
+         { value: "darwishAiProviders", label: isRTL ? "مزودو درويش AI" : "Darwish AI Providers", description: isRTL ? "المزودون والموديلات والتوجيه" : "Providers, models, and routing", icon: <Sparkles size={14} />, visible: isAdmin || isDeveloper, badge: "AI" },
++        { value: "felfelAiProviders", label: isRTL ? "مزودو فلفل AI" : "Felfel AI Providers", description: isRTL ? "مزودات التحليل والموديلات الخاصة بفلفل" : "Felfel analysis providers and models", icon: <Sparkles size={14} />, visible: canManageFelfelProviders, badge: "AI" },
+         { value: "demoSync", label: isRTL ? "مزامنة الديمو" : "Demo Sync", description: isRTL ? "مزامنة نسخة العرض" : "Demo environment sync", icon: <RefreshCw size={14} />, visible: isSuperAdmin, badge: "Admin" },
+@@ -536,7 +539,7 @@
+-      values: ["developerHub", "rakan", "darwishAiProviders"],
++      values: ["developerHub", "rakan", "darwishAiProviders", "felfelAiProviders"],
+     },
+     {
+       id: "admin",
+       label: isRTL ? "الإدارة" : "Admin",
+       icon: <Shield size={15} />,
+-      values: ["users", "authIntegrations", "backup", "databaseBackup", "demoSync", "dashboardAudit"],
++      values: ["users", "authIntegrations", "backup", "databaseBackup", "felfelAiProviders", "demoSync", "dashboardAudit"],
+@@ -1258,4 +1261,8 @@
+             <DarwishAiProvidersSettingsTab />
+           </TabsContent>}
+ 
++          {canManageFelfelProviders && <TabsContent value="felfelAiProviders" className="mt-4">
++            <TaraProviderSettingsPanel tenantKey="felfel" agentLabel="Felfel" />
++          </TabsContent>}
++
+           {/* ── Currency / Exchange Rates Tab ── */}
+diff --git a/client/src/pages/ClientPool.tsx b/client/src/pages/ClientPool.tsx
+--- a/client/src/pages/ClientPool.tsx
++++ b/client/src/pages/ClientPool.tsx
+@@ -50,2 +50,3 @@
+ import ClientPoolExcelExportDialog from "@/components/clientPool/ClientPoolExcelExportDialog";
++import FelfelMeetingsHub from "@/components/FelfelMeetingsHub";
+ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+@@ -220,4 +221,5 @@
+     plan: "الخطة",
+     overview: "نظرة عامة",
++    meetings: "اجتماعات فلفل",
+     contact: "التواصل",
+     contract: "العقد",
+@@ -340,4 +342,5 @@
+     plan: "Plan",
+     overview: "Overview",
++    meetings: "Felfel Meetings",
+     contact: "Contact",
+     contract: "Contract",
+@@ -548,1 +551,1 @@
+-type ClientDetailTab = "overview" | "contact" | "contract" | "notes" | "handover";
++type ClientDetailTab = "overview" | "meetings" | "contact" | "contract" | "notes" | "handover";
+@@ -638,3 +641,4 @@
+   const canCreateClient = hasPermission("clients.create");
+   const canDeleteClient = hasPermission("clients.delete");
+   const canEditClient = hasPermission("clients.edit");
++  const canViewMeetings = hasPermission("meetings.view");
+@@ -1331,6 +1335,9 @@
+                   ["contract", copy.contract],
+                   ["notes", copy.notes],
+                 ];
++                if (canViewMeetings) {
++                  detailTabs.splice(1, 0, ["meetings", copy.meetings]);
++                }
+                 if (isSalesHandoverClient && hasSalesBriefSummary) {
+                   detailTabs.push(["handover", copy.salesBrief]);
+                 }
+@@ -1576,4 +1583,12 @@
+                           </DetailPanel>
+                         )}
+ 
++                        {activeDetailTab === "meetings" && canViewMeetings && (
++                          <FelfelMeetingsHub
++                            clientId={Number(client.id)}
++                            leadId={client.leadId ? Number(client.leadId) : null}
++                            isRTL={isRTL}
++                          />
++                        )}
++
+                         {activeDetailTab === "handover" && hasSalesBriefSummary && (
+diff --git a/client/src/components/FelfelMeetingsHub.tsx b/client/src/components/FelfelMeetingsHub.tsx
+--- a/client/src/components/FelfelMeetingsHub.tsx
++++ b/client/src/components/FelfelMeetingsHub.tsx
+@@ -5,2 +5,3 @@
+ import { Calendar, ExternalLink, FileText, Loader2, Plus, Video as VideoIcon } from "lucide-react";
++import FelfelRecordingPlayer from "@/components/felfel/FelfelRecordingPlayer";
+ import { toast } from "sonner";
+@@ -128,3 +129,14 @@
+               <div className="rounded-lg bg-muted/50 p-3"><div className="text-[11px] text-muted-foreground">{isRTL ? "الأرشيف" : "Archive"}</div><div className="mt-1 text-sm font-medium">{meeting.archiveStatus || "not_started"}</div>{meeting.archiveDriveUrl && <a className="text-xs text-primary hover:underline" href={meeting.archiveDriveUrl} target="_blank" rel="noreferrer">{isRTL ? "فتح الأرشيف" : "Open archive"}</a>}</div>
+             </div>
++            {(media.length > 0 || meeting.recordingDriveUrl) && (
++              <div className="mt-3">
++                <FelfelRecordingPlayer
++                  media={media}
++                  driveUrl={meeting.recordingDriveUrl}
++                  durationSec={meeting.recordingDurationSec}
++                  sizeBytes={meeting.recordingSizeBytes}
++                  isRTL={isRTL}
++                />
++              </div>
++            )}
+             {(analysis.summary || transcriptPreview.length || decisions.length || actions.length || opinion.risks?.length || opinion.opportunities?.length || opinion.recommendations?.length || questions.length || taskIds.length || followUpIds.length || memory.previousMeetingCount) > 0 && <div className="mt-4 grid gap-3 md:grid-cols-2">
