@@ -1,0 +1,17 @@
+diff --git a/server/services/felfel/felfelCrmMeetingService.ts b/server/services/felfel/felfelCrmMeetingService.ts
+--- a/server/services/felfel/felfelCrmMeetingService.ts
++++ b/server/services/felfel/felfelCrmMeetingService.ts
+@@ -113,8 +113,12 @@ export async function recoverRecentFelfelMeeting(platform: string, nativeMeeting
+   await db.update(crmMeetings).set({
+     status: "ended",
+     felfelStatus: historical.status || "completed",
+     endedAt: meeting.endedAt || new Date(),
+     processingLockUntil: null,
++    processingAttempt: 0,
++    failedAt: null,
++    lastError: null,
+   }).where(eq(crmMeetings.id, meeting.id));
+   stopLifecycleMonitor(Number(meeting.id));
+   setTimeout(() => {
+     void processLinkedFelfelMeeting(Number(meeting.id)).catch(() => undefined);
+   }, 250);
