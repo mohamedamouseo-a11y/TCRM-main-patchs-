@@ -1,8 +1,7 @@
 diff --git a/server/routers.ts b/server/routers.ts
 --- a/server/routers.ts
 +++ b/server/routers.ts
-@@
-         const permissionScope = getCoreListScopeFilter(ctx, "leads");
+@@ -3791,7 +3791,6 @@
          if (permissionScope) {
            Object.assign(filters, permissionScope);
            delete filters.assignedUserId;
@@ -10,28 +9,11 @@ diff --git a/server/routers.ts b/server/routers.ts
 -          delete filters.ownerId;
          } else {
            if (isTechnicalAccountManagerRole(ctx.user.role)) {
-             filters.currentTamUserId = ctx.user.id;
-             delete filters.assignedUserId;
-             delete filters.ownerId;
 
 diff --git a/server/db.ts b/server/db.ts
 --- a/server/db.ts
 +++ b/server/db.ts
-@@
-   } else if (filters.assignedUserId) {
-     // Show leads where user is owner OR has an active assignment
-     const assignedLeadIds = await db.execute(sql`
-       SELECT DISTINCT leadId FROM lead_assignments
-       WHERE userId = ${filters.assignedUserId} AND isActive = 1
-     `);
-     const ids = ((assignedLeadIds as any)[0] ?? []).map((r: any) => r.leadId);
-     if (ids.length > 0) {
-       conditions.push(
-         or(
-           eq(leads.ownerId, filters.assignedUserId),
-           inArray(leads.id, ids)
-         )!
-       );
+@@ -800,6 +800,7 @@
      } else {
        conditions.push(eq(leads.ownerId, filters.assignedUserId));
      }
@@ -40,23 +22,7 @@ diff --git a/server/db.ts b/server/db.ts
 +  if (filters.ownerId) {
      conditions.push(eq(leads.ownerId, filters.ownerId));
    }
-   conditions.push(...taraLeadMetadataConditions(filters));
-
-@@
-   } else if (filters.assignedUserId) {
-     // Show leads where user is owner OR has an active assignment
-     const assignedLeadIds = await db.execute(sql`
-       SELECT DISTINCT leadId FROM lead_assignments
-       WHERE userId = ${filters.assignedUserId} AND isActive = 1
-     `);
-     const ids = ((assignedLeadIds as any)[0] ?? []).map((r: any) => r.leadId);
-     if (ids.length > 0) {
-       conditions.push(
-         or(
-           eq(leads.ownerId, filters.assignedUserId),
-           inArray(leads.id, ids)
-         )!
-       );
+@@ -1107,6 +1108,7 @@
      } else {
        conditions.push(eq(leads.ownerId, filters.assignedUserId));
      }
@@ -65,4 +31,3 @@ diff --git a/server/db.ts b/server/db.ts
 +  if (filters.ownerId) {
      conditions.push(eq(leads.ownerId, filters.ownerId));
    }
-   conditions.push(...taraLeadMetadataConditions(filters));
