@@ -1,0 +1,141 @@
+diff --git a/drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql b/drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql
+new file mode 100644
+--- /dev/null
++++ b/drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql
+@@ -0,0 +1,99 @@
++-- Google Drive Storage Pool - Phase 1 foundation
++-- Additive only: preserve the existing single-Drive runtime behavior.
++-- The legacy primary account points to the SAME existing theme_settings key;
++-- OAuth/config storage is not duplicated or replaced in this phase.
++
++CREATE TABLE `google_drive_storage_accounts` (
++  `id` int NOT NULL AUTO_INCREMENT,
++  `name` varchar(120) NOT NULL,
++  `settingsKey` varchar(100) NOT NULL,
++  `priority` int NOT NULL DEFAULT 1,
++  `isLegacyPrimary` tinyint NOT NULL DEFAULT 0,
++  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++  PRIMARY KEY (`id`),
++  UNIQUE KEY `uq_google_drive_storage_accounts_settingsKey` (`settingsKey`),
++  KEY `idx_google_drive_storage_accounts_priority` (`priority`)
++);
++
++-- Drive #1 keeps using the current production settings JSON and encrypted OAuth tokens
++-- stored under theme_settings.google_drive_file_storage_settings.
++INSERT INTO `google_drive_storage_accounts`
++  (`name`, `settingsKey`, `priority`, `isLegacyPrimary`)
++VALUES
++  ('Primary Google Drive', 'google_drive_file_storage_settings', 1, 1);
++
++-- Canonical CRM file storage.
++ALTER TABLE `crm_files`
++  ADD COLUMN `storageAccountId` int NULL AFTER `driveFileId`,
++  ADD INDEX `idx_crm_files_storageAccountId` (`storageAccountId`);
++
++-- Lead attachments currently keep their own Drive reference in addition to crmFileId.
++ALTER TABLE `lead_attachments`
++  ADD COLUMN `storageAccountId` int NULL AFTER `driveFileId`,
++  ADD INDEX `idx_lead_attachments_storageAccountId` (`storageAccountId`);
++
++-- WhatsApp media uses the same CRM Google Drive storage service.
++ALTER TABLE `whatsapp_messages`
++  ADD COLUMN `media_storage_account_id` int NULL AFTER `media_drive_file_id`,
++  ADD INDEX `idx_whatsapp_messages_media_storage_account_id` (`media_storage_account_id`);
++
++-- Cleanup jobs retain a direct Drive file id, so keep the owning account with the job.
++ALTER TABLE `notification_sound_cleanup_queue`
++  ADD COLUMN `storageAccountId` int NULL AFTER `driveFileId`,
++  ADD INDEX `idx_notification_sound_cleanup_storageAccountId` (`storageAccountId`);
++
++-- Felfel stores recording/archive Drive ids directly even though the actual files flow
++-- through the existing CRM file-storage service.
++ALTER TABLE `crm_meetings`
++  ADD COLUMN `recordingStorageAccountId` int NULL AFTER `recordingDriveFileId`,
++  ADD COLUMN `archiveStorageAccountId` int NULL AFTER `archiveDriveFileId`,
++  ADD INDEX `idx_crm_meetings_recordingStorageAccountId` (`recordingStorageAccountId`),
++  ADD INDEX `idx_crm_meetings_archiveStorageAccountId` (`archiveStorageAccountId`);
++
++-- Existing files all belong to the current single Google Drive, now represented as Drive #1.
++SET @legacyGoogleDriveStorageAccountId := (
++  SELECT `id`
++  FROM `google_drive_storage_accounts`
++  WHERE `settingsKey` = 'google_drive_file_storage_settings'
++  LIMIT 1
++);
++
++UPDATE `crm_files`
++SET `storageAccountId` = @legacyGoogleDriveStorageAccountId
++WHERE `driveFileId` IS NOT NULL
++  AND `driveFileId` <> ''
++  AND `storageAccountId` IS NULL;
++
++UPDATE `lead_attachments`
++SET `storageAccountId` = @legacyGoogleDriveStorageAccountId
++WHERE `driveFileId` IS NOT NULL
++  AND `driveFileId` <> ''
++  AND `storageAccountId` IS NULL;
++
++UPDATE `whatsapp_messages`
++SET `media_storage_account_id` = @legacyGoogleDriveStorageAccountId
++WHERE `media_drive_file_id` IS NOT NULL
++  AND `media_drive_file_id` <> ''
++  AND `media_storage_account_id` IS NULL;
++
++UPDATE `notification_sound_cleanup_queue`
++SET `storageAccountId` = @legacyGoogleDriveStorageAccountId
++WHERE `driveFileId` IS NOT NULL
++  AND `driveFileId` <> ''
++  AND `storageAccountId` IS NULL;
++
++UPDATE `crm_meetings`
++SET `recordingStorageAccountId` = @legacyGoogleDriveStorageAccountId
++WHERE `recordingDriveFileId` IS NOT NULL
++  AND `recordingDriveFileId` <> ''
++  AND `recordingStorageAccountId` IS NULL;
++
++UPDATE `crm_meetings`
++SET `archiveStorageAccountId` = @legacyGoogleDriveStorageAccountId
++WHERE `archiveDriveFileId` IS NOT NULL
++  AND `archiveDriveFileId` <> ''
++  AND `archiveStorageAccountId` IS NULL;
++
++-- Backup Center Drive references are intentionally NOT included here: that subsystem has
++-- its own Google Drive backup configuration and is not part of CRM file-storage failover.
++diff --git a/server/googleDriveStoragePoolPhase1.migration.test.ts b/server/googleDriveStoragePoolPhase1.migration.test.ts
++new file mode 100644
++--- /dev/null
+++++ b/server/googleDriveStoragePoolPhase1.migration.test.ts
++@@ -0,0 +1,32 @@
+++import { readFileSync } from "node:fs";
+++import { describe, expect, it } from "vitest";
+++
+++describe("Google Drive storage pool phase 1 migration contract", () => {
+++  const source = readFileSync(
+++    "drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql",
+++    "utf8",
+++  );
+++
+++  it("keeps the existing Drive settings source and creates the account mapping foundation", () => {
+++    expect(source).toContain("google_drive_storage_accounts");
+++    expect(source).toContain("google_drive_file_storage_settings");
+++    expect(source).toContain("Primary Google Drive");
+++    expect(source).toContain("storageAccountId");
+++    expect(source).toContain("media_storage_account_id");
+++    expect(source).toContain("recordingStorageAccountId");
+++    expect(source).toContain("archiveStorageAccountId");
+++  });
+++
+++  it("backfills existing CRM, WhatsApp, cleanup and meeting Drive references to Drive #1", () => {
+++    expect(source).toContain("UPDATE `crm_files`");
+++    expect(source).toContain("UPDATE `lead_attachments`");
+++    expect(source).toContain("UPDATE `whatsapp_messages`");
+++    expect(source).toContain("UPDATE `notification_sound_cleanup_queue`");
+++    expect(source).toContain("UPDATE `crm_meetings`");
+++    expect(source).toContain("@legacyGoogleDriveStorageAccountId");
+++  });
+++
+++  it("does not mix the independent Backup Center Drive subsystem into CRM storage failover", () => {
+++    expect(source).toContain("Backup Center Drive references are intentionally NOT included");
+++  });
+++});
