@@ -1,0 +1,312 @@
+diff --git a/scripts/apply-google-drive-storage-pool-phase2-1.mjs b/scripts/apply-google-drive-storage-pool-phase2-1.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/apply-google-drive-storage-pool-phase2-1.mjs
+@@ -0,0 +1,314 @@
++import fs from "node:fs";
++
++const read = p => fs.readFileSync(p, "utf8");
++const write = (p, s) => fs.writeFileSync(p, s);
++function once(s, a, b, label) {
++  const i = s.indexOf(a);
++  if (i < 0) throw new Error(`Missing ${label}`);
++  return s.slice(0, i) + b + s.slice(i + a.length);
++}
++function all(s, a, b, label) {
++  if (!s.includes(a)) throw new Error(`Missing ${label}`);
++  return s.split(a).join(b);
++}
++function editFn(path, name, fn) {
++  let s = read(path);
++  const markers = [`export async function ${name}`, `async function ${name}`, `export function ${name}`, `function ${name}`];
++  let start = -1;
++  for (const m of markers) { const i = s.indexOf(m); if (i >= 0 && (start < 0 || i < start)) start = i; }
++  if (start < 0) throw new Error(`Function not found: ${name}`);
++  const endings = ["\nexport async function ", "\nasync function ", "\nexport function ", "\nfunction ", "\nexport class ", "\nexport type "];
++  let end = s.length;
++  for (const e of endings) { const i = s.indexOf(e, start + 10); if (i >= 0 && i < end) end = i; }
++  const block = s.slice(start, end);
++  const next = fn(block);
++  if (next === block) throw new Error(`No change in ${name}`);
++  write(path, s.slice(0, start) + next + s.slice(end));
++}
++function editTable(path, table, fn) {
++  let s = read(path);
++  const at = s.indexOf(`mysqlTable("${table}"`);
++  if (at < 0) throw new Error(`Table not found: ${table}`);
++  const start = s.lastIndexOf("export const ", at);
++  let end = s.indexOf("\nexport const ", at);
++  if (end < 0) end = s.length;
++  const block = s.slice(start, end);
++  const next = fn(block);
++  if (next === block) throw new Error(`No schema change for ${table}`);
++  write(path, s.slice(0, start) + next + s.slice(end));
++}
++
++// 1) Make the existing Drive adapter accept explicit account settings without breaking legacy callers.
++const gd = "server/services/googleDriveFileStorage.ts";
++for (const name of ["getStoredGoogleDriveFileTrashStatus", "getStoredGoogleDriveFileMetadata"]) {
++  editFn(gd, name, b => {
++    b = once(b, "fileId: string):", "fileId: string, settings?: GoogleDriveFileStorageSettings):", `${name} signature`);
++    return once(b, "const drive = await getDriveClient();", "const drive = await getDriveClient(settings);", `${name} client`);
++  });
++}
++editFn(gd, "streamStoredFileFromGoogleDrive", b => {
++  b = once(b, "  range?: { start: number; end: number }\n):", "  range?: { start: number; end: number },\n  settings?: GoogleDriveFileStorageSettings\n):", "stream signature");
++  b = once(b, "getStoredGoogleDriveFileMetadata(fileId)", "getStoredGoogleDriveFileMetadata(fileId, settings)", "stream metadata");
++  return once(b, "getDriveClient();", "getDriveClient(settings);", "stream client");
++});
++editFn(gd, "streamStoredFileFromGoogleDriveRange", b => {
++  b = once(b, "  rangeHeader?: string | null,\n):", "  rangeHeader?: string | null,\n  settings?: GoogleDriveFileStorageSettings,\n):", "range signature");
++  b = once(b, "getStoredGoogleDriveFileMetadata(fileId)", "getStoredGoogleDriveFileMetadata(fileId, settings)", "range metadata");
++  return once(b, "getDriveClient();", "getDriveClient(settings);", "range client");
++});
++editFn(gd, "deleteStoredFileFromGoogleDrive", b => {
++  b = once(b, "fileId: string | null | undefined):", "fileId: string | null | undefined, settings?: GoogleDriveFileStorageSettings):", "delete signature");
++  return once(b, "getDriveClient();", "getDriveClient(settings);", "delete client");
++});
++for (const name of ["trashStoredFileOnGoogleDrive", "untrashStoredFileOnGoogleDrive"]) {
++  editFn(gd, name, b => {
++    b = once(b, "  fileId: string\n):", "  fileId: string,\n  settings?: GoogleDriveFileStorageSettings\n):", `${name} signature`);
++    return once(b, "getDriveClient();", "getDriveClient(settings);", `${name} client`);
++  });
++}
++editFn(gd, "downloadStoredFileFromGoogleDrive", b => once(b,
++  "  options?: DriveDownloadOptions\n): Promise<Buffer> {\n  const settings = await getGoogleDriveFileStorageSettings({ includeSecrets: true });",
++  "  options?: DriveDownloadOptions,\n  settingsOverride?: GoogleDriveFileStorageSettings\n): Promise<Buffer> {\n  const settings = settingsOverride || await getGoogleDriveFileStorageSettings({ includeSecrets: true });",
++  "download settings"));
++editFn(gd, "listStoredGoogleDriveFilesByAppPropertiesPage", b => once(b,
++  "  options: { limit?: number; pageToken?: string | null } = {},\n): Promise<StoredDriveFileListPage> {\n  const safeLimit",
++  "  options: { limit?: number; pageToken?: string | null } = {},\n  settingsOverride?: GoogleDriveFileStorageSettings,\n): Promise<StoredDriveFileListPage> {\n  const safeLimit",
++  "list signature").replace(
++    "const settings = await getGoogleDriveFileStorageSettings({ includeSecrets: true });",
++    "const settings = settingsOverride || await getGoogleDriveFileStorageSettings({ includeSecrets: true });"
++  ));
++for (const name of ["upsertStoredFileToGoogleDrive", "uploadStoredStreamToGoogleDrive"]) {
++  editFn(gd, name, b => once(b,
++    "}): Promise<StoredDriveUploadResult> {\n  const settings = await getGoogleDriveFileStorageSettings({ includeSecrets: true });",
++    "}, settingsOverride?: GoogleDriveFileStorageSettings): Promise<StoredDriveUploadResult> {\n  const settings = settingsOverride || await getGoogleDriveFileStorageSettings({ includeSecrets: true });",
++    `${name} settings`));
++}
++
++// 2) Add account-aware pool operations; no cross-drive search for reads.
++const pool = "server/services/googleDriveStoragePool.ts";
++let ps = read(pool);
++ps = once(ps,
++`import {
++  getDriveClient,
++  getGoogleDriveFileStorageSettings,
++  getGoogleDriveFileStorageSettingsForKey,
++  getGoogleDriveStorageReadiness,
++  uploadStoredFileToGoogleDriveUnsafe,
++  type GoogleDriveFileStorageSettings,
++  type StoredDriveUploadResult,
++} from "./googleDriveFileStorage";`,
++`import {
++  deleteStoredFileFromGoogleDrive,
++  downloadStoredFileFromGoogleDrive,
++  getDriveClient,
++  getGoogleDriveFileStorageSettings,
++  getGoogleDriveFileStorageSettingsForKey,
++  getGoogleDriveStorageReadiness,
++  getStoredGoogleDriveFileMetadata,
++  listStoredGoogleDriveFilesByAppPropertiesPage,
++  streamStoredFileFromGoogleDriveRange,
++  trashStoredFileOnGoogleDrive,
++  untrashStoredFileOnGoogleDrive,
++  uploadStoredFileToGoogleDriveUnsafe,
++  uploadStoredStreamToGoogleDrive,
++  upsertStoredFileToGoogleDrive,
++  type GoogleDriveFileStorageSettings,
++  type StoredDriveUploadResult,
++} from "./googleDriveFileStorage";`, "pool imports");
++const poolOps = `
++export async function getStoredGoogleDriveFileMetadataViaPool(fileId: string, storageAccountId?: number | null) {
++  return getStoredGoogleDriveFileMetadata(fileId, await getPoolAccountSettings(storageAccountId));
++}
++export async function streamStoredFileFromGoogleDriveRangeViaPool(fileId: string, storageAccountId: number | null | undefined, rangeHeader?: string | null) {
++  return streamStoredFileFromGoogleDriveRange(fileId, rangeHeader, await getPoolAccountSettings(storageAccountId));
++}
++export async function downloadStoredFileFromGoogleDriveViaPool(fileId: string, storageAccountId: number | null | undefined, label?: string, options?: { maxBytes?: number }) {
++  return downloadStoredFileFromGoogleDrive(fileId, label, options, await getPoolAccountSettings(storageAccountId));
++}
++export async function deleteStoredFileFromGoogleDriveViaPool(fileId: string | null | undefined, storageAccountId?: number | null) {
++  return deleteStoredFileFromGoogleDrive(fileId, await getPoolAccountSettings(storageAccountId));
++}
++export async function trashStoredFileOnGoogleDriveViaPool(fileId: string, storageAccountId?: number | null) {
++  return trashStoredFileOnGoogleDrive(fileId, await getPoolAccountSettings(storageAccountId));
++}
++export async function untrashStoredFileOnGoogleDriveViaPool(fileId: string, storageAccountId?: number | null) {
++  return untrashStoredFileOnGoogleDrive(fileId, await getPoolAccountSettings(storageAccountId));
++}
++export async function uploadStoredStreamViaGoogleDrivePool(args: Parameters<typeof uploadStoredStreamToGoogleDrive>[0]) {
++  const candidates = await getGoogleDriveStoragePoolCandidates(0);
++  if (!candidates.length) { args.stream.destroy(); return { driveFileId: null, driveUrl: null, uploadStatus: "failed" as const, storageAccountId: null, error: "No writable Google Drive storage account is available" }; }
++  const c = candidates[0];
++  const result = await uploadStoredStreamToGoogleDrive(args, c.settings);
++  return { ...result, storageAccountId: c.id };
++}
++export async function upsertStoredFileViaGoogleDrivePool(args: Parameters<typeof upsertStoredFileToGoogleDrive>[0] & { storageAccountId?: number | null }) {
++  const { storageAccountId, ...driveArgs } = args;
++  if (driveArgs.existingDriveFileId) {
++    const result = await upsertStoredFileToGoogleDrive(driveArgs, await getPoolAccountSettings(storageAccountId));
++    return { ...result, storageAccountId: storageAccountId ?? null };
++  }
++  const candidates = await getGoogleDriveStoragePoolCandidates(driveArgs.buffer.length);
++  let lastError = "Google Drive upload failed";
++  for (const c of candidates) {
++    const result = await upsertStoredFileToGoogleDrive(driveArgs, c.settings);
++    if (result.uploadStatus === "uploaded") return { ...result, storageAccountId: c.id };
++    lastError = result.error || lastError;
++    if (!/quota|storage.*full|insufficient.*storage/i.test(lastError)) break;
++  }
++  return { driveFileId: null, driveUrl: null, uploadStatus: "failed" as const, storageAccountId: null, error: lastError };
++}
++export async function listStoredGoogleDriveFilesByAppPropertiesPageViaPool(properties: Record<string,string>, options: { limit?: number; pageToken?: string | null } = {}) {
++  const candidates = await getGoogleDriveStoragePoolCandidates(0);
++  const safeLimit = Number.isInteger(options.limit) ? Math.max(1, Math.min(Number(options.limit), 200)) : 100;
++  let state = { accountIndex: 0, drivePageToken: null as string | null };
++  if (options.pageToken) { try { state = JSON.parse(Buffer.from(options.pageToken, "base64url").toString("utf8")); } catch {} }
++  const files: any[] = [];
++  for (let i = Math.max(0, Number(state.accountIndex || 0)); i < candidates.length && files.length < safeLimit; i++) {
++    const c = candidates[i];
++    const page = await listStoredGoogleDriveFilesByAppPropertiesPage(properties, { limit: safeLimit - files.length, pageToken: i === state.accountIndex ? state.drivePageToken : null }, c.settings);
++    files.push(...page.files.map(file => ({ ...file, storageAccountId: c.id })));
++    if (page.nextPageToken) return { files, nextPageToken: Buffer.from(JSON.stringify({ accountIndex: i, drivePageToken: page.nextPageToken })).toString("base64url") };
++    if (files.length >= safeLimit && i + 1 < candidates.length) return { files, nextPageToken: Buffer.from(JSON.stringify({ accountIndex: i + 1, drivePageToken: null })).toString("base64url") };
++  }
++  return { files, nextPageToken: null };
++}
++`;
++ps = once(ps, "export async function getGoogleDrivePoolStatus() {", poolOps + "\nexport async function getGoogleDrivePoolStatus() {", "pool operations");
++write(pool, ps);
++
++// 3) Canonical CRM paths + DriveOnly/Felfel automatically use the pool.
++const crm = "server/services/crmFileStorage.ts";
++let cs = read(crm);
++cs = once(cs, `import { deleteStoredFileFromGoogleDrive, queueStoredFileToGoogleDrive, trashStoredFileOnGoogleDrive, untrashStoredFileOnGoogleDrive } from "./googleDriveFileStorage";`, `import { queueStoredFileToGoogleDrive } from "./googleDriveFileStorage";\nimport { deleteStoredFileFromGoogleDriveViaPool, trashStoredFileOnGoogleDriveViaPool, untrashStoredFileOnGoogleDriveViaPool, uploadStoredFileViaGoogleDrivePool } from "./googleDriveStoragePool";`, "crm imports");
++cs = once(cs, `  const { uploadStoredFileToGoogleDrive } = await import("./googleDriveFileStorage");\n  const driveResult = await uploadStoredFileToGoogleDrive({`, `  const driveResult = await uploadStoredFileViaGoogleDrivePool({`, "drive-only upload");
++cs = once(cs, "    driveFileId: driveResult.driveFileId ?? null,\n    driveUrl: driveResult.driveUrl ?? null,\n    driveUploadStatus: \"uploaded\" as const,", "    driveFileId: driveResult.driveFileId ?? null,\n    storageAccountId: driveResult.storageAccountId ?? null,\n    driveUrl: driveResult.driveUrl ?? null,\n    driveUploadStatus: \"uploaded\" as const,", "drive-only return");
++cs = all(cs, "deleteStoredFileFromGoogleDrive(stored.driveFileId)", "deleteStoredFileFromGoogleDriveViaPool(stored.driveFileId, stored.storageAccountId)", "crm rollback");
++cs = once(cs, "  driveFileId?: string | null;\n}) {", "  driveFileId?: string | null;\n  storageAccountId?: number | null;\n}) {", "physical delete input");
++cs = all(cs, "deleteStoredFileFromGoogleDrive(input.driveFileId)", "deleteStoredFileFromGoogleDriveViaPool(input.driveFileId, input.storageAccountId)", "physical delete");
++cs = once(cs, "  driveFileId?: string | null;\n  deletedBy: number;", "  driveFileId?: string | null;\n  storageAccountId?: number | null;\n  deletedBy: number;", "delete input account");
++cs = all(cs, "trashStoredFileOnGoogleDrive(driveFileId)", "trashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).storageAccountId)", "crm trash");
++cs = all(cs, "untrashStoredFileOnGoogleDrive(driveFileId)", "untrashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).storageAccountId)", "crm untrash");
++write(crm, cs);
++
++// 4) Protected CRM open/download uses the owning account.
++const core = "server/_core/index.ts";
++let ix = read(core);
++ix = once(ix, `import { downloadStoredFileFromGoogleDrive, finishGoogleDriveFileStorageOAuth, streamStoredFileFromGoogleDrive, streamStoredFileFromGoogleDriveRange } from "../services/googleDriveFileStorage";`, `import { finishGoogleDriveFileStorageOAuth } from "../services/googleDriveFileStorage";\nimport { downloadStoredFileFromGoogleDriveViaPool, streamStoredFileFromGoogleDriveRangeViaPool } from "../services/googleDriveStoragePool";`, "core drive imports");
++ix = once(ix, "  _timeoutLabel: string,\n) {\n  const response = await streamStoredFileFromGoogleDriveRange(driveFileId, rangeHeader);", "  _timeoutLabel: string,\n  storageAccountId?: number | null,\n) {\n  const response = await streamStoredFileFromGoogleDriveRangeViaPool(driveFileId, storageAccountId, rangeHeader);", "core stream helper");
++ix = all(ix, `downloadStoredFileFromGoogleDrive(driveFileId, "CRM public view-only preview")`, `downloadStoredFileFromGoogleDriveViaPool(driveFileId, Number((resolvedAny.file as any).storageAccountId || 0) || null, "CRM public view-only preview")`, "public preview read");
++ix = all(ix, `downloadStoredFileFromGoogleDrive(driveFileId, "CRM file protected download")`, `downloadStoredFileFromGoogleDriveViaPool(driveFileId, Number((file as any).storageAccountId || 0) || null, "CRM file protected download")`, "protected read");
++ix = once(ix, "        driveFileId: upload.driveFileId,\n        fileSize: upload.fileSize,", "        driveFileId: upload.driveFileId,\n        storageAccountId: upload.storageAccountId,\n        fileSize: upload.fileSize,", "wa upload account");
++write(core, ix);
++
++// 5) Streamed WhatsApp upload selects a pool account and returns ownership.
++const proto = "server/services/waGatewayMediaUploadProtocol.ts";
++let wp = read(proto);
++wp = once(wp, `import {\n  deleteStoredFileFromGoogleDrive,\n  uploadStoredStreamToGoogleDrive,\n} from "./googleDriveFileStorage";`, `import { deleteStoredFileFromGoogleDriveViaPool, uploadStoredStreamViaGoogleDrivePool } from "./googleDriveStoragePool";`, "wa protocol imports");
++wp = once(wp, "  driveFileId: string;\n  fileSize: number;", "  driveFileId: string;\n  storageAccountId: number | null;\n  fileSize: number;", "wa protocol return type");
++wp = all(wp, "ReturnType<typeof uploadStoredStreamToGoogleDrive>", "ReturnType<typeof uploadStoredStreamViaGoogleDrivePool>", "wa protocol promise type");
++wp = once(wp, "  let driveFileId: string | null = null;", "  let driveFileId: string | null = null;\n  let storageAccountId: number | null = null;", "wa protocol account var");
++wp = all(wp, "uploadStoredStreamToGoogleDrive({", "uploadStoredStreamViaGoogleDrivePool({", "wa protocol pool upload");
++wp = once(wp, "if (settled?.uploadStatus === \"uploaded\" && settled.driveFileId) driveFileId = settled.driveFileId;", "if (settled?.uploadStatus === \"uploaded\" && settled.driveFileId) { driveFileId = settled.driveFileId; storageAccountId = settled.storageAccountId ?? null; }", "wa protocol cleanup ownership");
++wp = all(wp, "deleteStoredFileFromGoogleDrive(orphanId)", "deleteStoredFileFromGoogleDriveViaPool(orphanId, storageAccountId)", "wa protocol cleanup");
++wp = once(wp, "    driveFileId = result.driveFileId;", "    driveFileId = result.driveFileId;\n    storageAccountId = result.storageAccountId ?? null;", "wa protocol result account");
++wp = once(wp, "      driveFileId,\n      fileSize,", "      driveFileId,\n      storageAccountId,\n      fileSize,", "wa protocol return account");
++write(proto, wp);
++
++// 6) WhatsApp runtime: pool upload/read/delete and durable media account mapping.
++const wa = "server/services/waGatewayIntegrationService.ts";
++let ws = read(wa);
++const oldWaImport = `import {\n  deleteStoredFileFromGoogleDrive,\n  downloadStoredFileFromGoogleDrive,\n  getStoredGoogleDriveFileMetadata,\n  listStoredGoogleDriveFilesByAppPropertiesPage,\n  trashStoredFileOnGoogleDrive,\n  untrashStoredFileOnGoogleDrive,\n  uploadStoredStreamToGoogleDrive,\n  upsertStoredFileToGoogleDrive,\n} from "./googleDriveFileStorage";`;
++const newWaImport = `import {\n  deleteStoredFileFromGoogleDriveViaPool,\n  downloadStoredFileFromGoogleDriveViaPool,\n  getStoredGoogleDriveFileMetadataViaPool,\n  listStoredGoogleDriveFilesByAppPropertiesPageViaPool,\n  trashStoredFileOnGoogleDriveViaPool,\n  untrashStoredFileOnGoogleDriveViaPool,\n  uploadStoredStreamViaGoogleDrivePool,\n  upsertStoredFileViaGoogleDrivePool,\n} from "./googleDriveStoragePool";`;
++ws = once(ws, oldWaImport, newWaImport, "wa imports");
++ws = once(ws, "type WAGatewayMediaFile = { driveFileId: string; mimeType: string; fileName: string; fileSize: number };", "type WAGatewayMediaFile = { driveFileId: string; storageAccountId: number | null; mimeType: string; fileName: string; fileSize: number };", "wa media type");
++ws = once(ws, "  existingDriveFileId?: string | null;\n}) {\n  const result = await upsertStoredFileToGoogleDrive({", "  existingDriveFileId?: string | null;\n  existingStorageAccountId?: number | null;\n}) {\n  const result = await upsertStoredFileViaGoogleDrivePool({", "wa buffer pool");
++ws = once(ws, "    existingDriveFileId: input.existingDriveFileId || null,", "    existingDriveFileId: input.existingDriveFileId || null,\n    storageAccountId: input.existingStorageAccountId || null,", "wa buffer account input");
++ws = once(ws, "  return result.driveFileId;", "  return { driveFileId: result.driveFileId, storageAccountId: result.storageAccountId ?? null };", "wa buffer result");
++ws = all(ws, "listStoredGoogleDriveFilesByAppPropertiesPage(", "listStoredGoogleDriveFilesByAppPropertiesPageViaPool(", "wa cleanup list");
++ws = all(ws, "getStoredGoogleDriveFileMetadata(existingDriveFileId)", "getStoredGoogleDriveFileMetadataViaPool(existingDriveFileId, (message as any).mediaStorageAccountId)", "wa existing metadata");
++ws = all(ws, "getStoredGoogleDriveFileMetadata(driveFileId)", "getStoredGoogleDriveFileMetadataViaPool(driveFileId, (row as any).mediaStorageAccountId)", "wa retention metadata");
++ws = all(ws, "getStoredGoogleDriveFileMetadata(input.driveFileId)", "getStoredGoogleDriveFileMetadataViaPool(input.driveFileId, input.storageAccountId ?? null)", "wa send metadata");
++ws = all(ws, "trashStoredFileOnGoogleDrive(driveFileId)", "trashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).mediaStorageAccountId)", "wa trash");
++ws = all(ws, "untrashStoredFileOnGoogleDrive(driveFileId)", "untrashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).mediaStorageAccountId)", "wa untrash");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(file.driveFileId)", "deleteStoredFileFromGoogleDriveViaPool(file.driveFileId, (file as any).storageAccountId)", "wa orphan delete");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(input.driveFileId)", "deleteStoredFileFromGoogleDriveViaPool(input.driveFileId, input.storageAccountId ?? null)", "wa input delete");
++ws = all(ws, "downloadStoredFileFromGoogleDrive(\n        input.driveFileId,", "downloadStoredFileFromGoogleDriveViaPool(\n        input.driveFileId,\n        input.storageAccountId ?? null,", "wa outgoing read");
++ws = all(ws, "downloadStoredFileFromGoogleDrive(\n      media.driveFileId,", "downloadStoredFileFromGoogleDriveViaPool(\n      media.driveFileId,\n      media.storageAccountId,", "wa forward read");
++ws = all(ws, "ReturnType<typeof uploadStoredStreamToGoogleDrive>", "ReturnType<typeof uploadStoredStreamViaGoogleDrivePool>", "wa stream promise");
++ws = all(ws, "uploadStoredStreamToGoogleDrive({", "uploadStoredStreamViaGoogleDrivePool({", "wa remote pool stream");
++ws = all(ws, "mediaDriveFileId: null,\n", "mediaDriveFileId: null,\n            mediaStorageAccountId: null,\n", "wa clear ownership");
++ws = all(ws, "mediaDriveFileId: input.driveFileId,\n", "mediaDriveFileId: input.driveFileId,\n            mediaStorageAccountId: input.storageAccountId ?? null,\n", "wa persist ownership");
++ws = once(ws, "  driveFileId: string;\n  fileSize: number;", "  driveFileId: string;\n  storageAccountId?: number | null;\n  fileSize: number;", "wa send input account");
++ws = all(ws, "mediaDriveFileId: whatsappMessages.mediaDriveFileId,\n", "mediaDriveFileId: whatsappMessages.mediaDriveFileId,\n      mediaStorageAccountId: whatsappMessages.mediaStorageAccountId,\n", "wa select ownership");
++ws = all(ws, "select({ id: whatsappMessages.id, mediaDriveFileId: whatsappMessages.mediaDriveFileId })", "select({ id: whatsappMessages.id, mediaDriveFileId: whatsappMessages.mediaDriveFileId, mediaStorageAccountId: whatsappMessages.mediaStorageAccountId })", "wa race select ownership");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(String(existing.mediaDriveFileId))", "deleteStoredFileFromGoogleDriveViaPool(String(existing.mediaDriveFileId), (existing as any).mediaStorageAccountId)", "wa existing cleanup");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(String(remoteExisting.mediaDriveFileId))", "deleteStoredFileFromGoogleDriveViaPool(String(remoteExisting.mediaDriveFileId), (remoteExisting as any).mediaStorageAccountId)", "wa remote cleanup");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(String(racedRemote.mediaDriveFileId))", "deleteStoredFileFromGoogleDriveViaPool(String(racedRemote.mediaDriveFileId), (racedRemote as any).mediaStorageAccountId)", "wa race cleanup");
++ws = once(ws, "  let driveFileId: string | null = null;\n  let detectedMimeType", "  let driveFileId: string | null = null;\n  let driveStorageAccountId: number | null = null;\n  let detectedMimeType", "wa remote account var");
++ws = once(ws, "    driveFileId = result.driveFileId;\n    return {\n      driveFileId,", "    driveFileId = result.driveFileId;\n    driveStorageAccountId = result.storageAccountId ?? null;\n    return {\n      driveFileId,\n      storageAccountId: driveStorageAccountId,", "wa remote return account");
++ws = once(ws, "if (settled?.uploadStatus === \"uploaded\" && settled.driveFileId) driveFileId = settled.driveFileId;", "if (settled?.uploadStatus === \"uploaded\" && settled.driveFileId) { driveFileId = settled.driveFileId; driveStorageAccountId = settled.storageAccountId ?? null; }", "wa remote settled account");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(driveFileId)", "deleteStoredFileFromGoogleDriveViaPool(driveFileId, driveStorageAccountId)", "wa remote cleanup");
++ws = once(ws, "        fileSize: metadata.size,\n      };", "        fileSize: metadata.size,\n        storageAccountId: (message as any).mediaStorageAccountId ?? null,\n      };", "wa existing return account");
++ws = once(ws, "              mediaDriveFileId: remote.driveFileId,", "              mediaDriveFileId: remote.driveFileId,\n              mediaStorageAccountId: remote.storageAccountId ?? null,", "wa remote persist account");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(remote.driveFileId)", "deleteStoredFileFromGoogleDriveViaPool(remote.driveFileId, remote.storageAccountId)", "wa remote rollback");
++ws = once(ws, "      const driveFileId = await persistWAGatewayMediaBufferToDrive({", "      const storedDrive = await persistWAGatewayMediaBufferToDrive({", "wa fallback stored object");
++ws = once(ws, "      try {\n        await db.update(whatsappMessages).set({\n          mediaStorageKey: null,\n          mediaDriveFileId: driveFileId,", "      const driveFileId = storedDrive.driveFileId;\n      try {\n        await db.update(whatsappMessages).set({\n          mediaStorageKey: null,\n          mediaDriveFileId: driveFileId,\n          mediaStorageAccountId: storedDrive.storageAccountId,", "wa fallback account persist");
++ws = all(ws, "deleteStoredFileFromGoogleDriveViaPool(driveFileId, driveStorageAccountId)", "deleteStoredFileFromGoogleDriveViaPool(driveFileId, driveStorageAccountId)", "wa cleanup stable");
++ws = once(ws, "      return { driveFileId, mimeType: detected.mimeType, fileName, fileSize: downloaded.buffer.length };", "      return { driveFileId, storageAccountId: storedDrive.storageAccountId, mimeType: detected.mimeType, fileName, fileSize: downloaded.buffer.length };", "wa fallback return account");
++ws = once(ws, "  let driveFileId = \"\";\n  try {\n    driveFileId = await persistWAGatewayMediaBufferToDrive({", "  let driveFileId = \"\";\n  let driveStorageAccountId: number | null = null;\n  try {\n    const storedForward = await persistWAGatewayMediaBufferToDrive({", "wa forward stored object");
++ws = once(ws, "      clientRequestId: String(operation.clientRequestId || \"\"),\n    });\n  } catch", "      clientRequestId: String(operation.clientRequestId || \"\"),\n    });\n    driveFileId = storedForward.driveFileId;\n    driveStorageAccountId = storedForward.storageAccountId;\n  } catch", "wa forward account assign");
++ws = once(ws, "      driveFileId,\n      fileSize: media.fileSize,", "      driveFileId,\n      storageAccountId: driveStorageAccountId,\n      fileSize: media.fileSize,", "wa forward send account");
++ws = once(ws, "    let mediaDriveFileId: string | null = null;", "    let mediaDriveFileId: string | null = null;\n    let mediaStorageAccountId: number | null = null;", "wa webhook account var");
++ws = once(ws, "        mediaDriveFileId = await persistWAGatewayMediaBufferToDrive({", "        const storedWebhookMedia = await persistWAGatewayMediaBufferToDrive({", "wa webhook stored object");
++ws = once(ws, "          mediaKind: webhookMediaKind,\n        });\n      } catch", "          mediaKind: webhookMediaKind,\n        });\n        mediaDriveFileId = storedWebhookMedia.driveFileId;\n        mediaStorageAccountId = storedWebhookMedia.storageAccountId;\n      } catch", "wa webhook account assign");
++ws = once(ws, "        mediaDriveFileId,\n        mediaState:", "        mediaDriveFileId,\n        mediaStorageAccountId,\n        mediaState:", "wa webhook insert account");
++ws = once(ws, "          mediaDriveFileId: mediaDriveFileId || sql`${whatsappMessages.mediaDriveFileId}`,", "          mediaDriveFileId: mediaDriveFileId || sql`${whatsappMessages.mediaDriveFileId}`,\n          mediaStorageAccountId: mediaDriveFileId ? mediaStorageAccountId : sql`${whatsappMessages.mediaStorageAccountId}`,", "wa webhook update account");
++ws = all(ws, "deleteStoredFileFromGoogleDrive(mediaDriveFileId)", "deleteStoredFileFromGoogleDriveViaPool(mediaDriveFileId, mediaStorageAccountId)", "wa webhook rollback");
++ws = once(ws, "set({ mediaDriveFileId: null, mediaState: \"remote\" })", "set({ mediaDriveFileId: null, mediaStorageAccountId: null, mediaState: \"remote\" })", "wa stale clear account");
++if (/\b(deleteStoredFileFromGoogleDrive|downloadStoredFileFromGoogleDrive|getStoredGoogleDriveFileMetadata|listStoredGoogleDriveFilesByAppPropertiesPage|trashStoredFileOnGoogleDrive|untrashStoredFileOnGoogleDrive|uploadStoredStreamToGoogleDrive|upsertStoredFileToGoogleDrive)\s*\(/.test(ws)) throw new Error("Direct single-account Drive call remains in WhatsApp service");
++write(wa, ws);
++
++// 7) Schema ownership fields that Phase 1 migrated but Phase 2 had not modeled.
++const schema = "drizzle/schema.ts";
++editTable(schema, "lead_attachments", b => all(all(b, "\tdriveFileId: varchar({ length: 255 }),", "\tdriveFileId: varchar({ length: 255 }),\n\tstorageAccountId: int(),", "lead attachment account"), "\tindex(\"idx_lead_attachments_driveFileId\").on(table.driveFileId),", "\tindex(\"idx_lead_attachments_driveFileId\").on(table.driveFileId),\n\tindex(\"idx_lead_attachments_storageAccountId\").on(table.storageAccountId),", "lead attachment index"));
++editTable(schema, "crm_meetings", b => {
++  b = all(b, "\trecordingDriveFileId: varchar({ length: 255 }),", "\trecordingDriveFileId: varchar({ length: 255 }),\n\trecordingStorageAccountId: int(),", "meeting recording account");
++  return all(b, "\tarchiveDriveFileId: varchar({ length: 255 }),", "\tarchiveDriveFileId: varchar({ length: 255 }),\n\tarchiveStorageAccountId: int(),", "meeting archive account");
++});
++editTable(schema, "notification_sound_cleanup_queue", b => all(b, "\tdriveFileId: varchar({ length: 255 }),", "\tdriveFileId: varchar({ length: 255 }),\n\tstorageAccountId: int(),", "notification cleanup account"));
++
++// 8) Felfel direct meeting IDs keep the account that owns them.
++const felfel = "server/services/felfel/felfelCrmMeetingService.ts";
++let fsrv = read(felfel);
++fsrv = all(fsrv, "        driveFileId: stored.driveFileId,\n        driveUrl:", "        driveFileId: stored.driveFileId,\n        storageAccountId: stored.storageAccountId ?? null,\n        driveUrl:", "felfel stored account");
++fsrv = all(fsrv, "        driveFileId: existing.driveFileId,\n        driveUrl:", "        driveFileId: existing.driveFileId,\n        storageAccountId: (existing as any).storageAccountId ?? null,\n        driveUrl:", "felfel existing account");
++fsrv = all(fsrv, "recordingDriveFileId: recording.driveFileId || null,\n", "recordingDriveFileId: recording.driveFileId || null,\n        recordingStorageAccountId: recording.storageAccountId || null,\n", "felfel recording owner");
++fsrv = all(fsrv, "archiveDriveFileId: archive.driveFileId || null,\n", "archiveDriveFileId: archive.driveFileId || null,\n          archiveStorageAccountId: archive.storageAccountId || null,\n", "felfel archive owner");
++write(felfel, fsrv);
++const farch = "server/services/felfel/felfelMeetingArchiveService.ts";
++let fa = read(farch);
++fa = all(fa, "    driveFileId: row.driveFileId == null ? null : String(row.driveFileId),", "    driveFileId: row.driveFileId == null ? null : String(row.driveFileId),\n    storageAccountId: Number(row.storageAccountId || 0) || null,", "archive list account");
++fa = all(fa, "      driveFileId: stored.driveFileId,\n      driveUrl:", "      driveFileId: stored.driveFileId,\n      storageAccountId: stored.storageAccountId ?? null,\n      driveUrl:", "archive created account");
++write(farch, fa);
++
++// 9) Notification cleanup uses exact owner account.
++const notif = "server/services/notificationSoundCleanupService.ts";
++let ns = read(notif);
++ns = once(ns, `import { trashStoredFileOnGoogleDrive } from "./googleDriveFileStorage";`, `import { trashStoredFileOnGoogleDriveViaPool } from "./googleDriveStoragePool";`, "notification import");
++ns = once(ns, "  driveFileId: string | null;\n  attemptCount:", "  driveFileId: string | null;\n  storageAccountId: number | null;\n  attemptCount:", "notification job type");
++ns = all(ns, "SELECT id, crmFileId, driveFileId, attemptCount", "SELECT id, crmFileId, driveFileId, storageAccountId, attemptCount", "notification SQL account");
++ns = once(ns, "      driveFileId: String(rowValue(row, \"driveFileId\") || \"\").trim() || null,\n      attemptCount:", "      driveFileId: String(rowValue(row, \"driveFileId\") || \"\").trim() || null,\n      storageAccountId: Number(rowValue(row, \"storageAccountId\") || 0) || null,\n      attemptCount:", "notification row account");
++ns = once(ns, "    const result = await trashStoredFileOnGoogleDrive(driveFileId);", "    const storageAccountId = Number((file as any)?.storageAccountId || job.storageAccountId || 0) || null;\n    const result = await trashStoredFileOnGoogleDriveViaPool(driveFileId, storageAccountId);", "notification trash account");
++write(notif, ns);
++
++// Contract test for the corrective runtime.
++write("server/googleDriveStoragePoolPhase21.test.ts", `import { readFileSync } from "node:fs";\nimport { describe, expect, it } from "vitest";\n\ndescribe("Google Drive Storage Pool Phase 2.1 corrective", () => {\n  const pool = readFileSync("server/services/googleDriveStoragePool.ts","utf8");\n  const crm = readFileSync("server/services/crmFileStorage.ts","utf8");\n  const core = readFileSync("server/_core/index.ts","utf8");\n  const wa = readFileSync("server/services/waGatewayIntegrationService.ts","utf8");\n  const protocol = readFileSync("server/services/waGatewayMediaUploadProtocol.ts","utf8");\n  it("routes canonical reads and deletes by storageAccountId", () => {\n    expect(pool).toContain("streamStoredFileFromGoogleDriveRangeViaPool");\n    expect(pool).toContain("deleteStoredFileFromGoogleDriveViaPool");\n    expect(crm).toContain("(row as any).storageAccountId");\n    expect(core).toContain("downloadStoredFileFromGoogleDriveViaPool");\n  });\n  it("routes DriveOnly, WhatsApp and streamed uploads through the pool", () => {\n    expect(crm).toContain("uploadStoredFileViaGoogleDrivePool");\n    expect(wa).toContain("mediaStorageAccountId");\n    expect(wa).toContain("upsertStoredFileViaGoogleDrivePool");\n    expect(protocol).toContain("uploadStoredStreamViaGoogleDrivePool");\n  });\n  it("does not leave direct single-account Drive operations in WhatsApp runtime", () => {\n    expect(wa).not.toMatch(/\\b(deleteStoredFileFromGoogleDrive|downloadStoredFileFromGoogleDrive|getStoredGoogleDriveFileMetadata|listStoredGoogleDriveFilesByAppPropertiesPage|trashStoredFileOnGoogleDrive|untrashStoredFileOnGoogleDrive|uploadStoredStreamToGoogleDrive|upsertStoredFileToGoogleDrive)\\s*\\(/);\n  });\n});\n`);
++
++console.log("PHASE2_1_APPLY=PASS");
