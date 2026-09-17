@@ -1,0 +1,230 @@
+diff --git a/client/src/pages/LeadsList.tsx b/client/src/pages/LeadsList.tsx
+--- a/client/src/pages/LeadsList.tsx
++++ b/client/src/pages/LeadsList.tsx
+@@ -56,6 +56,7 @@
+ import "../leads-premium-v1-10.css";
+ import "../leads-premium-v1-11.css";
+ import "../leads-filters-premium-v1.css";
++import "../leads-filters-premium-v2.css";
+ import "../new-lead-premium-v1.css";
+ import "../new-lead-premium-v1-1.css";
+ import "../new-lead-premium-v1-2.css";
+diff --git a/client/src/leads-filters-premium-v2.css b/client/src/leads-filters-premium-v2.css
+new file mode 100644
+--- /dev/null
++++ b/client/src/leads-filters-premium-v2.css
+@@ -0,0 +1,214 @@
++/* TCRM_LEADS_FILTERS_PREMIUM_V2
++   Compact two-row filter layout for Sales > Leads.
++   Presentation only: no query/filter behavior changes. */
++
++.tcrm-leads-filter-header {
++  padding: 14px 18px 12px !important;
++}
++
++.tcrm-leads-filter-heading {
++  gap: 10px !important;
++}
++
++.tcrm-leads-filter-heading-icon {
++  width: 36px !important;
++  height: 36px !important;
++  flex-basis: 36px !important;
++  border-radius: 10px !important;
++}
++
++.tcrm-leads-filter-title {
++  font-size: 14px !important;
++}
++
++.tcrm-leads-filter-subtitle {
++  margin-top: 2px !important;
++  font-size: 11px !important;
++}
++
++.tcrm-leads-filter-toggle {
++  height: 32px !important;
++  border-radius: 9px !important;
++}
++
++.tcrm-leads-filter-body {
++  padding: 14px 18px 16px !important;
++}
++
++.tcrm-leads-filter-grid {
++  display: grid !important;
++  grid-template-columns: repeat(16, minmax(0, 1fr)) !important;
++  align-items: end !important;
++  gap: 12px 12px !important;
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) {
++  min-width: 0 !important;
++  width: auto !important;
++  flex: none !important;
++  grid-column: span 2;
++}
++
++.tcrm-leads-filter-grid > div:first-child {
++  min-width: 0 !important;
++  grid-column: span 5;
++}
++
++.tcrm-leads-filter-grid > div:nth-child(2) {
++  min-width: 0 !important;
++  grid-column: span 3;
++}
++
++.tcrm-leads-filter-grid > div:nth-child(3),
++.tcrm-leads-filter-grid > div:nth-child(4),
++.tcrm-leads-filter-grid > div:nth-child(5),
++.tcrm-leads-filter-grid > div:nth-child(6) {
++  grid-column: span 2;
++}
++
++.tcrm-leads-filter-grid > div:nth-last-child(2) {
++  grid-column: span 4;
++}
++
++.tcrm-leads-filter-grid label {
++  font-size: 10.5px !important;
++  line-height: 1.15 !important;
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > :not([hidden]) ~ :not([hidden]) {
++  margin-top: 6px !important;
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) input,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > button,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > div > button {
++  width: 100% !important;
++  min-width: 0 !important;
++  min-height: 38px !important;
++  height: 38px !important;
++  border-radius: 10px !important;
++}
++
++.tcrm-leads-filter-grid input {
++  text-overflow: ellipsis;
++}
++
++.tcrm-leads-filter-actions {
++  grid-column: span 4;
++  display: flex !important;
++  flex: none !important;
++  flex-direction: row !important;
++  flex-wrap: nowrap !important;
++  align-items: center !important;
++  justify-content: flex-end !important;
++  gap: 8px !important;
++  margin: 0 !important;
++  padding: 0 !important;
++  border-top: 0 !important;
++  min-width: 0 !important;
++  align-self: end;
++}
++
++.tcrm-leads-filter-actions > button,
++.tcrm-leads-filter-actions > div > button {
++  flex: 1 1 0 !important;
++  min-width: 0 !important;
++  height: 38px !important;
++  min-height: 38px !important;
++  padding-inline: 10px !important;
++  border-radius: 10px !important;
++  white-space: nowrap;
++}
++
++.tcrm-leads-filter-actions .tcrm-leads-reset-button:disabled {
++  opacity: 0.48 !important;
++}
++
++@media (max-width: 1180px) {
++  .tcrm-leads-filter-grid {
++    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
++  }
++
++  .tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) {
++    grid-column: span 3;
++  }
++
++  .tcrm-leads-filter-grid > div:first-child {
++    grid-column: span 6;
++  }
++
++  .tcrm-leads-filter-grid > div:nth-child(2) {
++    grid-column: span 3;
++  }
++
++  .tcrm-leads-filter-grid > div:nth-last-child(2) {
++    grid-column: span 6;
++  }
++
++  .tcrm-leads-filter-actions {
++    grid-column: span 6;
++  }
++}
++
++@media (max-width: 820px) {
++  .tcrm-leads-filter-header {
++    padding: 12px 14px 10px !important;
++  }
++
++  .tcrm-leads-filter-body {
++    padding: 12px 14px 14px !important;
++  }
++
++  .tcrm-leads-filter-grid {
++    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
++    gap: 10px !important;
++  }
++
++  .tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions),
++  .tcrm-leads-filter-grid > div:first-child,
++  .tcrm-leads-filter-grid > div:nth-child(2),
++  .tcrm-leads-filter-grid > div:nth-child(3),
++  .tcrm-leads-filter-grid > div:nth-child(4),
++  .tcrm-leads-filter-grid > div:nth-child(5),
++  .tcrm-leads-filter-grid > div:nth-child(6),
++  .tcrm-leads-filter-grid > div:nth-last-child(2) {
++    grid-column: span 1;
++  }
++
++  .tcrm-leads-filter-grid > div:first-child,
++  .tcrm-leads-filter-actions {
++    grid-column: 1 / -1;
++  }
++}
++
++@media (max-width: 560px) {
++  .tcrm-leads-filter-heading-icon,
++  .tcrm-leads-filter-subtitle {
++    display: none !important;
++  }
++
++  .tcrm-leads-filter-grid {
++    grid-template-columns: 1fr !important;
++  }
++
++  .tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions),
++  .tcrm-leads-filter-grid > div:first-child,
++  .tcrm-leads-filter-grid > div:nth-child(2),
++  .tcrm-leads-filter-grid > div:nth-child(3),
++  .tcrm-leads-filter-grid > div:nth-child(4),
++  .tcrm-leads-filter-grid > div:nth-child(5),
++  .tcrm-leads-filter-grid > div:nth-child(6),
++  .tcrm-leads-filter-grid > div:nth-last-child(2),
++  .tcrm-leads-filter-actions {
++    grid-column: 1 / -1;
++  }
++
++  .tcrm-leads-filter-actions {
++    flex-wrap: wrap !important;
++  }
++
++  .tcrm-leads-filter-actions > button,
++  .tcrm-leads-filter-actions > div > button {
++    flex: 1 1 calc(50% - 4px) !important;
++  }
++}
