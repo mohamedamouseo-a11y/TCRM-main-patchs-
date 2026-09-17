@@ -1,1 +1,296 @@
-PLACEHOLDER
+diff --git a/scripts/apply-google-drive-storage-pool-phase2.mjs b/scripts/apply-google-drive-storage-pool-phase2.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/apply-google-drive-storage-pool-phase2.mjs
+@@ -0,0 +1,297 @@
++import fs from "node:fs";
++
++function read(path){ return fs.readFileSync(path,"utf8"); }
++function write(path, value){ fs.writeFileSync(path,value); }
++function mustReplace(path, oldText, newText, count=1){
++  let s=read(path);
++  let seen=0, pos=0;
++  while ((pos=s.indexOf(oldText,pos)) !== -1){ seen++; pos += oldText.length; }
++  if (seen < count) throw new Error(`${path}: expected at least ${count} occurrence(s), found ${seen}: ${oldText.slice(0,120)}`);
++  for(let i=0;i<count;i++) s=s.replace(oldText,newText);
++  write(path,s);
++}
++function appendIfMissing(path, marker, block){
++  let s=read(path);
++  if(!s.includes(marker)){ s += (s.endsWith("\n")?"":"\n") + block; write(path,s); }
++}
++
++// Phase 1 repo hygiene: migration was applied live but *.sql prevented the file from being pushed.
++appendIfMissing(".gitignore",
++  "!/drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql",
++  "\n# Google Drive Storage Pool migrations are versioned explicitly\n!/drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql\n"
++);
++
++const phase1Migration = `-- Google Drive Storage Pool - Phase 1 foundation
++-- Additive only: preserve the existing single-Drive runtime behavior.
++CREATE TABLE IF NOT EXISTS \`google_drive_storage_accounts\` (
++  \`id\` int NOT NULL AUTO_INCREMENT,
++  \`name\` varchar(120) NOT NULL,
++  \`settingsKey\` varchar(100) NOT NULL,
++  \`priority\` int NOT NULL DEFAULT 1,
++  \`isLegacyPrimary\` tinyint NOT NULL DEFAULT 0,
++  \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
++  \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
++  PRIMARY KEY (\`id\`),
++  UNIQUE KEY \`uq_google_drive_storage_accounts_settingsKey\` (\`settingsKey\`),
++  KEY \`idx_google_drive_storage_accounts_priority\` (\`priority\`)
++);
++INSERT INTO \`google_drive_storage_accounts\` (\`name\`,\`settingsKey\`,\`priority\`,\`isLegacyPrimary\`)
++SELECT 'Primary Google Drive','google_drive_file_storage_settings',1,1
++WHERE NOT EXISTS (
++  SELECT 1 FROM \`google_drive_storage_accounts\`
++  WHERE \`settingsKey\`='google_drive_file_storage_settings'
++);
++`;
++if(!fs.existsSync("drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql")){
++  write("drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql", phase1Migration);
++}
++
++// Keep Drizzle schema aligned with the already-applied Phase 1 DB columns.
++mustReplace("drizzle/schema.ts",
++  "\tstorageKey: varchar({ length: 500 }).notNull(),\n\tdriveFileId: varchar({ length: 255 }),\n\tdriveUrl: text(),",
++  "\tstorageKey: varchar({ length: 500 }).notNull(),\n\tdriveFileId: varchar({ length: 255 }),\n\tstorageAccountId: int(),\n\tdriveUrl: text(),"
++);
++mustReplace("drizzle/schema.ts",
++  "\tindex(\"idx_crm_files_driveFileId\").on(table.driveFileId),",
++  "\tindex(\"idx_crm_files_driveFileId\").on(table.driveFileId),\n\tindex(\"idx_crm_files_storageAccountId\").on(table.storageAccountId),"
++);
++mustReplace("drizzle/schema.ts",
++  "  mediaDriveFileId: varchar(\"media_drive_file_id\", { length: 255 }),\n  mediaState:",
++  "  mediaDriveFileId: varchar(\"media_drive_file_id\", { length: 255 }),\n  mediaStorageAccountId: int(\"media_storage_account_id\"),\n  mediaState:"
++);
++mustReplace("drizzle/schema.ts",
++  "  index(\"idx_whatsapp_messages_media_drive_file_id\").on(table.mediaDriveFileId),",
++  "  index(\"idx_whatsapp_messages_media_drive_file_id\").on(table.mediaDriveFileId),\n  index(\"idx_whatsapp_messages_media_storage_account_id\").on(table.mediaStorageAccountId),"
++);
++
++// Low-level Drive adapter: allow reading any account's settings without changing current primary UI/OAuth behavior.
++mustReplace("server/services/googleDriveFileStorage.ts",
++  "async function readRawSettings(): Promise<Record<string, any> | null> {\n  const db = await getDb();\n  if (!db) return null;\n  const rows = await db.select().from(themeSettings).where(eq(themeSettings.key, SETTINGS_KEY)).limit(1);",
++  "async function readRawSettings(settingsKey = SETTINGS_KEY): Promise<Record<string, any> | null> {\n  const db = await getDb();\n  if (!db) return null;\n  const rows = await db.select().from(themeSettings).where(eq(themeSettings.key, settingsKey)).limit(1);"
++);
++mustReplace("server/services/googleDriveFileStorage.ts",
++  "export async function getGoogleDriveFileStorageSettings(options: SettingsReadOptions = {}) {\n  return mapSettings(await readRawSettings(), options);\n}",
++  "export async function getGoogleDriveFileStorageSettings(options: SettingsReadOptions = {}) {\n  return mapSettings(await readRawSettings(), options);\n}\n\nexport async function getGoogleDriveFileStorageSettingsForKey(settingsKey: string, options: SettingsReadOptions = {}) {\n  const key = String(settingsKey || '').trim();\n  if (!key) throw new Error('Google Drive storage settings key is required');\n  return mapSettings(await readRawSettings(key), options);\n}\n\nexport function getGoogleDriveStorageReadiness(settings: GoogleDriveFileStorageSettings) {\n  return getStorageReadiness(settings);\n}"
++);
++mustReplace("server/services/googleDriveFileStorage.ts",
++  "async function getDriveClient(settings?: GoogleDriveFileStorageSettings): Promise<any> {",
++  "export async function getDriveClient(settings?: GoogleDriveFileStorageSettings): Promise<any> {"
++);
++mustReplace("server/services/googleDriveFileStorage.ts",
++  "async function uploadStoredFileToGoogleDriveUnsafe(",
++  "export async function uploadStoredFileToGoogleDriveUnsafe("
++);
++
++// New pool facade: priority-fill, 5% reserve, exact account binding, legacy fallback.
++const poolService = `import { sql } from "drizzle-orm";
++import { getDb } from "../db";
++import {
++  getDriveClient,
++  getGoogleDriveFileStorageSettings,
++  getGoogleDriveFileStorageSettingsForKey,
++  getGoogleDriveStorageReadiness,
++  uploadStoredFileToGoogleDriveUnsafe,
++  type GoogleDriveFileStorageSettings,
++  type StoredDriveUploadResult,
++} from "./googleDriveFileStorage";
++
++type PoolAccount = {
++  id: number | null;
++  name: string;
++  settingsKey: string;
++  priority: number;
++  isLegacyPrimary: boolean;
++};
++
++type PoolCandidate = PoolAccount & {
++  settings: GoogleDriveFileStorageSettings;
++  totalBytes: number | null;
++  usedBytes: number | null;
++  freeBytes: number | null;
++  reserveBytes: number;
++};
++
++function rowsFromExecute(result: any): any[] {
++  if (Array.isArray(result?.[0])) return result[0];
++  if (Array.isArray(result)) return result;
++  if (Array.isArray(result?.rows)) return result.rows;
++  return [];
++}
++
++async function listAccounts(): Promise<PoolAccount[]> {
++  const db = await getDb();
++  if (!db) return [];
++  try {
++    const result: any = await db.execute(sql.raw(
++      "SELECT id,name,settingsKey,priority,isLegacyPrimary FROM google_drive_storage_accounts ORDER BY priority ASC,id ASC"
++    ));
++    return rowsFromExecute(result).map((row: any) => ({
++      id: Number(row.id) || null,
++      name: String(row.name || "Google Drive"),
++      settingsKey: String(row.settingsKey || "").trim(),
++      priority: Number(row.priority || 1),
++      isLegacyPrimary: Boolean(Number(row.isLegacyPrimary || 0)),
++    })).filter((row: PoolAccount) => row.settingsKey);
++  } catch {
++    return [];
++  }
++}
++
++async function quotaFor(settings: GoogleDriveFileStorageSettings) {
++  const drive = await getDriveClient(settings);
++  const response = await drive.about.get({ fields: "storageQuota" });
++  const quota = response?.data?.storageQuota || {};
++  const total = Number(quota.limit);
++  const used = Number(quota.usage);
++  const totalBytes = Number.isFinite(total) && total > 0 ? total : null;
++  const usedBytes = Number.isFinite(used) && used >= 0 ? used : null;
++  const freeBytes = totalBytes !== null && usedBytes !== null ? Math.max(0, totalBytes - usedBytes) : null;
++  const pct = Math.max(0, Math.min(25, Number(process.env.GOOGLE_DRIVE_POOL_RESERVE_PERCENT || 5)));
++  const reserveBytes = totalBytes === null ? 0 : Math.ceil(totalBytes * pct / 100);
++  return { totalBytes, usedBytes, freeBytes, reserveBytes };
++}
++
++async function accountSettings(account: PoolAccount) {
++  if (account.id === null || account.isLegacyPrimary) {
++    return getGoogleDriveFileStorageSettings({ includeSecrets: true });
++  }
++  return getGoogleDriveFileStorageSettingsForKey(account.settingsKey, { includeSecrets: true });
++}
++
++export async function getGoogleDriveStoragePoolCandidates(requiredBytes = 0): Promise<PoolCandidate[]> {
++  let accounts = await listAccounts();
++  if (!accounts.length) {
++    accounts = [{ id: null, name: "Primary Google Drive", settingsKey: "google_drive_file_storage_settings", priority: 1, isLegacyPrimary: true }];
++  }
++  const candidates: PoolCandidate[] = [];
++  for (const account of accounts) {
++    const settings = await accountSettings(account);
++    const readiness = getGoogleDriveStorageReadiness(settings);
++    if (!settings.enabled || !readiness.ready) continue;
++    try {
++      const quota = await quotaFor(settings);
++      if (quota.freeBytes !== null && quota.freeBytes - quota.reserveBytes < Math.max(0, requiredBytes)) continue;
++      candidates.push({ ...account, settings, ...quota });
++    } catch {
++      candidates.push({ ...account, settings, totalBytes: null, usedBytes: null, freeBytes: null, reserveBytes: 0 });
++    }
++  }
++  return candidates;
++}
++
++export async function uploadStoredFileViaGoogleDrivePool(args: {
++  storageKey: string;
++  fileName: string;
++  buffer: Buffer;
++  contentType?: string | null;
++}): Promise<StoredDriveUploadResult & { storageAccountId: number | null }> {
++  const candidates = await getGoogleDriveStoragePoolCandidates(args.buffer.length);
++  if (!candidates.length) {
++    return { driveFileId: null, driveUrl: null, uploadStatus: "failed", storageAccountId: null, error: "No writable Google Drive storage account is available" };
++  }
++  let lastError = "Google Drive upload failed";
++  for (const candidate of candidates) {
++    try {
++      const result = await uploadStoredFileToGoogleDriveUnsafe(candidate.settings, args);
++      return { ...result, storageAccountId: candidate.id };
++    } catch (error: any) {
++      lastError = String(error?.message || lastError);
++      const code = Number(error?.response?.status || error?.code || 0);
++      const quota = /quota|storage.*full|insufficient.*storage/i.test(lastError) || code === 403;
++      if (!quota) break;
++    }
++  }
++  return { driveFileId: null, driveUrl: null, uploadStatus: "failed", storageAccountId: null, error: lastError };
++}
++
++export async function getPoolAccountSettings(storageAccountId?: number | null) {
++  const id = Number(storageAccountId || 0);
++  const accounts = await listAccounts();
++  const account = id > 0 ? accounts.find((item) => item.id === id) : accounts.find((item) => item.isLegacyPrimary) || accounts[0];
++  if (!account) return getGoogleDriveFileStorageSettings({ includeSecrets: true });
++  return accountSettings(account);
++}
++
++export async function getGoogleDrivePoolStatus() {
++  const candidates = await getGoogleDriveStoragePoolCandidates(0);
++  const totalBytes = candidates.reduce((sum, item) => sum + (item.totalBytes || 0), 0);
++  const usedBytes = candidates.reduce((sum, item) => sum + (item.usedBytes || 0), 0);
++  const freeBytes = candidates.reduce((sum, item) => sum + (item.freeBytes || 0), 0);
++  return {
++    ready: candidates.length > 0,
++    accounts: candidates.map(({ settings, ...item }) => item),
++    totalBytes,
++    usedBytes,
++    freeBytes,
++  };
++}
++`;
++write("server/services/googleDriveStoragePool.ts", poolService);
++
++// Route normal CRM storage writes through the pool while preserving Drive-only behavior.
++mustReplace("server/storage.ts",
++  'import { uploadStoredFileToGoogleDrive } from "./services/googleDriveFileStorage";',
++  'import { uploadStoredFileViaGoogleDrivePool } from "./services/googleDriveStoragePool";'
++);
++mustReplace("server/storage.ts",
++  '  driveFileId?: string | null;\n  driveUrl?: string | null;',
++  '  driveFileId?: string | null;\n  storageAccountId?: number | null;\n  driveUrl?: string | null;'
++);
++mustReplace("server/storage.ts",
++  "  const driveResult = await uploadStoredFileToGoogleDrive({",
++  "  const driveResult = await uploadStoredFileViaGoogleDrivePool({"
++);
++mustReplace("server/storage.ts",
++  "    driveFileId: driveResult.driveFileId,\n    driveUrl: driveResult.driveUrl,",
++  "    driveFileId: driveResult.driveFileId,\n    storageAccountId: driveResult.storageAccountId,\n    driveUrl: driveResult.driveUrl,"
++);
++
++// Persist exact owning Drive account for canonical CRM files.
++mustReplace("server/services/crmFileStorage.ts",
++  "    driveFileId: driveResult.driveFileId ?? null,\n    driveUrl: driveResult.driveUrl ?? null,",
++  "    driveFileId: driveResult.driveFileId ?? null,\n    storageAccountId: driveResult.storageAccountId ?? null,\n    driveUrl: driveResult.driveUrl ?? null,"
++);
++mustReplace("server/services/crmFileStorage.ts",
++  "    driveFileId: stored.driveFileId ?? null,\n      driveUrl: stored.driveUrl ?? null,",
++  "    driveFileId: stored.driveFileId ?? null,\n      storageAccountId: stored.storageAccountId ?? null,\n      driveUrl: stored.driveUrl ?? null,"
++);
++mustReplace("server/services/crmFileStorage.ts",
++  "      driveFileId: stored.driveFileId ?? null,\n      driveUrl: stored.driveUrl ?? null,",
++  "      driveFileId: stored.driveFileId ?? null,\n      storageAccountId: stored.storageAccountId ?? null,\n      driveUrl: stored.driveUrl ?? null,"
++);
++
++// Add targeted contract tests.
++const test = `import { readFileSync } from "node:fs";
++import { describe, expect, it } from "vitest";
++
++describe("Google Drive Storage Pool Phase 2", () => {
++  const pool = readFileSync("server/services/googleDriveStoragePool.ts","utf8");
++  const storage = readFileSync("server/storage.ts","utf8");
++  const crm = readFileSync("server/services/crmFileStorage.ts","utf8");
++  const schema = readFileSync("drizzle/schema.ts","utf8");
++
++  it("uses priority-fill pool selection with reserve capacity", () => {
++    expect(pool).toContain("ORDER BY priority ASC,id ASC");
++    expect(pool).toContain("GOOGLE_DRIVE_POOL_RESERVE_PERCENT");
++    expect(pool).toContain("uploadStoredFileViaGoogleDrivePool");
++  });
++  it("persists exact account ownership for CRM files", () => {
++    expect(schema).toContain("storageAccountId: int()");
++    expect(storage).toContain("storageAccountId: driveResult.storageAccountId");
++    expect(crm).toContain("storageAccountId:");
++  });
++  it("keeps existing Drive adapter instead of replacing it", () => {
++    expect(pool).toContain('from "./googleDriveFileStorage"');
++    expect(pool).toContain("uploadStoredFileToGoogleDriveUnsafe");
++  });
++});
++`;
++write("server/googleDriveStoragePoolPhase2.test.ts", test);
++
++console.log("PHASE2_APPLY=PASS");
