@@ -102,40 +102,40 @@ new file mode 100644
 +
 +-- Backup Center Drive references are intentionally NOT included here: that subsystem has
 +-- its own Google Drive backup configuration and is not part of CRM file-storage failover.
-+diff --git a/server/googleDriveStoragePoolPhase1.migration.test.ts b/server/googleDriveStoragePoolPhase1.migration.test.ts
-+new file mode 100644
-+--- /dev/null
-++++ b/server/googleDriveStoragePoolPhase1.migration.test.ts
-+@@ -0,0 +1,32 @@
-++import { readFileSync } from "node:fs";
-++import { describe, expect, it } from "vitest";
-++
-++describe("Google Drive storage pool phase 1 migration contract", () => {
-++  const source = readFileSync(
-++    "drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql",
-++    "utf8",
-++  );
-++
-++  it("keeps the existing Drive settings source and creates the account mapping foundation", () => {
-++    expect(source).toContain("google_drive_storage_accounts");
-++    expect(source).toContain("google_drive_file_storage_settings");
-++    expect(source).toContain("Primary Google Drive");
-++    expect(source).toContain("storageAccountId");
-++    expect(source).toContain("media_storage_account_id");
-++    expect(source).toContain("recordingStorageAccountId");
-++    expect(source).toContain("archiveStorageAccountId");
-++  });
-++
-++  it("backfills existing CRM, WhatsApp, cleanup and meeting Drive references to Drive #1", () => {
-++    expect(source).toContain("UPDATE `crm_files`");
-++    expect(source).toContain("UPDATE `lead_attachments`");
-++    expect(source).toContain("UPDATE `whatsapp_messages`");
-++    expect(source).toContain("UPDATE `notification_sound_cleanup_queue`");
-++    expect(source).toContain("UPDATE `crm_meetings`");
-++    expect(source).toContain("@legacyGoogleDriveStorageAccountId");
-++  });
-++
-++  it("does not mix the independent Backup Center Drive subsystem into CRM storage failover", () => {
-++    expect(source).toContain("Backup Center Drive references are intentionally NOT included");
-++  });
-++});
+diff --git a/server/googleDriveStoragePoolPhase1.migration.test.ts b/server/googleDriveStoragePoolPhase1.migration.test.ts
+new file mode 100644
+--- /dev/null
++++ b/server/googleDriveStoragePoolPhase1.migration.test.ts
+@@ -0,0 +1,32 @@
++import { readFileSync } from "node:fs";
++import { describe, expect, it } from "vitest";
++
++describe("Google Drive storage pool phase 1 migration contract", () => {
++  const source = readFileSync(
++    "drizzle/migrations/20260917_google_drive_storage_pool_phase1_foundation.sql",
++    "utf8",
++  );
++
++  it("keeps the existing Drive settings source and creates the account mapping foundation", () => {
++    expect(source).toContain("google_drive_storage_accounts");
++    expect(source).toContain("google_drive_file_storage_settings");
++    expect(source).toContain("Primary Google Drive");
++    expect(source).toContain("storageAccountId");
++    expect(source).toContain("media_storage_account_id");
++    expect(source).toContain("recordingStorageAccountId");
++    expect(source).toContain("archiveStorageAccountId");
++  });
++
++  it("backfills existing CRM, WhatsApp, cleanup and meeting Drive references to Drive #1", () => {
++    expect(source).toContain("UPDATE `crm_files`");
++    expect(source).toContain("UPDATE `lead_attachments`");
++    expect(source).toContain("UPDATE `whatsapp_messages`");
++    expect(source).toContain("UPDATE `notification_sound_cleanup_queue`");
++    expect(source).toContain("UPDATE `crm_meetings`");
++    expect(source).toContain("@legacyGoogleDriveStorageAccountId");
++  });
++
++  it("does not mix the independent Backup Center Drive subsystem into CRM storage failover", () => {
++    expect(source).toContain("Backup Center Drive references are intentionally NOT included");
++  });
++});
