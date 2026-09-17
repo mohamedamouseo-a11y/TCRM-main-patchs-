@@ -1,0 +1,422 @@
+diff --git a/client/src/pages/LeadsList.tsx b/client/src/pages/LeadsList.tsx
+--- a/client/src/pages/LeadsList.tsx
++++ b/client/src/pages/LeadsList.tsx
+@@ -55,6 +55,7 @@
+ import "../leads-premium-v1-9.css";
+ import "../leads-premium-v1-10.css";
+ import "../leads-premium-v1-11.css";
++import "../leads-filters-premium-v1.css";
+ import "../new-lead-premium-v1.css";
+ import "../new-lead-premium-v1-1.css";
+ import "../new-lead-premium-v1-2.css";
+@@ -306,6 +307,7 @@
+   const [page, setPage] = useState(() => getInitialPage(initialParams, preferUrlFilters));
+   const [showNewLead, setShowNewLead] = useState(false);
+   const [showExport, setShowExport] = useState(false);
++  const [filtersExpanded, setFiltersExpanded] = useState(true);
+   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => getInitialDateRange(initialParams, preferUrlFilters));
+   const [ownerId, setOwnerId] = useState<string>(() => readInitialFilterValue(initialParams, preferUrlFilters, "ownerId", "leads_ownerId", "all"));
+   const [createdByFilter, setCreatedByFilter] = useState<string>(() => readInitialFilterValue(initialParams, preferUrlFilters, "createdBy", "leads_createdBy", "all"));
+@@ -1017,6 +1019,29 @@
+         <Card className="rounded-[24px] border-border/60 shadow-sm tcrm-leads-filter-card">
+-          <CardContent className="p-5">
+-            <div className="flex flex-wrap items-end gap-3 tcrm-leads-filter-grid">
++          <CardContent className="p-0">
++            <div className="tcrm-leads-filter-header">
++              <div className="tcrm-leads-filter-heading">
++                <div className="tcrm-leads-filter-heading-icon">
++                  <SlidersHorizontal size={18} />
++                </div>
++                <div className="min-w-0">
++                  <h2 className="tcrm-leads-filter-title">{isRTL ? "الفلاتر والبحث" : "Filters & Search"}</h2>
++                  <p className="tcrm-leads-filter-subtitle">
++                    {isRTL ? "ابحث وفلتر العملاء للوصول للبيانات المطلوبة بسرعة" : "Find and filter leads to get the data you need"}
++                  </p>
++                </div>
++              </div>
++              <Button
++                variant="ghost"
++                size="sm"
++                className="tcrm-leads-filter-toggle"
++                onClick={() => setFiltersExpanded((value) => !value)}
++              >
++                {filtersExpanded ? (isRTL ? "إخفاء الفلاتر" : "Hide Filters") : (isRTL ? "إظهار الفلاتر" : "Show Filters")}
++              </Button>
++            </div>
++            {filtersExpanded && (
++              <div className="tcrm-leads-filter-body">
++                <div className="flex flex-wrap items-end gap-3 tcrm-leads-filter-grid">
+               <div className="space-y-2 flex-1 min-w-[240px]">
+                 <Label>{t("search")}</Label>
+                 <div className="relative">
+@@ -1304,76 +1327,84 @@
+                   placeholder={isRTL ? "رقم واتساب أو اسم/ID الحساب" : "WhatsApp number or account name/ID"}
+                   className="w-[220px]"
+                 />
+               </div>
+ 
+-              <Button
+-                variant={slaBreached ? "destructive" : "outline"}
+-                size="sm"
+-                className="gap-1.5"
+-                onClick={() => {
+-                  setSlaBreached(!slaBreached);
+-                  setPage(0);
+-                }}
+-              >
+-                <AlertTriangle size={14} />
+-                {t("slaAlerts")}
+-              </Button>
+-
+-              <Popover>
+-                <PopoverTrigger asChild>
+-                  <Button variant="outline" size="sm" className="gap-2 rounded-2xl">
+-                    <SlidersHorizontal size={14} />
+-                    {isRTL ? "الأعمدة" : "Columns"}
+-                  </Button>
+-                </PopoverTrigger>
+-                <PopoverContent className="w-72 p-3 tcrm-leads-popover-content" align={isRTL ? "start" : "end"} dir={isRTL ? "rtl" : "ltr"}>
+-                  <div className="space-y-3">
+-                    <div>
+-                      <p className="font-medium text-sm">{isRTL ? "إظهار/إخفاء الأعمدة" : "Show / hide columns"}</p>
+-                      <p className="text-xs text-muted-foreground mt-1">
+-                        {isRTL ? "يمكنك تخصيص الأعمدة الظاهرة في الجدول." : "Customize which columns are visible in the table."}
+-                      </p>
+-                    </div>
+-                    <div className="space-y-2">
+-                      {ALL_COLUMNS.map((columnKey) => {
+-                        const meta = columnMeta[columnKey];
+-                        const checked = visibleColumns.includes(columnKey);
+-                        return (
+-                          <label
+-                            key={columnKey}
+-                            className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${
+-                              meta.canHide ? "cursor-pointer hover:bg-muted/40" : "bg-muted/40"
+-                            }`}
+-                          >
+-                            <div className="space-y-0.5">
+-                              <div className="font-medium">{isRTL ? meta.labelAr : meta.labelEn}</div>
+-                              {!meta.canHide && (
+-                                <div className="text-[11px] text-muted-foreground">
+-                                  {isRTL ? "عمود ثابت" : "Always visible"}
+-                                </div>
+-                              )}
+-                            </div>
+-                            <Checkbox
+-                              checked={checked}
+-                              disabled={!meta.canHide}
+-                              onCheckedChange={() => toggleColumn(columnKey)}
+-                            />
+-                          </label>
+-                        );
+-                      })}
+-                    </div>
+-                  </div>
+-                </PopoverContent>
+-              </Popover>
+-
+-              {hasActiveFilters && (
+-                <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={resetFilters}>
+-                  <X size={14} />
+-                  {t("clear")}
+-                </Button>
+-              )}
+-            </div>
+-          </CardContent>
+-        </Card>
++              <div className="tcrm-leads-filter-actions">
++                <Button
++                  variant="outline"
++                  size="sm"
++                  className="gap-1.5 tcrm-leads-reset-button"
++                  onClick={resetFilters}
++                  disabled={!hasActiveFilters}
++                >
++                  <X size={14} />
++                  {isRTL ? "إعادة ضبط" : "Reset"}
++                </Button>
++
++                <Button
++                  variant={slaBreached ? "destructive" : "outline"}
++                  size="sm"
++                  className="gap-1.5 tcrm-leads-sla-button"
++                  onClick={() => {
++                    setSlaBreached(!slaBreached);
++                    setPage(0);
++                  }}
++                >
++                  <AlertTriangle size={14} />
++                  {t("slaAlerts")}
++                </Button>
++
++                <Popover>
++                  <PopoverTrigger asChild>
++                    <Button variant="outline" size="sm" className="gap-2 tcrm-leads-columns-button">
++                      <SlidersHorizontal size={14} />
++                      {isRTL ? "الأعمدة" : "Columns"}
++                    </Button>
++                  </PopoverTrigger>
++                  <PopoverContent className="w-72 p-3 tcrm-leads-popover-content" align={isRTL ? "start" : "end"} dir={isRTL ? "rtl" : "ltr"}>
++                    <div className="space-y-3">
++                      <div>
++                        <p className="font-medium text-sm">{isRTL ? "إظهار/إخفاء الأعمدة" : "Show / hide columns"}</p>
++                        <p className="text-xs text-muted-foreground mt-1">
++                          {isRTL ? "يمكنك تخصيص الأعمدة الظاهرة في الجدول." : "Customize which columns are visible in the table."}
++                        </p>
++                      </div>
++                      <div className="space-y-2">
++                        {ALL_COLUMNS.map((columnKey) => {
++                          const meta = columnMeta[columnKey];
++                          const checked = visibleColumns.includes(columnKey);
++                          return (
++                            <label
++                              key={columnKey}
++                              className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${
++                                meta.canHide ? "cursor-pointer hover:bg-muted/40" : "bg-muted/40"
++                              }`}
++                            >
++                              <div className="space-y-0.5">
++                                <div className="font-medium">{isRTL ? meta.labelAr : meta.labelEn}</div>
++                                {!meta.canHide && (
++                                  <div className="text-[11px] text-muted-foreground">
++                                    {isRTL ? "عمود ثابت" : "Always visible"}
++                                  </div>
++                                )}
++                              </div>
++                              <Checkbox
++                                checked={checked}
++                                disabled={!meta.canHide}
++                                onCheckedChange={() => toggleColumn(columnKey)}
++                              />
++                            </label>
++                          );
++                        })}
++                      </div>
++                    </div>
++                  </PopoverContent>
++                </Popover>
++              </div>
++                </div>
++              </div>
++            )}
++          </CardContent>
++        </Card>
+
+         <Card className="tcrm-leads-table-card">
+diff --git a/client/src/leads-filters-premium-v1.css b/client/src/leads-filters-premium-v1.css
+new file mode 100644
+--- /dev/null
++++ b/client/src/leads-filters-premium-v1.css
+@@ -0,0 +1,212 @@
++/* TCRM_LEADS_FILTERS_PREMIUM_V1
++   Presentation-only UX/UI polish for Sales > Leads filters.
++   Keeps all existing query/filter behavior unchanged. */
++
++.tcrm-leads-filter-card {
++  overflow: hidden;
++  border: 1px solid hsl(var(--border) / 0.7) !important;
++  background: hsl(var(--card) / 0.96);
++  box-shadow:
++    0 1px 2px hsl(var(--foreground) / 0.03),
++    0 14px 34px hsl(var(--foreground) / 0.045) !important;
++}
++
++.tcrm-leads-filter-header {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 16px;
++  padding: 18px 20px 16px;
++}
++
++.tcrm-leads-filter-heading {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  min-width: 0;
++}
++
++.tcrm-leads-filter-heading-icon {
++  display: inline-flex;
++  width: 42px;
++  height: 42px;
++  flex: 0 0 42px;
++  align-items: center;
++  justify-content: center;
++  border: 1px solid hsl(var(--primary) / 0.12);
++  border-radius: 12px;
++  color: hsl(var(--primary));
++  background: hsl(var(--primary) / 0.08);
++}
++
++.tcrm-leads-filter-title {
++  margin: 0;
++  color: hsl(var(--foreground));
++  font-size: 15px;
++  font-weight: 700;
++  line-height: 1.25;
++  letter-spacing: -0.01em;
++}
++
++.tcrm-leads-filter-subtitle {
++  margin: 4px 0 0;
++  color: hsl(var(--muted-foreground));
++  font-size: 12px;
++  line-height: 1.35;
++}
++
++.tcrm-leads-filter-toggle {
++  height: 34px !important;
++  flex: 0 0 auto;
++  border-radius: 10px !important;
++  padding-inline: 10px !important;
++  color: hsl(var(--primary)) !important;
++  font-size: 12px !important;
++  font-weight: 600 !important;
++}
++
++.tcrm-leads-filter-toggle:hover {
++  background: hsl(var(--primary) / 0.07) !important;
++}
++
++.tcrm-leads-filter-body {
++  border-top: 1px solid hsl(var(--border) / 0.65);
++  padding: 18px 20px 20px;
++  background:
++    linear-gradient(180deg, hsl(var(--muted) / 0.12), transparent 42px),
++    hsl(var(--card));
++}
++
++.tcrm-leads-filter-grid {
++  align-items: flex-end !important;
++  gap: 14px 16px !important;
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) {
++  flex: 1 1 160px !important;
++  min-width: 160px !important;
++}
++
++.tcrm-leads-filter-grid > div:first-child {
++  flex: 2.2 1 320px !important;
++  min-width: 280px !important;
++}
++
++.tcrm-leads-filter-grid > div:nth-child(2) {
++  flex: 1.45 1 230px !important;
++  min-width: 220px !important;
++}
++
++.tcrm-leads-filter-grid label {
++  color: hsl(var(--muted-foreground));
++  font-size: 11px;
++  font-weight: 650;
++  line-height: 1.2;
++  letter-spacing: 0.01em;
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) input,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > button,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > div > button {
++  width: 100% !important;
++  min-height: 42px !important;
++  border-radius: 12px !important;
++  border-color: hsl(var(--border) / 0.85) !important;
++  background: hsl(var(--background)) !important;
++  box-shadow: 0 1px 1px hsl(var(--foreground) / 0.02);
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) input:hover,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > button:hover,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > div > button:hover {
++  border-color: hsl(var(--primary) / 0.28) !important;
++}
++
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) input:focus-visible,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > button:focus-visible,
++.tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) > div > button:focus-visible {
++  border-color: hsl(var(--primary) / 0.42) !important;
++  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08) !important;
++}
++
++.tcrm-leads-filter-actions {
++  display: flex;
++  flex: 1 0 100%;
++  align-items: center;
++  justify-content: flex-end;
++  flex-wrap: wrap;
++  gap: 10px;
++  margin-top: 2px;
++  padding-top: 15px;
++  border-top: 1px solid hsl(var(--border) / 0.6);
++}
++
++.tcrm-leads-filter-actions > button,
++.tcrm-leads-filter-actions [data-radix-collection-item] {
++  min-height: 40px;
++}
++
++.tcrm-leads-reset-button,
++.tcrm-leads-sla-button,
++.tcrm-leads-columns-button {
++  min-width: 112px;
++  border-radius: 11px !important;
++  font-weight: 600 !important;
++}
++
++.tcrm-leads-reset-button:disabled {
++  opacity: 0.45;
++}
++
++.tcrm-leads-columns-button {
++  border-color: hsl(var(--primary) / 0.22) !important;
++  color: hsl(var(--foreground));
++}
++
++@media (max-width: 1280px) {
++  .tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions) {
++    flex-basis: 180px !important;
++  }
++
++  .tcrm-leads-filter-grid > div:first-child {
++    flex-basis: 300px !important;
++  }
++}
++
++@media (max-width: 720px) {
++  .tcrm-leads-filter-header {
++    align-items: flex-start;
++    padding: 16px;
++  }
++
++  .tcrm-leads-filter-heading-icon {
++    width: 38px;
++    height: 38px;
++    flex-basis: 38px;
++  }
++
++  .tcrm-leads-filter-subtitle {
++    display: none;
++  }
++
++  .tcrm-leads-filter-body {
++    padding: 16px;
++  }
++
++  .tcrm-leads-filter-grid > div:not(.tcrm-leads-filter-actions),
++  .tcrm-leads-filter-grid > div:first-child,
++  .tcrm-leads-filter-grid > div:nth-child(2) {
++    flex: 1 1 100% !important;
++    min-width: 100% !important;
++  }
++
++  .tcrm-leads-filter-actions {
++    justify-content: stretch;
++  }
++
++  .tcrm-leads-filter-actions > button,
++  .tcrm-leads-filter-actions > div > button {
++    flex: 1 1 30%;
++    min-width: 96px;
++  }
++}
