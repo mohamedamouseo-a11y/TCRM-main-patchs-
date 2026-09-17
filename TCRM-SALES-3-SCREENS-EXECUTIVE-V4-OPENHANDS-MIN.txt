@@ -1,0 +1,20 @@
+cd /var/www/TCRM-MAIN
+curl -L https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-SALES-3-SCREENS-EXECUTIVE-V4.py -o /tmp/tcrm-sales-v4.py
+python3 /tmp/tcrm-sales-v4.py
+npm run build
+pm2 restart tamiyouz-crm
+curl -I https://sales.tamiyouzplatform.com | head -1
+
+DO NOT inspect unrelated code.
+DO NOT modify backend/business logic/routes/permissions/data.
+DO NOT reset/checkout git.
+DO NOT commit/push.
+DO NOT take screenshots yet.
+
+Return only:
+PATCH=PASS/FAIL
+BUILD=PASS/FAIL
+PM2=ONLINE/OFFLINE
+HTTP=200/OTHER
+FILES_CHANGED=
+ERROR=NONE/<error>
