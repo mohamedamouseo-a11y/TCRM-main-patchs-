@@ -1,0 +1,9 @@
+diff --git a/scripts/apply-google-drive-storage-pool-phase2-1.mjs b/scripts/apply-google-drive-storage-pool-phase2-1.mjs
+--- a/scripts/apply-google-drive-storage-pool-phase2-1.mjs
++++ b/scripts/apply-google-drive-storage-pool-phase2-1.mjs
+@@ -151,8 +151,8 @@ cs = all(cs, "deleteStoredFileFromGoogleDrive(input.driveFileId)", "deleteStore
+ cs = once(cs, "  driveFileId?: string | null;\n  deletedBy: number;", "  driveFileId?: string | null;\n  storageAccountId?: number | null;\n  deletedBy: number;", "delete input account");
+-cs = all(cs, "trashStoredFileOnGoogleDrive(driveFileId)", "trashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).storageAccountId)", "crm trash");
+ cs = all(cs, "untrashStoredFileOnGoogleDrive(driveFileId)", "untrashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).storageAccountId)", "crm untrash");
++cs = all(cs, "trashStoredFileOnGoogleDrive(driveFileId)", "trashStoredFileOnGoogleDriveViaPool(driveFileId, (row as any).storageAccountId)", "crm trash");
+ write(crm, cs);
