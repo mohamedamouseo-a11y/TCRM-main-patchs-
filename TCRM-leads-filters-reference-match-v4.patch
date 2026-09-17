@@ -1,0 +1,85 @@
+diff --git a/client/src/pages/LeadsList.tsx b/client/src/pages/LeadsList.tsx
+--- a/client/src/pages/LeadsList.tsx
++++ b/client/src/pages/LeadsList.tsx
+@@ -58,6 +58,7 @@
+ import "../leads-premium-v1-11.css";
+ import "../leads-filters-premium-v1.css";
+ import "../leads-filters-premium-v2.css";
++import "../leads-filters-premium-v4.css";
+ import "../new-lead-premium-v1.css";
+ import "../new-lead-premium-v1-1.css";
+ import "../new-lead-premium-v1-2.css";
+@@ -1057,7 +1058,7 @@
+                   />
+                   {/* TFCRM_SEARCH_PARITY_INTEGRATED: authorized leads query handles human lead fields; ownership and pagination remain unchanged. */}
+                   <Input
+-                    placeholder={t("search")}
++                    placeholder={isRTL ? "ابحث بالاسم أو الهاتف أو الشركة..." : "Search by name, phone, or company..."}
+                     value={search}
+                     onChange={(e) => {
+                       setSearch(e.target.value);
+diff --git a/client/src/leads-filters-premium-v4.css b/client/src/leads-filters-premium-v4.css
+new file mode 100644
+--- /dev/null
++++ b/client/src/leads-filters-premium-v4.css
+@@ -0,0 +1,166 @@
++/* TCRM Leads Filters Reference Match V4 — presentation only */
++.tcrm-leads-filter-card{border-radius:22px!important;border:1px solid hsl(var(--border)/.58)!important;background:hsl(var(--card))!important;box-shadow:0 14px 36px hsl(var(--foreground)/.055)!important}
++.tcrm-leads-filter-header{padding:22px 28px 16px!important}
++.tcrm-leads-filter-heading{gap:12px!important}
++.tcrm-leads-filter-heading-icon{width:38px!important;height:38px!important;flex:0 0 38px!important;border:0!important;border-radius:10px!important;color:hsl(var(--primary))!important;background:transparent!important}
++.tcrm-leads-filter-title{font-size:15px!important;font-weight:750!important;line-height:1.2!important}
++.tcrm-leads-filter-subtitle{margin-top:3px!important;font-size:11.5px!important;line-height:1.35!important}
++.tcrm-leads-filter-toggle{height:38px!important;padding-inline:14px!important;border-radius:11px!important;background:hsl(var(--primary)/.07)!important;color:hsl(var(--foreground))!important;font-size:11.5px!important;font-weight:650!important}
++.tcrm-leads-filter-body{border-top:0!important;padding:12px 28px 26px!important;background:hsl(var(--card))!important}
++
++.tcrm-leads-filter-grid{display:grid!important;grid-template-columns:repeat(16,minmax(0,1fr))!important;align-items:end!important;column-gap:16px!important;row-gap:20px!important}
++.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions){width:100%!important;min-width:0!important;max-width:none!important;flex:none!important;grid-column:auto!important}
++.tcrm-leads-filter-grid>div:nth-child(1){grid-column:span 5!important}
++.tcrm-leads-filter-grid>div:nth-child(2){grid-column:span 3!important}
++.tcrm-leads-filter-grid>div:nth-child(3),.tcrm-leads-filter-grid>div:nth-child(4),.tcrm-leads-filter-grid>div:nth-child(5),.tcrm-leads-filter-grid>div:nth-child(6){grid-column:span 2!important}
++.tcrm-leads-filter-grid>div:nth-child(7),.tcrm-leads-filter-grid>div:nth-child(8),.tcrm-leads-filter-grid>div:nth-child(9),.tcrm-leads-filter-grid>div:nth-child(10){grid-column:span 2!important}
++.tcrm-leads-filter-grid>div:nth-child(11){grid-column:span 4!important}
++.tcrm-leads-filter-actions{grid-column:span 4!important}
++
++.tcrm-leads-filter-grid label{display:block;margin:0 0 8px!important;color:hsl(var(--muted-foreground))!important;font-size:11px!important;font-weight:700!important;line-height:1.2!important;letter-spacing:0!important}
++.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>:not([hidden])~:not([hidden]){margin-top:0!important}
++.tcrm-leads-filter-grid input,.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>button,.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>div>button{width:100%!important;min-width:0!important;max-width:100%!important;height:44px!important;min-height:44px!important;border:1px solid hsl(var(--border)/.8)!important;border-radius:12px!important;background:hsl(var(--background))!important;color:hsl(var(--foreground))!important;box-shadow:0 1px 2px hsl(var(--foreground)/.02)!important}
++.tcrm-leads-filter-grid input::placeholder{color:hsl(var(--muted-foreground)/.72)!important;opacity:1!important}
++.tcrm-leads-filter-grid>div:nth-child(1) input{padding-inline-start:38px!important;font-size:12px!important}
++.tcrm-leads-filter-grid>div:nth-child(1) .relative>svg{inset-inline-start:13px!important;inset-inline-end:auto!important;color:hsl(var(--muted-foreground)/.8)!important}
++.tcrm-leads-filter-grid>div:nth-child(2)>*{max-width:100%!important}
++.tcrm-leads-filter-grid>div:nth-child(2) button{justify-content:flex-start!important;gap:10px!important;padding-inline:14px!important;background:hsl(var(--background))!important;color:hsl(var(--foreground))!important;border-color:hsl(var(--border)/.8)!important}
++.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>button,.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>div>button{padding-inline:13px!important;font-size:12px!important}
++.tcrm-leads-filter-grid>div:nth-child(11) input{padding-inline:14px!important;font-size:12px!important}
++.tcrm-leads-filter-grid input:hover,.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>button:hover,.tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions)>div>button:hover{border-color:hsl(var(--primary)/.28)!important;background:hsl(var(--background))!important}
++.tcrm-leads-filter-grid input:focus-visible,.tcrm-leads-filter-grid button:focus-visible{border-color:hsl(var(--primary)/.42)!important;box-shadow:0 0 0 3px hsl(var(--primary)/.08)!important;outline:none!important}
++
++.tcrm-leads-filter-actions{display:grid!important;grid-template-columns:.9fr 1.1fr 1.1fr!important;align-items:end!important;gap:10px!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;align-self:end!important}
++.tcrm-leads-filter-actions>button,.tcrm-leads-filter-actions>div,.tcrm-leads-filter-actions>div>button{width:100%!important;min-width:0!important;max-width:100%!important}
++.tcrm-leads-filter-actions>button,.tcrm-leads-filter-actions>div>button{height:44px!important;min-height:44px!important;padding-inline:12px!important;border-radius:12px!important;font-size:11.5px!important;font-weight:650!important;white-space:nowrap!important}
++.tcrm-leads-reset-button{background:hsl(var(--muted)/.34)!important}
++.tcrm-leads-reset-button:disabled{opacity:.52!important}
++.tcrm-leads-sla-button,.tcrm-leads-columns-button{background:hsl(var(--primary)/.045)!important;border-color:hsl(var(--primary)/.18)!important}
++
++@media(max-width:1280px){
++ .tcrm-leads-filter-grid{grid-template-columns:repeat(12,minmax(0,1fr))!important}
++ .tcrm-leads-filter-grid>div:nth-child(1){grid-column:span 5!important}
++ .tcrm-leads-filter-grid>div:nth-child(2){grid-column:span 3!important}
++ .tcrm-leads-filter-grid>div:nth-child(3),.tcrm-leads-filter-grid>div:nth-child(4){grid-column:span 2!important}
++ .tcrm-leads-filter-grid>div:nth-child(n+5):not(.tcrm-leads-filter-actions){grid-column:span 2!important}
++ .tcrm-leads-filter-grid>div:nth-child(11){grid-column:span 4!important}
++ .tcrm-leads-filter-actions{grid-column:span 4!important}
++}
++@media(max-width:900px){
++ .tcrm-leads-filter-header{padding:18px 18px 12px!important}.tcrm-leads-filter-body{padding:10px 18px 20px!important}
++ .tcrm-leads-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
++ .tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions){grid-column:span 1!important}
++ .tcrm-leads-filter-grid>div:nth-child(1),.tcrm-leads-filter-grid>div:nth-child(11),.tcrm-leads-filter-actions{grid-column:1/-1!important}
++}
++@media(max-width:560px){
++ .tcrm-leads-filter-heading-icon,.tcrm-leads-filter-subtitle{display:none!important}
++ .tcrm-leads-filter-grid{grid-template-columns:1fr!important}
++ .tcrm-leads-filter-grid>div:not(.tcrm-leads-filter-actions),.tcrm-leads-filter-actions{grid-column:1/-1!important}
++ .tcrm-leads-filter-actions{grid-template-columns:1fr!important}
++}
