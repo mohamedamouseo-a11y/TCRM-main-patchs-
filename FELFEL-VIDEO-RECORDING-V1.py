@@ -88,7 +88,7 @@ def run_patch(section: str, dry_run: bool) -> None:
         f.write(section)
         temp = Path(f.name)
     try:
-        cmd = ["patch", "-p1", "--batch"]
+        cmd = ["patch", "-p1", "--batch", "-i", str(temp)]
         if dry_run:
             cmd.append("--dry-run")
         p = subprocess.run(cmd, cwd=VEXA, text=True, capture_output=True)
