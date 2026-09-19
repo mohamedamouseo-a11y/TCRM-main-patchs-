@@ -57,7 +57,7 @@ function extFor(artifact: FelfelRecordingArtifact) {
 
 async function runFfmpeg(args: string[], durationSec: number, onProgress?: ProgressFn) {
   await new Promise<void>((resolve, reject) => {
-    const proc = spawn("ffmpeg", ["-y", ...args, "-progress", "pipe:1", "-nostats"], {
+    const proc = spawn("ffmpeg", ["-y", "-progress", "pipe:1", "-nostats", ...args], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -413,11 +413,24 @@ if new_join_audit not in s:
         raise SystemExit("PATCH_FAIL=join_audit_anchor_missing")
     s = s.replace(old_join_audit, new_join_audit, 1)
 
+s = replace_once(
+    s,
+    'const RECORDING_RETRY_BACKOFF_MS = 10 * 60_000; // FELFEL_RECORDING_RETRY_V1',
+    'const RECORDING_RETRY_BACKOFF_MS = 60_000; // FELFEL_RECORDING_PIPELINE_V2',
+    "recording_retry_backoff",
+)
+
 progress_anchor = 'function lastRecordingRetryFailureAt(meeting: any) {'
 progress_helpers = r'''function meetingExpectsVideo(meeting: any) {
   return meetingAuditTrail(meeting?.auditData).some((entry: any) =>
     entry?.event === "bot_join_requested" && entry?.recordingMode === "video_audio"
   );
+}
+
+function scheduleRecordingRetry(meetingId: number) {
+  setTimeout(() => {
+    void processLinkedFelfelMeeting(meetingId).catch(() => undefined);
+  }, RECORDING_RETRY_BACKOFF_MS + 1000);
 }
 
 function recordingCleanupState(meeting: any) {
@@ -721,6 +734,8 @@ retry_return_new = '''      if (recordingComplete) {
           console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
         });
         void cleanupFelfelRecordingSource(id, recording.sourceRecordingId).catch(() => undefined);
+      } else {
+        scheduleRecordingRetry(id);
       }
       return updated;'''
 s = replace_once(s, retry_return, retry_return_new, "cleanup_retry_branch")
@@ -736,6 +751,27 @@ normal_new = '''    await applySmartFelfelMeetingTitle(id, analysis);
 
     if (meeting.clientId) {'''
 s = replace_once(s, normal_anchor, normal_new, "cleanup_normal_branch")
+
+s = replace_once(
+    s,
+    '''  const completedMeeting = (await loadMeeting(id)).meeting;
+  void syncFelfelMeetingCalendar(completedMeeting).catch((error) => {
+    console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
+  });
+  return completedMeeting;''',
+    '''  const completedMeeting = (await loadMeeting(id)).meeting;
+  void syncFelfelMeetingCalendar(completedMeeting).catch((error) => {
+    console.error(`[FelfelCalendar] sync failed for meeting ${id}:`, error instanceof Error ? error.message : error);
+  });
+  if (
+    isMeetingIntelligenceComplete(completedMeeting)
+    && !isRecordingComplete(String(completedMeeting.recordingStatus || ""))
+  ) {
+    scheduleRecordingRetry(id);
+  }
+  return completedMeeting;''',
+    "normal_completion_retry",
+)
 write(rel, s)
 
 rel = "server/services/felfel/felfelDashboardService.ts"
