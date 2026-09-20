@@ -1,0 +1,17 @@
+cd /var/www/TCRM-MAIN
+curl -fsSL https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-NGINX-SALES-CORRECT-HOSTNAME-FIX-V1.py -o /tmp/tcrm-nginx-host.py
+python3 /tmp/tcrm-nginx-host.py
+nginx -t && systemctl reload nginx
+curl -s -o /dev/null -w "HTTP=%{http_code}\n" -H "Host: sales.tamiyouzplatform.com" http://127.0.0.1/
+curl -k -s -o /dev/null -w "HTTPS=%{http_code}\n" --resolve sales.tamiyouzplatform.com:443:127.0.0.1 https://sales.tamiyouzplatform.com/
+
+Do not inspect unrelated code. No build, PM2 restart, commit, or push.
+
+Return only:
+PATCH=
+NGINX_TEST=
+NGINX_RELOAD=
+HTTP=
+HTTPS=
+FILES_CHANGED=
+ERROR=
