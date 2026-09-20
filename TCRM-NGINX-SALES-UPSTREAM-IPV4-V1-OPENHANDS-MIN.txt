@@ -1,0 +1,16 @@
+curl -fsSL https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-NGINX-SALES-UPSTREAM-IPV4-V1.py -o /tmp/tcrm-nginx-ipv4.py
+python3 /tmp/tcrm-nginx-ipv4.py
+nginx -t && systemctl reload nginx
+curl -k -s -o /dev/null -w "HTTPS=%{http_code}\n" --resolve sales.tamiyouzplatform.com:443:127.0.0.1 https://sales.tamiyouzplatform.com/
+curl -s -o /dev/null -w "BACKEND=%{http_code}\n" http://127.0.0.1:3001/
+
+No code/build/PM2/commit/push.
+
+Return only:
+PATCH=
+NGINX_TEST=
+NGINX_RELOAD=
+HTTPS=
+BACKEND=
+FILES_CHANGED=
+ERROR=
