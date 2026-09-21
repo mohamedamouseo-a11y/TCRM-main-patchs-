@@ -1,0 +1,18 @@
+cd /var/www/TCRM-MAIN
+curl -L https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-CALENDAR-SLA-REFERENCE-LOCK-V9.py -o /tmp/v9.py
+python3 /tmp/v9.py
+npm run build
+pm2 restart tamiyouz-crm
+
+DO NOT inspect unrelated code.
+DO NOT change backend/data/routes/permissions/business logic.
+DO NOT reset/checkout/commit/push.
+DO NOT take screenshots.
+
+Return only:
+PATCH=PASS/FAIL
+BUILD=PASS/FAIL
+PM2=ONLINE/OFFLINE
+OLD_VISUAL_IMPORTS_REMOVED=
+FILES_CHANGED=
+ERROR=NONE/<error>
