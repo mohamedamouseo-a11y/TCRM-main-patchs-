@@ -1,0 +1,22 @@
+cd /var/www/TCRM-MAIN
+curl -L https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-THREE-SCREENS-GENERATED-REFERENCE-V13.py -o /tmp/v13.py
+python3 /tmp/v13.py
+npm run build
+pm2 restart tamiyouz-crm
+
+DO NOT inspect unrelated code.
+DO NOT add new CSS imports/stylesheets.
+DO NOT change backend/data/routes/permissions/business logic.
+DO NOT reset/checkout/commit/push.
+DO NOT take screenshots.
+
+Return only:
+PATCH=PASS/FAIL
+BUILD=PASS/FAIL
+PM2=ONLINE/OFFLINE
+SALES=
+SLA=
+CALENDAR=
+NO_NEW_CSS_IMPORTS=
+FILES_CHANGED=
+ERROR=NONE/<error>
