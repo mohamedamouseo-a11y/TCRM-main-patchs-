@@ -1,0 +1,24 @@
+cd /var/www/TCRM-MAIN
+curl -fsSL https://raw.githubusercontent.com/mohamedamouseo-a11y/TCRM-main-patchs-/main/TCRM-AM-PREMIUM-LUXURY-V1.py -o /tmp/am-luxury-v1.py
+python3 /tmp/am-luxury-v1.py
+npm run build
+pm2 restart tamiyouz-crm
+sleep 3
+curl -s -o /dev/null -w "HTTP=%{http_code}\n" http://127.0.0.1:3001/
+
+DO NOT inspect unrelated code.
+DO NOT change backend/data/routes/permissions/business logic.
+DO NOT reset/checkout/commit/push.
+DO NOT manually redesign outside the patch.
+DO NOT take screenshots.
+
+Return only:
+PATCH=PASS/FAIL
+BUILD=PASS/FAIL
+PM2=ONLINE/OFFLINE
+HTTP=
+AM_DASHBOARD=
+AM_CALENDAR=
+FUNCTIONS_PRESERVED=
+FILES_CHANGED=
+ERROR=NONE/<error>
