@@ -15,6 +15,27 @@ for p in (SERVICE, COMPOSE, ENV):
         raise SystemExit(f"PATCH_FAIL=MISSING_{p.name}")
 
 s = SERVICE.read_text(encoding="utf-8")
+
+# In-process reservation closes the tiny race where two simultaneous POST /bots
+# requests could both observe the same free S3 slot before either meeting row is
+# inserted. Reservations expire automatically if a request aborts before insert.
+if "\nimport time\n" not in s:
+    if "import re\nimport uuid\n" not in s:
+        raise SystemExit("PATCH_FAIL=IMPORT_ANCHOR_MISSING")
+    s = s.replace("import re\nimport uuid\n", "import re\nimport time\nimport uuid\n", 1)
+
+reservation_anchor = "_STT_VERDICT_MAX_AGE_S = 60.0\n"
+reservation_block = """_STT_VERDICT_MAX_AGE_S = 60.0
+
+# TCRM Felfel pool: transient reservation between slot selection and DB insert.
+_AUTH_POOL_RESERVATIONS: dict[str, float] = {}
+_AUTH_POOL_RESERVATION_TTL_S = 60.0
+"""
+if "_AUTH_POOL_RESERVATIONS" not in s:
+    if reservation_anchor not in s:
+        raise SystemExit("PATCH_FAIL=RESERVATION_ANCHOR_MISSING")
+    s = s.replace(reservation_anchor, reservation_block, 1)
+
 block_re = re.compile(
     r'    authenticated = env_flag\("BOT_AUTHENTICATED", False\)\n'
     r'    auth_userdata_path: Optional\[str\] = None\n'
@@ -47,10 +68,19 @@ new_auth = '''    authenticated = env_flag("BOT_AUTHENTICATED", False)
                 "BOT_AUTHENTICATED is set but the userdata pool/store is incomplete"
             )
 
+        now = time.monotonic()
+        for reserved_path, reserved_at in list(_AUTH_POOL_RESERVATIONS.items()):
+            if now - reserved_at > _AUTH_POOL_RESERVATION_TTL_S:
+                _AUTH_POOL_RESERVATIONS.pop(reserved_path, None)
+
         busy: list[dict] = []
         for candidate in auth_userdata_paths:
+            if candidate in _AUTH_POOL_RESERVATIONS:
+                busy.append({"id": "reserved"})
+                continue
             conflict = await repo.find_active_by_userdata(candidate)
             if conflict is None:
+                _AUTH_POOL_RESERVATIONS[candidate] = now
                 auth_userdata_path = candidate
                 break
             busy.append(conflict)
@@ -67,6 +97,19 @@ if "BOT_USERDATA_S3_PATHS" not in s:
     s, n = block_re.subn(new_auth, s, count=1)
     if n != 1:
         raise SystemExit("PATCH_FAIL=AUTH_BLOCK_ANCHOR_MISSING")
+release_anchor = '    meeting_id = row["id"]\n'
+if "TCRM_FELFEL_POOL_RELEASE" not in s:
+    if release_anchor not in s:
+        raise SystemExit("PATCH_FAIL=POOL_RELEASE_ANCHOR_MISSING")
+    s = s.replace(
+        release_anchor,
+        release_anchor
+        + "    # TCRM_FELFEL_POOL_RELEASE: the DB row now owns the selected slot.\n"
+        + "    if auth_userdata_path:\n"
+        + "        _AUTH_POOL_RESERVATIONS.pop(auth_userdata_path, None)\n",
+        1,
+    )
+
 SERVICE.write_text(s, encoding="utf-8")
 
 c = COMPOSE.read_text(encoding="utf-8")
