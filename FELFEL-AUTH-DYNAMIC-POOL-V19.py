@@ -54,8 +54,8 @@ SERVICE.write_text(s, encoding="utf-8")
 
 # 2) Compose passes the dynamic pool-size knob and pins the V19 derived image.
 c = COMPOSE.read_text(encoding="utf-8")
-anchor = '      - BOT_USERDATA_S3_PATHS=${BOT_USERDATA_S3_PATHS:-}\\n'
-line = '      - BOT_USERDATA_S3_POOL_SIZE=${BOT_USERDATA_S3_POOL_SIZE:-}\\n'
+anchor = '      - BOT_USERDATA_S3_PATHS=${BOT_USERDATA_S3_PATHS:-}\n'
+line = '      - BOT_USERDATA_S3_POOL_SIZE=${BOT_USERDATA_S3_POOL_SIZE:-}\n'
 if "BOT_USERDATA_S3_POOL_SIZE=${BOT_USERDATA_S3_POOL_SIZE:-}" not in c:
     if anchor not in c:
         raise SystemExit("PATCH_FAIL=COMPOSE_POOL_ENV_ANCHOR_MISSING")
@@ -65,7 +65,7 @@ section_end = c.find("\n  gateway:", section_start)
 if section_start < 0 or section_end < 0:
     raise SystemExit("PATCH_FAIL=MEETING_API_SECTION_MISSING")
 section = c[section_start:section_end]
-section, n = re.subn(r"(?m)^    image: vexaai/v012-meeting-api:[^\\n]+$", "    image: vexaai/v012-meeting-api:tcrm-dynamicpool-v19", section, count=1)
+section, n = re.subn(r"(?m)^    image: vexaai/v012-meeting-api:[^\n]+$", "    image: vexaai/v012-meeting-api:tcrm-dynamicpool-v19", section, count=1)
 if n != 1:
     raise SystemExit("PATCH_FAIL=MEETING_API_IMAGE_MISSING")
 c = c[:section_start] + section + c[section_end:]
