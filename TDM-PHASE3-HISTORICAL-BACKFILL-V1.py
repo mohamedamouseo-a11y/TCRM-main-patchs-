@@ -75,7 +75,7 @@ export async function fetchWAGatewayHistoricalMessagesPage(input: {
       ? root.records
       : [];
   const total = Math.max(0, Number(root?.total ?? records.length) || 0);
-  const pages = Math.max(1, Number(root?.pages ?? Math.ceil(total / pageSize) || 1));
+  const pages = Math.max(1, Number((root?.pages ?? Math.ceil(total / pageSize)) || 1));
   const currentPage = Math.max(1, Number(root?.currentPage ?? page) || page);
 
   return { total, pages, currentPage, records };
