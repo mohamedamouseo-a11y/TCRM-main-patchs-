@@ -72,7 +72,7 @@ finally:
 
 # 3) Build a tiny derived image; no dependency install / full Vexa rebuild.
 DOCKERFILE.write_text(f'''ARG BASE_IMAGE={BASE_IMAGE}
-FROM ${BASE_IMAGE}
+FROM {BASE_IMAGE}
 
 COPY deploy/compose/{OUT.name} /app/core/meetings/services/bot/dist/index.js
 
